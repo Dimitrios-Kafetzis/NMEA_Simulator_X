@@ -1,0 +1,91 @@
+site_name: NMEA Simulator X
+site_description: Free, open-source NMEA 0183 and Signal K data stream simulator for Windows, macOS and Linux.
+site_url: https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/
+repo_url: https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X
+repo_name: Dimitrios-Kafetzis/NMEA_Simulator_X
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Dimitrios Kafetzis. Licensed under GPL-3.0.
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - tutorials/index.md
+  - How-to guides:
+      - how-to/index.md
+      - Install on Windows, macOS or Linux: how-to/install.md
+      - Build from source: how-to/build-from-source.md
+  - Reference:
+      - reference/index.md
+      - Command-line tool: reference/cli.md
+      - NMEA 0183 sentences: reference/nmea0183-sentences.md
+  - Explanation:
+      - explanation/index.md
+      - Architecture: explanation/architecture.md
+      - Requirements and feature parity: explanation/requirements.md
+  - Decisions:
+      - adr/index.md
+      - "0001 Native C++ with Qt 6 Widgets": adr/0001-cpp-qt-widgets.md
+      - "0002 Layered libraries with a Qt-free core": adr/0002-layered-libraries.md
+      - "0003 CMake presets and vcpkg": adr/0003-cmake-vcpkg.md
+      - "0004 GPL-3.0 license": adr/0004-gpl-license.md
+      - "0005 Unsigned distribution": adr/0005-unsigned-distribution.md
+      - "0006 Documentation standard": adr/0006-documentation-standard.md
+      - "0007 Trunk-based development and releases": adr/0007-trunk-based-releases.md
+      - "0008 Testing strategy": adr/0008-testing-strategy.md
+  - Development:
+      - development/index.md
+      - Coding standards: development/coding-standards.md
+      - Release process: development/release-process.md
+      - Roadmap: development/roadmap.md
