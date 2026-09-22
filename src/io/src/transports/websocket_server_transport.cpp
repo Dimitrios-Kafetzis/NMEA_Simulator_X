@@ -1,5 +1,7 @@
 #include <nmeasim/io/transports/websocket_server_transport.hpp>
 
+#include <utility>
+
 namespace nmeasim::io {
 
 WebSocketServerTransport::WebSocketServerTransport(quint16 port, QHostAddress bind_address,

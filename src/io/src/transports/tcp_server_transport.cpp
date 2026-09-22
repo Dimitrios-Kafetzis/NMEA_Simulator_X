@@ -1,5 +1,7 @@
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
 
+#include <utility>
+
 namespace nmeasim::io {
 
 TcpServerTransport::TcpServerTransport(quint16 port, QHostAddress bind_address, QObject* parent)
