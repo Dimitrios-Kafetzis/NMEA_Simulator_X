@@ -68,7 +68,14 @@ To check the stream without a plotter, on Linux or macOS run:
 nc 127.0.0.1 10110
 ```
 
-## 6. Save your setup
+## 6. Change the setup
+
+Open *File → Settings...*. On the *Simulation* tab move the vessel by typing a new latitude
+and longitude, on the *Sentences* tab untick *GSV* to silence the satellite list, and on the
+*Outputs* tab add a *UDP* output in *Broadcast* mode on port 10110 so every device on your
+network receives the stream. Press *OK*: the simulation restarts with the new configuration.
+
+## 7. Save your setup
 
 Choose *File → Save profile as...* and store the profile as `first-voyage.json`. The file
 holds the seed values, the sentence schedule and the outputs, and can be run headless later

@@ -33,6 +33,7 @@ saved on exit and restored at the next start.
 | File | Open profile... | ++ctrl+o++ | Loads a JSON profile; the simulation restarts if it was running |
 | File | Save profile | ++ctrl+s++ | Writes the current profile to its file, asking for a name the first time |
 | File | Save profile as... | ++ctrl+shift+s++ | Writes the current profile to a new file |
+| File | Settings... | ++ctrl+comma++ | Opens the [settings dialog](#settings-dialog) for the current profile |
 | File | Quit | ++ctrl+q++ | Stops the simulation and closes the window |
 | Simulation | Start / Stop | ++f5++ | Opens every enabled output and starts ticking, or closes everything |
 | Simulation | Pause | ++f6++ | Freezes the simulated clock and the vessel; outputs stay open |
@@ -93,6 +94,46 @@ The table refreshes twice a second and whenever an output changes state. The sta
 uses the names listed in the [transport reference](transports.md). An output that fails to
 open is reported in the status bar and in the *Last error* column while the run continues on
 the other outputs.
+
+## Settings dialog
+
+*File → Settings...* edits a copy of the current profile in three tabs. *OK* applies the
+result as the current profile, restarting the simulation if it was running; *Cancel* discards
+every change. The profile on disk is not touched until you save it.
+
+### Simulation tab
+
+| Group | Fields |
+| --- | --- |
+| Profile and clock | Name, simulation step (10 to 10000 ms), fixed start time in UTC or the wall clock, random seed |
+| Initial vessel values | Latitude, longitude, altitude, heading, speed over ground, magnetic variation and deviation, depth, transducer offset, water temperature, true wind direction and speed |
+| GNSS receiver | Fix, fix quality, satellites in use and in view, HDOP, PDOP, VDOP, geoid separation |
+| Drift around the initial values | Amplitude and step per second for heading, speed, depth, water temperature, wind direction and wind speed; an amplitude of 0 freezes the value |
+| Steering | Turn rate per degree of rudder, maximum rudder angle |
+
+The fields map one to one onto the `simulation` object of the
+[profile file](profile.md#simulation).
+
+### Sentences tab
+
+One row per sentence in the registry with its enabled flag, id, description, group, talker
+and period in milliseconds. An empty talker uses the registry default shown as placeholder.
+*Enable all*, *Disable all* and *Reset to defaults* act on every row. *Position decimals*
+sets the fractional minute digits of latitude and longitude.
+
+Only rows that differ from the registry defaults are written to the profile, so a saved
+profile stays small and follows registry changes in later versions.
+
+### Outputs tab
+
+The list on the left holds the outputs in the order they are opened. *Add* offers every
+transport type; *Remove* deletes the selected output. The editor on the right shows the
+common fields, *Enabled* and the comma-separated *Sentence filter*, above the fields of the
+selected type as listed in the [transport reference](transports.md). Serial ports found on
+the machine are offered in the port list, and any other device path can be typed.
+
+*OK* is refused, with the reason shown under the tabs, while a serial output has no port, a
+file output has no path or a TCP client has no host.
 
 ## Preferences
 

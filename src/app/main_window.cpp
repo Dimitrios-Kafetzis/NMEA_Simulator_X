@@ -1,5 +1,6 @@
 #include "main_window.hpp"
 
+#include "dialogs/settings_dialog.hpp"
 #include "widgets/console_widget.hpp"
 #include "widgets/dashboard_widget.hpp"
 #include "widgets/outputs_widget.hpp"
@@ -106,6 +107,10 @@ void MainWindow::build_actions() {
     save_as_action_ = new QAction(tr("Save profile &as..."), this);
     save_as_action_->setShortcut(QKeySequence::SaveAs);
     connect(save_as_action_, &QAction::triggered, this, &MainWindow::save_profile_as);
+    settings_action_ = new QAction(tr("Se&ttings..."), this);
+    settings_action_->setShortcut(QKeySequence::Preferences);
+    settings_action_->setToolTip(tr("Edit the simulation, sentences and outputs of this profile"));
+    connect(settings_action_, &QAction::triggered, this, &MainWindow::edit_settings);
 
     run_action_ = new QAction(tr("Start"), this);
     run_action_->setShortcut(Qt::Key_F5);
@@ -141,6 +146,8 @@ void MainWindow::build_actions() {
     auto* file_menu = menuBar()->addMenu(tr("&File"));
     file_menu->addActions({new_action_, open_action_, save_action_, save_as_action_});
     file_menu->addSeparator();
+    file_menu->addAction(settings_action_);
+    file_menu->addSeparator();
     file_menu->addAction(quit_action);
     auto* simulation_menu = menuBar()->addMenu(tr("&Simulation"));
     simulation_menu->addActions({run_action_, pause_action_, steering_action_});
@@ -149,7 +156,7 @@ void MainWindow::build_actions() {
     auto* help_menu = menuBar()->addMenu(tr("&Help"));
     help_menu->addAction(about_action);
 
-    toolbar->addActions({open_action_, save_action_});
+    toolbar->addActions({open_action_, save_action_, settings_action_});
     toolbar->addSeparator();
     toolbar->addActions({run_action_, pause_action_, steering_action_});
 }
@@ -300,6 +307,13 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 
 void MainWindow::new_profile() {
     set_profile(io::Profile::default_profile());
+}
+
+void MainWindow::edit_settings() {
+    SettingsDialog dialog(profile_, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        set_profile(dialog.profile(), profile_path_);
+    }
 }
 
 void MainWindow::open_profile() {
