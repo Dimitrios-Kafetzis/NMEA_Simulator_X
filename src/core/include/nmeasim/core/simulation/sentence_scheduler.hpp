@@ -4,6 +4,7 @@
 #include <nmeasim/core/nmea0183/registry.hpp>
 
 #include <chrono>
+#include <functional>
 #include <map>
 #include <string>
 #include <string_view>
