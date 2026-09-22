@@ -46,6 +46,7 @@ markdown_extensions:
   - pymdownx.details
   - pymdownx.highlight
   - pymdownx.inlinehilite
+  - pymdownx.keys
   - pymdownx.snippets
   - pymdownx.tabbed:
       alternate_style: true
@@ -62,6 +63,7 @@ nav:
   - Home: index.md
   - Tutorials:
       - tutorials/index.md
+      - Your first simulated voyage: tutorials/first-voyage.md
   - How-to guides:
       - how-to/index.md
       - Install on Windows, macOS or Linux: how-to/install.md
@@ -69,6 +71,7 @@ nav:
       - Run the simulator headless: how-to/run-headless.md
   - Reference:
       - reference/index.md
+      - Desktop application: reference/desktop-app.md
       - Command-line tool: reference/cli.md
       - Profile file format: reference/profile.md
       - NMEA 0183 sentences: reference/nmea0183-sentences.md
@@ -88,6 +91,7 @@ nav:
       - "0006 Documentation standard": adr/0006-documentation-standard.md
       - "0007 Trunk-based development and releases": adr/0007-trunk-based-releases.md
       - "0008 Testing strategy": adr/0008-testing-strategy.md
+      - "0009 Desktop shell": adr/0009-desktop-shell.md
   - Development:
       - development/index.md
       - Coding standards: development/coding-standards.md
