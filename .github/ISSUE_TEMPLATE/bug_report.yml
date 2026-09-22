@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as documented.
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a problem. Please fill in as much as you can.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `nmeasim --version` or the version shown in the About dialog.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version and architecture
+      placeholder: Windows 11 23H2 x64 / macOS 15.1 arm64 / Ubuntu 24.04 x64
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the simulator
+        2. Enable the TCP server on port 10110
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: NMEA sentences, log lines or error messages. This is rendered as code automatically.
+      render: text

@@ -1,0 +1,51 @@
+name: CodeQL
+
+# Code scanning is free for public repositories only, so the job is skipped while the
+# repository is private.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze C++
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.2
+          host: linux
+          arch: linux_gcc_64
+          modules: qtserialport qtwebsockets
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      - name: Build
+        run: |
+          export VCPKG_ROOT="$VCPKG_INSTALLATION_ROOT"
+          cmake --preset ci-linux -DNMEASIM_ENABLE_SANITIZERS=OFF
+          cmake --build --preset ci-linux
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"

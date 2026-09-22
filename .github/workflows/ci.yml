@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: 6.11.2
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (GCC)
+            os: ubuntu-24.04
+            preset: ci-linux
+            qt_host: linux
+            qt_arch: linux_gcc_64
+          - name: Windows (MSVC)
+            os: windows-2022
+            preset: ci-windows
+            qt_host: windows
+            qt_arch: win64_msvc2022_64
+          - name: macOS (Clang)
+            os: macos-15
+            preset: ci-macos
+            qt_host: mac
+            qt_arch: clang_64
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.qt_host }}
+          arch: ${{ matrix.qt_arch }}
+          modules: qtserialport qtwebsockets
+          cache: true
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare vcpkg binary cache
+        shell: bash
+        run: |
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+      - name: Smoke-test the command-line tool
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./build/${{ matrix.preset }}/src/cli/nmeasim.exe --version
+            ./build/${{ matrix.preset }}/src/cli/nmeasim.exe ports
+          else
+            export QT_QPA_PLATFORM=offscreen
+            ./build/${{ matrix.preset }}/src/cli/nmeasim --version
+            ./build/${{ matrix.preset }}/src/cli/nmeasim ports
+          fi
+
+  format:
+    name: Code formatting
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install clang-format
+        run: pip install clang-format==23.1.1
+
+      - name: Check formatting
+        run: |
+          git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: docs/requirements.txt
+
+      - name: Install MkDocs
+        run: pip install -r docs/requirements.txt
+
+      - name: Build documentation site (strict)
+        run: mkdocs build --strict
