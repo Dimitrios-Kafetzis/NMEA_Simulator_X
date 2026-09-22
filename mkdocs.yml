@@ -70,6 +70,7 @@ nav:
       - reference/index.md
       - Command-line tool: reference/cli.md
       - NMEA 0183 sentences: reference/nmea0183-sentences.md
+      - Transports: reference/transports.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
