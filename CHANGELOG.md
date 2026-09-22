@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [0.3.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.2.0...v0.3.0) (2026-09-22)
+
+
+### Features
+
+* **app:** add the desktop shell with dashboard, console and outputs panels ([#11](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/11)) ([723271b](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/723271bde13c15aa6014c7fc54eb4192fceaadb6))
+* **app:** add the map view with cached OpenStreetMap tiles ([#14](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/14)) ([982ea7c](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/982ea7c7a0cf1cd57fb6791f95f9bf75fa9c9a52))
+* **app:** add the settings dialog for simulation, sentences and outputs ([#13](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/13)) ([8feb377](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/8feb377b5fc67b1e21ce2a132b4f6320b3ac184a))
+
 ## [0.2.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.1.0...v0.2.0) (2026-09-22)
 
 
