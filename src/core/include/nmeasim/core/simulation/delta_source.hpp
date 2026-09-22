@@ -3,6 +3,7 @@
 #include <nmeasim/core/model/vessel_state.hpp>
 #include <nmeasim/core/simulation/source.hpp>
 
+#include <array>
 #include <chrono>
 #include <optional>
 #include <random>
