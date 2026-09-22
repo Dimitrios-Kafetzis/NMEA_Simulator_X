@@ -7,6 +7,7 @@
 #include <QSignalSpy>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QTimeZone>
 
 #include <catch2/catch_test_macros.hpp>
 
