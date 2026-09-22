@@ -20,8 +20,17 @@ public:
     [[nodiscard]] bool autostart() const;
     void set_autostart(bool enabled);
 
+    [[nodiscard]] bool map_online() const;
+    void set_map_online(bool online);
+    [[nodiscard]] QString map_tile_url() const;
+    void set_map_tile_url(const QString& url);
+    [[nodiscard]] int map_zoom() const;
+    void set_map_zoom(int zoom);
+
     /// Directory where profiles are stored by default.
     [[nodiscard]] static QString profiles_directory();
+    /// Directory where downloaded map tiles are kept.
+    [[nodiscard]] static QString tile_cache_directory();
 
 private:
     QSettings settings_;

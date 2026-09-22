@@ -15,6 +15,7 @@ ADR supersedes it instead. Number the next record sequentially and add it to `mk
 | [0007](0007-trunk-based-releases.md) | Trunk-based development, Conventional Commits and automated releases | Accepted |
 | [0008](0008-testing-strategy.md) | Testing strategy | Accepted |
 | [0009](0009-desktop-shell.md) | Desktop shell: one main window with dock panels, tested offscreen | Accepted |
+| [0010](0010-map-tiles.md) | Map view: painted raster tiles with a disk cache | Accepted |
 
 ## Template
 

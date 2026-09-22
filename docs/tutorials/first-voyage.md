@@ -13,6 +13,9 @@ The window has four areas:
 
 - The **dashboard** in the centre shows the position, time, GNSS status, heading, speeds,
   depth, water temperature, altitude and wind as instrument tiles.
+- The **Map** panel on the left shows the vessel on an OpenStreetMap chart. Tiles are
+  downloaded the first time an area is shown and kept on disk, so the map also works
+  offline afterwards.
 - The **Console** panel at the bottom lists every sentence as it is sent.
 - The **Outputs** panel on the right lists each configured output with its state, the number
   of connected clients and the sentences and bytes sent.
@@ -53,7 +56,15 @@ Tick *Override* on the *Depth* tile and type `4.5`. The next DPT and DBT sentenc
 console carry the new depth. Untick *Fix* on the *GNSS* tile: RMC and GLL switch to their
 void form and GGA reports quality 0, exactly as a receiver that lost its fix would.
 
-## 5. Connect a chart plotter
+## 5. Move the vessel on the map
+
+Scroll the mouse wheel over the map to zoom in on the Saronic Gulf, then double-click a spot
+of open water. The vessel jumps there, the track starts afresh and the sentences carry the
+new position. Drag the map to look around; the word *free view* appears because the map no
+longer follows the vessel. Press ++home++, or choose *View → Follow vessel on the map*, to
+lock onto the vessel again.
+
+## 6. Connect a chart plotter
 
 Any application that accepts NMEA 0183 over TCP can read the stream. With OpenCPN on the
 same machine:
@@ -68,14 +79,14 @@ To check the stream without a plotter, on Linux or macOS run:
 nc 127.0.0.1 10110
 ```
 
-## 6. Change the setup
+## 7. Change the setup
 
 Open *File → Settings...*. On the *Simulation* tab move the vessel by typing a new latitude
 and longitude, on the *Sentences* tab untick *GSV* to silence the satellite list, and on the
 *Outputs* tab add a *UDP* output in *Broadcast* mode on port 10110 so every device on your
 network receives the stream. Press *OK*: the simulation restarts with the new configuration.
 
-## 7. Save your setup
+## 8. Save your setup
 
 Choose *File → Save profile as...* and store the profile as `first-voyage.json`. The file
 holds the seed values, the sentence schedule and the outputs, and can be run headless later
