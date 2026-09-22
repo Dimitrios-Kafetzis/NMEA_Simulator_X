@@ -73,6 +73,7 @@ nav:
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
+      - Simulation model: explanation/simulation-model.md
       - Requirements and feature parity: explanation/requirements.md
   - Decisions:
       - adr/index.md

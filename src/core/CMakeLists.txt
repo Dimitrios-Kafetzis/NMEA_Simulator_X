@@ -16,6 +16,10 @@ add_library(nmeasim_core STATIC
     src/nmea0183/fields.cpp
     src/nmea0183/registry.cpp
     src/nmea0183/sentence_builder.cpp
+    src/physics/wind.cpp
+    src/simulation/delta_source.cpp
+    src/simulation/sentence_scheduler.cpp
+    src/simulation/simulation.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
 
