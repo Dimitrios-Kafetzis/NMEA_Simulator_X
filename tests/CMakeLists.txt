@@ -28,6 +28,8 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Core Network Test WebSockets)
     add_executable(nmeasim_io_tests
         io/main.cpp
+        io/profile_test.cpp
+        io/simulation_runner_test.cpp
         io/transports_test.cpp
     )
     target_include_directories(nmeasim_io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

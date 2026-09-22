@@ -51,9 +51,12 @@ The engine runs three independent clocks:
 3. **Presentation refresh** updates the desktop dashboard and console, decoupled from
    emission so that high output rates never slow the interface.
 
-Inside `nmeasim::io` a single-threaded Qt event loop owns the transports. The engine runs on
-a worker thread and publishes immutable state snapshots; the host reads snapshots and sends
-commands through the control bus. No shared mutable state crosses threads.
+Inside `nmeasim::io` the `SimulationRunner` owns the transports and a precise Qt timer. Each
+timer tick measures the real time elapsed, capped at one second so a suspended host does not
+teleport the vessel, steps the simulation by that amount and writes the due sentences to every
+open output whose filter admits them. The engine itself never touches timers or sockets, so
+the same `Simulation` object is driven identically by the CLI, the desktop application and
+the tests.
 
 ## Data flow
 

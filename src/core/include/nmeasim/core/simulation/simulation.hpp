@@ -20,7 +20,7 @@ public:
     Simulation(std::unique_ptr<Source> source, SentenceScheduler scheduler);
 
     /// Advances simulated time by `dt` and returns the sentences due at the new time.
-    [[nodiscard]] std::vector<std::string> step(std::chrono::milliseconds dt);
+    [[nodiscard]] std::vector<EmittedSentence> step(std::chrono::milliseconds dt);
 
     /// Time elapsed since start or the last reset.
     [[nodiscard]] std::chrono::milliseconds elapsed() const noexcept { return elapsed_; }

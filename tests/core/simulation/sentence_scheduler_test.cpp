@@ -14,10 +14,11 @@ namespace nmea = nmeasim::core::nmea0183;
 
 namespace {
 
-int count_formatter(const std::vector<std::string>& sentences, std::string_view formatter) {
-    return static_cast<int>(
-        std::count_if(sentences.begin(), sentences.end(),
-                      [&](const std::string& s) { return s.substr(3, 3) == formatter; }));
+int count_formatter(const std::vector<sim::EmittedSentence>& sentences,
+                    std::string_view formatter) {
+    return static_cast<int>(std::count_if(
+        sentences.begin(), sentences.end(),
+        [&](const sim::EmittedSentence& s) { return s.text.substr(3, 3) == formatter; }));
 }
 
 }  // namespace
@@ -38,6 +39,7 @@ TEST_CASE("everything enabled is due at time zero, then again after its period",
 
     const auto first = scheduler.due(0ms, state);
     CHECK(count_formatter(first, "RMC") == 1);
+    CHECK(first.front().id == "RMC");
     CHECK(count_formatter(first, "GSV") == 3);
     CHECK(count_formatter(first, "MWV") == 1);  // only the apparent variant is on by default
 
@@ -89,10 +91,12 @@ TEST_CASE("talker overrides apply per sentence", "[simulation][scheduler]") {
                         {.enabled = true, .talker = "X", .period = 1000ms});  // invalid, ignored
 
     const auto sentences = scheduler.encode_all(state);
-    CHECK(std::any_of(sentences.begin(), sentences.end(),
-                      [](const std::string& s) { return s.starts_with("$GNRMC,"); }));
-    CHECK(std::any_of(sentences.begin(), sentences.end(),
-                      [](const std::string& s) { return s.starts_with("$HEHDT,"); }));
+    CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
+        return s.id == "RMC" && s.text.starts_with("$GNRMC,");
+    }));
+    CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
+        return s.id == "HDT" && s.text.starts_with("$HEHDT,");
+    }));
 }
 
 TEST_CASE("a non-positive period falls back to the registry default", "[simulation][scheduler]") {

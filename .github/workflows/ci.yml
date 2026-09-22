@@ -84,14 +84,28 @@ jobs:
       - name: Smoke-test the command-line tool
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./build/${{ matrix.preset }}/src/cli/nmeasim.exe --version
-            ./build/${{ matrix.preset }}/src/cli/nmeasim.exe ports
-          else
-            export QT_QPA_PLATFORM=offscreen
-            ./build/${{ matrix.preset }}/src/cli/nmeasim --version
-            ./build/${{ matrix.preset }}/src/cli/nmeasim ports
-          fi
+          NMEASIM=./build/${{ matrix.preset }}/src/cli/nmeasim
+          if [[ "${{ runner.os }}" == "Windows" ]]; then NMEASIM="$NMEASIM.exe"; fi
+          "$NMEASIM" --version
+          "$NMEASIM" ports
+          "$NMEASIM" interfaces
+          "$NMEASIM" sentences
+          "$NMEASIM" profile init profile.json
+          "$NMEASIM" profile show profile.json > /dev/null
+          "$NMEASIM" run --profile profile.json --stdout --quiet --duration 2 | head -5
+
+      - name: Set up Python for the stream cross-check
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Cross-check the NMEA stream with an independent parser
+        shell: bash
+        run: |
+          pip install pynmea2==1.19.0
+          NMEASIM=./build/${{ matrix.preset }}/src/cli/nmeasim
+          if [[ "${{ runner.os }}" == "Windows" ]]; then NMEASIM="$NMEASIM.exe"; fi
+          "$NMEASIM" run --stdout --quiet --duration 3 --enable MWV-T | python3 tools/check_nmea_stream.py --expect 19
 
   format:
     name: Code formatting
