@@ -39,3 +39,17 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
     )
     catch_discover_tests(nmeasim_io_tests DISCOVERY_MODE PRE_TEST)
 endif()
+
+if(NMEASIM_BUILD_APP)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
+    add_executable(nmeasim_app_tests
+        app/main.cpp
+        app/main_window_test.cpp
+    )
+    target_include_directories(nmeasim_app_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(nmeasim_app_tests
+        PRIVATE nmeasim::app_lib Catch2::Catch2 Qt6::Widgets Qt6::Test nmeasim::warnings nmeasim::sanitizers
+    )
+    catch_discover_tests(nmeasim_app_tests DISCOVERY_MODE PRE_TEST
+        PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
