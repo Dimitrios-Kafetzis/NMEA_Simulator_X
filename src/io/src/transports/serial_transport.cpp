@@ -5,15 +5,17 @@ namespace nmeasim::io {
 SerialTransport::SerialTransport(SerialConfig config, QObject* parent)
     : Transport(parent), config_(std::move(config)) {
     connect(&port_, &QSerialPort::errorOccurred, this, [this](QSerialPort::SerialPortError error) {
-        if (error == QSerialPort::NoError) {
+        // Failures while opening are reported by open() itself; only report runtime errors.
+        if (error == QSerialPort::NoError || opening_) {
             return;
         }
-        emit error_occurred(port_.errorString());
         if (error == QSerialPort::ResourceError && port_.isOpen()) {
             // The device was unplugged.
             port_.close();
             fail(QStringLiteral("Serial port %1 was disconnected").arg(config_.port_name));
+            return;
         }
+        emit error_occurred(port_.errorString());
     });
     connect(&port_, &QSerialPort::readyRead, &port_, [this] { port_.readAll(); });
 }
@@ -33,8 +35,10 @@ bool SerialTransport::open() {
         return true;
     }
     set_state(State::Opening);
+    opening_ = true;
     port_.setPortName(config_.port_name);
     if (!port_.open(QIODevice::WriteOnly)) {
+        opening_ = false;
         fail(QStringLiteral("Cannot open serial port %1: %2")
                  .arg(config_.port_name, port_.errorString()));
         return false;
@@ -43,6 +47,7 @@ bool SerialTransport::open() {
         port_.setBaudRate(config_.baud_rate) && port_.setDataBits(config_.data_bits) &&
         port_.setParity(config_.parity) && port_.setStopBits(config_.stop_bits) &&
         port_.setFlowControl(config_.flow_control);
+    opening_ = false;
     if (!configured) {
         const QString reason = port_.errorString();
         port_.close();

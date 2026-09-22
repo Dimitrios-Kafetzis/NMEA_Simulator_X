@@ -36,6 +36,7 @@ public:
 private:
     QSerialPort port_;
     SerialConfig config_;
+    bool opening_{false};
 };
 
 }  // namespace nmeasim::io

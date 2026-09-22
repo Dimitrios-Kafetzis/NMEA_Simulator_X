@@ -13,6 +13,13 @@
 /// Decides which sentences are due at a given simulation time and encodes them.
 namespace nmeasim::core::simulation {
 
+/// One encoded sentence together with the registry id that produced it, so that outputs can
+/// filter by id even when two ids share a formatter (MWV-R and MWV-T).
+struct EmittedSentence {
+    std::string id;
+    std::string text;
+};
+
 /// Per-sentence settings an operator can change.
 struct SentenceSetting {
     bool enabled{true};
@@ -47,11 +54,11 @@ public:
 
     /// Encodes every enabled sentence that is due at `now` (time since start) and schedules
     /// its next emission. Sentences are returned without line terminators, in registry order.
-    [[nodiscard]] std::vector<std::string> due(std::chrono::milliseconds now,
-                                               const model::VesselState& state);
+    [[nodiscard]] std::vector<EmittedSentence> due(std::chrono::milliseconds now,
+                                                   const model::VesselState& state);
 
     /// Encodes every enabled sentence regardless of schedule, e.g. for a preview.
-    [[nodiscard]] std::vector<std::string> encode_all(const model::VesselState& state) const;
+    [[nodiscard]] std::vector<EmittedSentence> encode_all(const model::VesselState& state) const;
 
     /// Forgets emission history so that everything is due at the next call.
     void reset();

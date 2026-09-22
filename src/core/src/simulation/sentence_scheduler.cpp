@@ -64,9 +64,20 @@ std::string_view SentenceScheduler::effective_talker(
     return descriptor.default_talker;
 }
 
-std::vector<std::string> SentenceScheduler::due(std::chrono::milliseconds now,
-                                                const model::VesselState& state) {
-    std::vector<std::string> sentences;
+namespace {
+
+void append_encoded(std::vector<EmittedSentence>& sentences, std::string_view id,
+                    std::vector<std::string> encoded) {
+    for (auto& text : encoded) {
+        sentences.push_back({std::string{id}, std::move(text)});
+    }
+}
+
+}  // namespace
+
+std::vector<EmittedSentence> SentenceScheduler::due(std::chrono::milliseconds now,
+                                                    const model::VesselState& state) {
+    std::vector<EmittedSentence> sentences;
     for (const auto& descriptor : registry_->descriptors()) {
         auto& entry = entries_.find(descriptor.id)->second;
         if (!entry.setting.enabled || now < entry.next_due) {
@@ -75,24 +86,22 @@ std::vector<std::string> SentenceScheduler::due(std::chrono::milliseconds now,
         // Schedule relative to now rather than to the missed slot, so a stalled host does not
         // burst-catch-up.
         entry.next_due = now + entry.setting.period;
-        auto encoded = nmea0183::encode_within_limit(descriptor, state,
-                                                     effective_talker(descriptor), options_);
-        sentences.insert(sentences.end(), std::make_move_iterator(encoded.begin()),
-                         std::make_move_iterator(encoded.end()));
+        append_encoded(sentences, descriptor.id,
+                       nmea0183::encode_within_limit(descriptor, state,
+                                                     effective_talker(descriptor), options_));
     }
     return sentences;
 }
 
-std::vector<std::string> SentenceScheduler::encode_all(const model::VesselState& state) const {
-    std::vector<std::string> sentences;
+std::vector<EmittedSentence> SentenceScheduler::encode_all(const model::VesselState& state) const {
+    std::vector<EmittedSentence> sentences;
     for (const auto& descriptor : registry_->descriptors()) {
         if (!entries_.find(descriptor.id)->second.setting.enabled) {
             continue;
         }
-        auto encoded = nmea0183::encode_within_limit(descriptor, state,
-                                                     effective_talker(descriptor), options_);
-        sentences.insert(sentences.end(), std::make_move_iterator(encoded.begin()),
-                         std::make_move_iterator(encoded.end()));
+        append_encoded(sentences, descriptor.id,
+                       nmea0183::encode_within_limit(descriptor, state,
+                                                     effective_talker(descriptor), options_));
     }
     return sentences;
 }

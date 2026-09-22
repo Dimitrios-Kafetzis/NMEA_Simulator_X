@@ -7,19 +7,25 @@ qt_standard_project_setup()
 
 add_library(nmeasim_io STATIC
     include/nmeasim/io/network_interfaces.hpp
+    include/nmeasim/io/profile/profile.hpp
     include/nmeasim/io/serial_ports.hpp
+    include/nmeasim/io/simulation_runner.hpp
     include/nmeasim/io/transport.hpp
     include/nmeasim/io/transports/file_transport.hpp
     include/nmeasim/io/transports/serial_transport.hpp
+    include/nmeasim/io/transports/stdout_transport.hpp
     include/nmeasim/io/transports/tcp_client_transport.hpp
     include/nmeasim/io/transports/tcp_server_transport.hpp
     include/nmeasim/io/transports/udp_transport.hpp
     include/nmeasim/io/transports/websocket_server_transport.hpp
     src/network_interfaces.cpp
+    src/profile/profile.cpp
     src/serial_ports.cpp
+    src/simulation_runner.cpp
     src/transport.cpp
     src/transports/file_transport.cpp
     src/transports/serial_transport.cpp
+    src/transports/stdout_transport.cpp
     src/transports/tcp_client_transport.cpp
     src/transports/tcp_server_transport.cpp
     src/transports/udp_transport.cpp

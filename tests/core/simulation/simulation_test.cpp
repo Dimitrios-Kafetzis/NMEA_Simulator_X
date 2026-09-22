@@ -34,7 +34,8 @@ TEST_CASE("stepping advances time, state and emits due sentences", "[simulation]
     CHECK(simulation.elapsed() == 100ms);
     CHECK_FALSE(first.empty());
     for (const auto& sentence : first) {
-        CHECK(nmeasim::core::nmea0183::verify_checksum(sentence));
+        CHECK_FALSE(sentence.id.empty());
+        CHECK(nmeasim::core::nmea0183::verify_checksum(sentence.text));
     }
 
     CHECK(simulation.step(100ms).empty());
