@@ -62,6 +62,7 @@ private:
 
     void new_profile();
     void open_profile();
+    void edit_settings();
     bool save_profile();
     bool save_profile_as();
     void toggle_run();
@@ -83,6 +84,7 @@ private:
     QAction* open_action_{nullptr};
     QAction* save_action_{nullptr};
     QAction* save_as_action_{nullptr};
+    QAction* settings_action_{nullptr};
     QAction* run_action_{nullptr};
     QAction* pause_action_{nullptr};
     QAction* steering_action_{nullptr};

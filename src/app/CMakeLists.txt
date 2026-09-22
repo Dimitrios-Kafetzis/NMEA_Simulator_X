@@ -7,6 +7,14 @@ qt_standard_project_setup()
 add_library(nmeasim_app_lib STATIC
     app_settings.cpp
     app_settings.hpp
+    dialogs/outputs_page.cpp
+    dialogs/outputs_page.hpp
+    dialogs/sentences_page.cpp
+    dialogs/sentences_page.hpp
+    dialogs/settings_dialog.cpp
+    dialogs/settings_dialog.hpp
+    dialogs/simulation_page.cpp
+    dialogs/simulation_page.hpp
     main_window.cpp
     main_window.hpp
     widgets/console_widget.cpp
