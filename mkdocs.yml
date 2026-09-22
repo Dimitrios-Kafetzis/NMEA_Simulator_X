@@ -92,6 +92,7 @@ nav:
       - "0007 Trunk-based development and releases": adr/0007-trunk-based-releases.md
       - "0008 Testing strategy": adr/0008-testing-strategy.md
       - "0009 Desktop shell": adr/0009-desktop-shell.md
+      - "0010 Map tiles": adr/0010-map-tiles.md
   - Development:
       - development/index.md
       - Coding standards: development/coding-standards.md

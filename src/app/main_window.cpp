@@ -1,6 +1,8 @@
 #include "main_window.hpp"
 
 #include "dialogs/settings_dialog.hpp"
+#include "map/map_widget.hpp"
+#include "map/tile_cache.hpp"
 #include "widgets/console_widget.hpp"
 #include "widgets/dashboard_widget.hpp"
 #include "widgets/outputs_widget.hpp"
@@ -24,15 +26,29 @@ using core::simulation::Parameter;
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent),
+      tile_cache_(new map::TileCache(AppSettings::tile_cache_directory(), this)),
       dashboard_(new DashboardWidget(this)),
       console_(new ConsoleWidget(this)),
       outputs_(new OutputsWidget(this)),
+      map_(new map::MapWidget(tile_cache_, this)),
       status_label_(new QLabel(this)),
       counter_label_(new QLabel(this)) {
     setWindowTitle(QStringLiteral("NMEA Simulator X"));
     setMinimumSize(900, 600);
     setFocusPolicy(Qt::StrongFocus);
     setCentralWidget(dashboard_);
+
+    tile_cache_->set_online(settings_.map_online());
+    tile_cache_->set_url_template(settings_.map_tile_url());
+    tile_cache_->set_user_agent(
+        QStringLiteral(
+            "NMEASimulatorX/%1 (+https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X)")
+            .arg(QString::fromUtf8(core::kVersion.data(),
+                                   static_cast<qsizetype>(core::kVersion.size()))));
+    map_->set_zoom(settings_.map_zoom());
+    connect(map_, &map::MapWidget::position_picked, this, &MainWindow::move_vessel);
+    connect(map_, &map::MapWidget::view_changed, this,
+            [this] { settings_.set_map_zoom(map_->zoom()); });
 
     build_actions();
     build_docks();
@@ -42,7 +58,10 @@ MainWindow::MainWindow(QWidget* parent)
 
     connect(&runner_, &io::SimulationRunner::ticked, this, [this] {
         if (const auto* simulation = runner_.simulation()) {
-            dashboard_->update_state(simulation->state());
+            const auto& state = simulation->state();
+            dashboard_->update_state(state);
+            map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
+                             state.navigation.course_over_ground_deg);
         }
         refresh_status();
     });
@@ -161,6 +180,18 @@ void MainWindow::build_actions() {
     toolbar->addActions({run_action_, pause_action_, steering_action_});
 }
 
+void MainWindow::move_vessel(core::geo::Position position) {
+    profile_.delta.seed.navigation.position = position;
+    if (auto* source = delta_source()) {
+        source->set_position(position);
+        dashboard_->update_state(source->current());
+        map_->set_vessel(position, source->current().navigation.heading_true_deg,
+                         source->current().navigation.course_over_ground_deg);
+    }
+    map_->set_center(position);
+    statusBar()->showMessage(tr("Vessel moved to %1").arg(format_position(position)), 3000);
+}
+
 void MainWindow::build_docks() {
     auto* console_dock = new QDockWidget(tr("Console"), this);
     console_dock->setObjectName(QStringLiteral("console_dock"));
@@ -172,9 +203,43 @@ void MainWindow::build_docks() {
     outputs_dock->setWidget(outputs_);
     addDockWidget(Qt::RightDockWidgetArea, outputs_dock);
 
+    auto* map_dock = new QDockWidget(tr("Map"), this);
+    map_dock->setObjectName(QStringLiteral("map_dock"));
+    map_dock->setWidget(map_);
+    addDockWidget(Qt::LeftDockWidgetArea, map_dock);
+
+    follow_action_ = new QAction(tr("Follow vessel on the map"), this);
+    follow_action_->setCheckable(true);
+    follow_action_->setChecked(map_->follows_vessel());
+    follow_action_->setShortcut(Qt::Key_Home);
+    connect(follow_action_, &QAction::toggled, map_, &map::MapWidget::set_follow_vessel);
+    connect(map_, &map::MapWidget::follow_changed, follow_action_, &QAction::setChecked);
+    online_tiles_action_ = new QAction(tr("Download map tiles"), this);
+    online_tiles_action_->setCheckable(true);
+    online_tiles_action_->setChecked(tile_cache_->online());
+    online_tiles_action_->setToolTip(
+        tr("Fetch missing tiles from the tile server. Off keeps the map to the tiles already "
+           "on disk."));
+    connect(online_tiles_action_, &QAction::toggled, this, [this](bool online) {
+        tile_cache_->set_online(online);
+        settings_.set_map_online(online);
+        map_->update();
+    });
+    auto* clear_tiles_action = new QAction(tr("Clear map tile cache"), this);
+    connect(clear_tiles_action, &QAction::triggered, this, [this] {
+        tile_cache_->clear();
+        map_->update();
+        statusBar()->showMessage(tr("Map tile cache cleared"), 3000);
+    });
+
     auto* view_menu = menuBar()->addMenu(tr("&View"));
+    view_menu->addAction(map_dock->toggleViewAction());
     view_menu->addAction(console_dock->toggleViewAction());
     view_menu->addAction(outputs_dock->toggleViewAction());
+    view_menu->addSeparator();
+    view_menu->addAction(follow_action_);
+    view_menu->addAction(online_tiles_action_);
+    view_menu->addAction(clear_tiles_action);
 }
 
 core::simulation::DeltaSource* MainWindow::delta_source() {
@@ -207,9 +272,14 @@ void MainWindow::set_profile(const io::Profile& profile, const QString& path) {
     if (!runner_.apply_profile(profile_, &error)) {
         report_error(tr("Cannot apply profile"), error);
     }
+    map_->clear_track();
     if (const auto* source = delta_source()) {
-        dashboard_->update_state(source->current());
+        const auto& state = source->current();
+        dashboard_->update_state(state);
         dashboard_->sync_overrides(*source);
+        map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
+                         state.navigation.course_over_ground_deg);
+        map_->set_center(state.navigation.position);
     }
     outputs_->refresh();
     update_title();

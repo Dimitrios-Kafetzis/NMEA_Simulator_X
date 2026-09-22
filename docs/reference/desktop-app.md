@@ -18,6 +18,7 @@ profile used is reopened, and if there is none the built-in default profile is u
 | Area | Contents | Can be hidden |
 | --- | --- | --- |
 | Dashboard (central) | Instrument tiles with override controls | No |
+| Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
 | Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
 | Status bar | Run state and profile name on the left, sentence counter on the right; errors appear here for ten seconds | No |
@@ -39,7 +40,10 @@ saved on exit and restored at the next start.
 | Simulation | Pause | ++f6++ | Freezes the simulated clock and the vessel; outputs stay open |
 | Simulation | Steering mode | | Arrow keys move the rudder instead of the heading |
 | Simulation | Start automatically on launch | | Starts the simulation as soon as the window opens |
-| View | Console, Outputs | | Shows or hides the panel |
+| View | Map, Console, Outputs | | Shows or hides the panel |
+| View | Follow vessel on the map | ++home++ | Keeps the map centred on the vessel; dragging the map switches it off |
+| View | Download map tiles | | Fetches missing tiles from the tile server; off uses the disk cache only |
+| View | Clear map tile cache | | Deletes every cached tile from disk and memory |
 | Help | About | | Version and project link |
 
 On macOS the ++ctrl++ shortcuts use ++cmd++.
@@ -79,6 +83,45 @@ is cleared from the tile.
 
 An active override stops the random drift of that parameter. Clearing it lets the value drift
 again from where it is.
+
+## Map
+
+The map shows the vessel as a yellow hull pointing along its true heading, a dashed blue
+line along its course over ground, and a red track of the positions sailed since the profile
+was applied (at most 5000 points). The zoom level and the words *offline* and *free view*
+appear in the top-left corner; the OpenStreetMap attribution is always drawn.
+
+| Input | Effect |
+| --- | --- |
+| Drag with the left button | Pans the map and switches *Follow vessel* off |
+| Mouse wheel | Zooms in or out around the pointer |
+| ++plus++ / ++minus++ | Zooms in or out around the centre |
+| ++home++ | Switches *Follow vessel* on and recentres |
+| Double-click, or ++ctrl++ and click | Moves the vessel to that point |
+
+Moving the vessel changes the running simulation immediately and also the start position of
+the current profile, so saving the profile keeps the new place.
+
+### Tiles
+
+Tiles follow the slippy map scheme and come from a tile server given as a URL template
+with `{z}`, `{x}` and `{y}` placeholders. The default is the OpenStreetMap server,
+`https://tile.openstreetmap.org/{z}/{x}/{y}.png`, used under its
+[tile usage policy](https://operations.osmfoundation.org/policies/tiles/): requests carry
+a `User-Agent` naming this application, at most four downloads run at a time and every tile
+is cached. Set another server through the `map/tile_url` preference.
+
+Every downloaded tile is written to the tile cache directory below, so once an area has
+been viewed it stays available without a network connection. When a tile is missing the map
+shows the matching part of the nearest cached lower zoom level, or a grey square when there
+is none. Untick *View → Download map tiles* to stop all network access; the map then uses
+the cache only and shows *offline*.
+
+| Platform | Tile cache directory |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\NMEASimulatorX\NMEASimulatorX\cache\tiles` |
+| macOS | `~/Library/Caches/NMEASimulatorX/NMEASimulatorX/tiles` |
+| Linux | `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles` |
 
 ## Console
 
@@ -151,6 +194,9 @@ platform's native location:
 | `profile/last_path` | Profile reopened at the next start |
 | `window/geometry`, `window/state` | Window size, position and dock layout |
 | `simulation/autostart` | Whether the simulation starts on launch |
+| `map/online` | Whether missing tiles are downloaded (default `true`) |
+| `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
+| `map/zoom` | Last map zoom level |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the
 application's configuration directory.

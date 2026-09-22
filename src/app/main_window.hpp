@@ -16,6 +16,10 @@ namespace nmeasim::app {
 class ConsoleWidget;
 class DashboardWidget;
 class OutputsWidget;
+namespace map {
+class MapWidget;
+class TileCache;
+}  // namespace map
 
 /// Top-level window: a dashboard in the centre, dockable console and outputs panels, and a
 /// toolbar that controls the simulation and the profile.
@@ -40,6 +44,11 @@ public:
     [[nodiscard]] DashboardWidget* dashboard() const noexcept { return dashboard_; }
     [[nodiscard]] ConsoleWidget* console() const noexcept { return console_; }
     [[nodiscard]] OutputsWidget* outputs() const noexcept { return outputs_; }
+    [[nodiscard]] map::MapWidget* map_view() const noexcept { return map_; }
+
+    /// Moves the vessel to a position, both in the running simulation and in the profile
+    /// seed so that saving keeps it.
+    void move_vessel(core::geo::Position position);
 
 signals:
     /// Raised for every problem the window reports to the operator, so that hosts and tests
@@ -74,9 +83,11 @@ private:
     QString profile_path_;
     io::SimulationRunner runner_;
 
+    map::TileCache* tile_cache_;
     DashboardWidget* dashboard_;
     ConsoleWidget* console_;
     OutputsWidget* outputs_;
+    map::MapWidget* map_;
     QLabel* status_label_;
     QLabel* counter_label_;
 
@@ -89,6 +100,8 @@ private:
     QAction* pause_action_{nullptr};
     QAction* steering_action_{nullptr};
     QAction* autostart_action_{nullptr};
+    QAction* follow_action_{nullptr};
+    QAction* online_tiles_action_{nullptr};
 };
 
 }  // namespace nmeasim::app

@@ -45,6 +45,7 @@ if(NMEASIM_BUILD_APP)
     add_executable(nmeasim_app_tests
         app/main.cpp
         app/main_window_test.cpp
+        app/map_test.cpp
         app/settings_dialog_test.cpp
     )
     target_include_directories(nmeasim_app_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

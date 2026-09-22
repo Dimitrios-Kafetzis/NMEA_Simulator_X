@@ -1,7 +1,7 @@
 # NMEASimulatorX - the Qt Widgets desktop application. The window and widgets live in a
 # static library so that the test suite can drive them without a display.
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets)
 qt_standard_project_setup()
 
 add_library(nmeasim_app_lib STATIC
@@ -17,6 +17,12 @@ add_library(nmeasim_app_lib STATIC
     dialogs/simulation_page.hpp
     main_window.cpp
     main_window.hpp
+    map/map_widget.cpp
+    map/map_widget.hpp
+    map/tile_cache.cpp
+    map/tile_cache.hpp
+    map/tile_math.cpp
+    map/tile_math.hpp
     widgets/console_widget.cpp
     widgets/console_widget.hpp
     widgets/dashboard_widget.cpp
@@ -29,7 +35,7 @@ add_library(nmeasim_app_lib STATIC
 add_library(nmeasim::app_lib ALIAS nmeasim_app_lib)
 target_include_directories(nmeasim_app_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(nmeasim_app_lib
-    PUBLIC nmeasim::core nmeasim::io Qt6::Widgets
+    PUBLIC nmeasim::core nmeasim::io Qt6::Network Qt6::Widgets
     PRIVATE nmeasim::warnings nmeasim::sanitizers
 )
 
