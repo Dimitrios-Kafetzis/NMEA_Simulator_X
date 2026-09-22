@@ -9,8 +9,13 @@ configure_file(
     @ONLY)
 
 add_library(nmeasim_core STATIC
-    src/nmea0183/checksum.cpp
     src/geo/geodesic.cpp
+    src/model/vessel_state.cpp
+    src/nmea0183/checksum.cpp
+    src/nmea0183/encoders.cpp
+    src/nmea0183/fields.cpp
+    src/nmea0183/registry.cpp
+    src/nmea0183/sentence_builder.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
 

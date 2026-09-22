@@ -2,9 +2,15 @@ find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
 
 add_executable(nmeasim_core_tests
-    core/nmea0183/checksum_test.cpp
     core/geo/geodesic_test.cpp
+    core/model/vessel_state_test.cpp
+    core/nmea0183/checksum_test.cpp
+    core/nmea0183/encoders_test.cpp
+    core/nmea0183/fields_test.cpp
+    core/nmea0183/registry_test.cpp
+    core/nmea0183/sentence_builder_test.cpp
 )
+target_include_directories(nmeasim_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(nmeasim_core_tests
     PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings nmeasim::sanitizers
