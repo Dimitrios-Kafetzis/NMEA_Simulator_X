@@ -9,6 +9,10 @@ add_executable(nmeasim_core_tests
     core/nmea0183/fields_test.cpp
     core/nmea0183/registry_test.cpp
     core/nmea0183/sentence_builder_test.cpp
+    core/physics/wind_test.cpp
+    core/simulation/delta_source_test.cpp
+    core/simulation/sentence_scheduler_test.cpp
+    core/simulation/simulation_test.cpp
 )
 target_include_directories(nmeasim_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
