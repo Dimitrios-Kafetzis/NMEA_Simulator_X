@@ -8,14 +8,14 @@
 | CMake | 3.25 or newer | Presets are used throughout |
 | Ninja | any recent | Optional on Windows if you use the Visual Studio preset |
 | vcpkg | current `master` | Provides GeographicLib, CLI11 and Catch2 through `vcpkg.json` |
-| Qt | 6.11.2 | Modules: Core, Gui, Widgets, Network, SerialPort, WebSockets |
+| Qt | 6.10.3 | Modules: Core, Gui, Widgets, Network, SerialPort, WebSockets |
 | Python | 3.10+ | Only for `clang-format` and the documentation site |
 
 Two environment variables tell the presets where the toolchain lives:
 
 - `VCPKG_ROOT` points at your vcpkg checkout.
 - `QT_ROOT_DIR` points at the Qt kit directory that contains `bin/` and `lib/cmake/`,
-  for example `~/Qt/6.11.2/gcc_64`, `C:\Qt\6.11.2\msvc2022_64` or `~/Qt/6.11.2/macos`.
+  for example `~/Qt/6.10.3/gcc_64`, `C:\Qt\6.10.3\msvc2022_64` or `~/Qt/6.10.3/macos`.
 
 ## Getting Qt
 
@@ -25,9 +25,9 @@ Either use the [Qt Online Installer](https://www.qt.io/download-open-source) and
 
 ```bash
 pip install aqtinstall
-aqt install-qt linux desktop 6.11.2 linux_gcc_64 -m qtserialport qtwebsockets -O ~/Qt
-# windows: aqt install-qt windows desktop 6.11.2 win64_msvc2022_64 -m qtserialport qtwebsockets -O C:\Qt
-# macOS:   aqt install-qt mac desktop 6.11.2 clang_64 -m qtserialport qtwebsockets -O ~/Qt
+aqt install-qt linux desktop 6.10.3 linux_gcc_64 -m qtserialport qtwebsockets -O ~/Qt
+# windows: aqt install-qt windows desktop 6.10.3 win64_msvc2022_64 -m qtserialport qtwebsockets -O C:\Qt
+# macOS:   aqt install-qt mac desktop 6.10.3 clang_64 -m qtserialport qtwebsockets -O ~/Qt
 ```
 
 ## Getting vcpkg
@@ -47,7 +47,7 @@ Later configures reuse vcpkg's binary cache.
 
     ```bash
     export VCPKG_ROOT=~/vcpkg
-    export QT_ROOT_DIR=~/Qt/6.11.2/gcc_64      # ~/Qt/6.11.2/macos on macOS
+    export QT_ROOT_DIR=~/Qt/6.10.3/gcc_64      # ~/Qt/6.10.3/macos on macOS
     cmake --workflow --preset dev               # configure + build + test
     ```
 
@@ -63,7 +63,7 @@ Later configures reuse vcpkg's binary cache.
 
     ```bat
     set VCPKG_ROOT=C:\vcpkg
-    set QT_ROOT_DIR=C:\Qt\6.11.2\msvc2022_64
+    set QT_ROOT_DIR=C:\Qt\6.10.3\msvc2022_64
     cmake --preset dev-windows
     cmake --build --preset dev-windows
     ctest --preset dev-windows
@@ -73,7 +73,7 @@ Later configures reuse vcpkg's binary cache.
 
     ```bat
     set VCPKG_ROOT=C:\vcpkg
-    set QT_ROOT_DIR=C:\Qt\6.11.2\msvc2022_64
+    set QT_ROOT_DIR=C:\Qt\6.10.3\msvc2022_64
     cmake --preset windows-vs
     start build\windows-vs\NMEASimulatorX.sln
     ```

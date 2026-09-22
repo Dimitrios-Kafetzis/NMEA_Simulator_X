@@ -39,11 +39,11 @@ system shows a one-time warning on first launch; the
 ## Building from source
 
 Prerequisites: a C++20 compiler, CMake 3.25 or newer, Ninja, [vcpkg](https://vcpkg.io) and
-Qt 6.11 with the Serial Port and WebSockets modules.
+Qt 6.10 with the Serial Port and WebSockets modules.
 
 ```bash
 export VCPKG_ROOT=/path/to/vcpkg
-export QT_ROOT_DIR=/path/to/Qt/6.11.2/gcc_64   # or msvc2022_64, macos
+export QT_ROOT_DIR=/path/to/Qt/6.10.3/gcc_64   # or msvc2022_64, macos
 cmake --workflow --preset dev
 ```
 

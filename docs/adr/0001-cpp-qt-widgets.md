@@ -35,7 +35,7 @@ introduce a JavaScript-flavoured declarative layer. wxWidgets lacks first-party 
 WebSocket support, Dear ImGui does not look native, and web stacks were ruled out by the
 project owner.
 
-The minimum Qt version is 6.11 and the language standard is C++20 without extensions.
+The minimum Qt version is 6.10 and the language standard is C++20 without extensions.
 
 ### Consequences
 
