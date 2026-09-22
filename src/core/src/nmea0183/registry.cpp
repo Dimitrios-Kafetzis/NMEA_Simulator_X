@@ -1,0 +1,98 @@
+#include <nmeasim/core/nmea0183/registry.hpp>
+#include <nmeasim/core/nmea0183/sentence_builder.hpp>
+
+#include <algorithm>
+
+namespace nmeasim::core::nmea0183 {
+
+using namespace std::chrono_literals;
+
+std::string_view to_string(SentenceGroup group) noexcept {
+    switch (group) {
+        case SentenceGroup::Gnss:
+            return "GNSS";
+        case SentenceGroup::Time:
+            return "Time";
+        case SentenceGroup::Heading:
+            return "Heading";
+        case SentenceGroup::Speed:
+            return "Speed";
+        case SentenceGroup::Depth:
+            return "Depth";
+        case SentenceGroup::Wind:
+            return "Wind";
+        case SentenceGroup::Steering:
+            return "Steering";
+    }
+    return "Unknown";
+}
+
+const SentenceRegistry& SentenceRegistry::standard() {
+    static const SentenceRegistry registry{{
+        {"RMC", "RMC", "GP", SentenceGroup::Gnss, 1000ms, true,
+         "Recommended minimum navigation data: time, position, speed, course, date, variation",
+         &encode_rmc},
+        {"GGA", "GGA", "GP", SentenceGroup::Gnss, 1000ms, true,
+         "GNSS fix data: time, position, fix quality, satellites, HDOP, altitude", &encode_gga},
+        {"GLL", "GLL", "GP", SentenceGroup::Gnss, 1000ms, true,
+         "Geographic position: latitude, longitude, time, status", &encode_gll},
+        {"GSA", "GSA", "GP", SentenceGroup::Gnss, 1000ms, true,
+         "Active satellites and dilution of precision", &encode_gsa},
+        {"GSV", "GSV", "GP", SentenceGroup::Gnss, 1000ms, true, "Satellites in view", &encode_gsv},
+        {"VTG", "VTG", "GP", SentenceGroup::Gnss, 1000ms, true,
+         "Course over ground and ground speed", &encode_vtg},
+        {"ZDA", "ZDA", "GP", SentenceGroup::Time, 1000ms, true, "UTC time and date", &encode_zda},
+        {"HDG", "HDG", "HC", SentenceGroup::Heading, 1000ms, true,
+         "Magnetic heading with deviation and variation", &encode_hdg},
+        {"HDM", "HDM", "HC", SentenceGroup::Heading, 1000ms, true, "Magnetic heading", &encode_hdm},
+        {"HDT", "HDT", "HE", SentenceGroup::Heading, 1000ms, true, "True heading", &encode_hdt},
+        {"ROT", "ROT", "TI", SentenceGroup::Heading, 1000ms, true, "Rate of turn", &encode_rot},
+        {"VHW", "VHW", "VW", SentenceGroup::Speed, 1000ms, true, "Water speed and heading",
+         &encode_vhw},
+        {"VBW", "VBW", "VW", SentenceGroup::Speed, 1000ms, true, "Dual ground and water speed",
+         &encode_vbw},
+        {"DPT", "DPT", "SD", SentenceGroup::Depth, 1000ms, true,
+         "Depth below transducer with offset", &encode_dpt},
+        {"DBT", "DBT", "SD", SentenceGroup::Depth, 1000ms, true,
+         "Depth below transducer in feet, metres and fathoms", &encode_dbt},
+        {"MTW", "MTW", "YC", SentenceGroup::Depth, 1000ms, true, "Water temperature", &encode_mtw},
+        {"MWV-R", "MWV", "WI", SentenceGroup::Wind, 1000ms, true, "Apparent wind angle and speed",
+         &encode_mwv_apparent},
+        {"MWV-T", "MWV", "WI", SentenceGroup::Wind, 1000ms, false,
+         "True wind angle relative to the bow and true wind speed", &encode_mwv_true},
+        {"MWD", "MWD", "WI", SentenceGroup::Wind, 1000ms, true, "True wind direction and speed",
+         &encode_mwd},
+        {"RSA", "RSA", "II", SentenceGroup::Steering, 1000ms, true, "Rudder angle", &encode_rsa},
+    }};
+    return registry;
+}
+
+SentenceRegistry::SentenceRegistry(std::vector<SentenceDescriptor> descriptors)
+    : descriptors_(std::move(descriptors)) {}
+
+std::span<const SentenceDescriptor> SentenceRegistry::descriptors() const noexcept {
+    return descriptors_;
+}
+
+const SentenceDescriptor* SentenceRegistry::find(std::string_view id) const noexcept {
+    const auto it = std::ranges::find(descriptors_, id, &SentenceDescriptor::id);
+    return it == descriptors_.end() ? nullptr : &*it;
+}
+
+std::vector<std::string> encode_within_limit(const SentenceDescriptor& descriptor,
+                                             const model::VesselState& state,
+                                             std::string_view talker, EncoderOptions options) {
+    constexpr int kMinimumPositionDecimals = 2;
+    std::vector<std::string> sentences;
+    for (int decimals = options.position_decimals; decimals >= kMinimumPositionDecimals;
+         --decimals) {
+        options.position_decimals = decimals;
+        sentences = descriptor.encoder(EncoderContext{state, talker, options});
+        if (std::ranges::all_of(sentences, [](const std::string& s) { return fits_limit(s); })) {
+            break;
+        }
+    }
+    return sentences;
+}
+
+}  // namespace nmeasim::core::nmea0183
