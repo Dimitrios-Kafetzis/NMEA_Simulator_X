@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "nmea-simulator-x",
+  "version-string": "0.1.0",
+  "description": "NMEA 0183 and Signal K data stream simulator",
+  "homepage": "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X",
+  "license": "GPL-3.0-only",
+  "dependencies": [
+    "cli11",
+    "geographiclib"
+  ],
+  "features": {
+    "tests": {
+      "description": "Build the unit tests",
+      "dependencies": [
+        "catch2"
+      ]
+    }
+  }
+}

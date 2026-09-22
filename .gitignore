@@ -1,0 +1,26 @@
+# Build output
+build/
+out/
+cmake-build-*/
+vcpkg_installed/
+vcpkg-binary-cache/
+compile_commands.json
+
+# IDE and editor state
+.vs/
+.vscode/
+.idea/
+*.swp
+*.user
+*.autosave
+.DS_Store
+Thumbs.db
+
+# Documentation build
+site/
+docs/api/
+
+# Python tooling
+.venv/
+venv/
+__pycache__/

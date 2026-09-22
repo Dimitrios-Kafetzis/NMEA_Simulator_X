@@ -1,0 +1,106 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_PREFIX_PATH": "$env{QT_ROOT_DIR}",
+        "VCPKG_MANIFEST_FEATURES": "tests"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Developer build (Debug, tests on)",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "displayName": "Release build (tests off)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "NMEASIM_BUILD_TESTS": "OFF",
+        "VCPKG_MANIFEST_FEATURES": ""
+      }
+    },
+    {
+      "name": "dev-windows",
+      "displayName": "Developer build on Windows (MSVC, Ninja)",
+      "inherits": "dev",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "windows-vs",
+      "displayName": "Visual Studio 2022 solution",
+      "inherits": "base",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "cacheVariables": { "VCPKG_TARGET_TRIPLET": "x64-windows" }
+    },
+    {
+      "name": "ci-linux",
+      "inherits": "dev",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "NMEASIM_WARNINGS_AS_ERRORS": "ON",
+        "NMEASIM_ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "ci-macos",
+      "inherits": "dev",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "cacheVariables": { "NMEASIM_WARNINGS_AS_ERRORS": "ON" }
+    },
+    {
+      "name": "ci-windows",
+      "inherits": "dev-windows",
+      "cacheVariables": { "NMEASIM_WARNINGS_AS_ERRORS": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "dev-windows", "configurePreset": "dev-windows" },
+    { "name": "windows-vs", "configurePreset": "windows-vs", "configuration": "Debug" },
+    { "name": "ci-linux", "configurePreset": "ci-linux" },
+    { "name": "ci-macos", "configurePreset": "ci-macos" },
+    { "name": "ci-windows", "configurePreset": "ci-windows" }
+  ],
+  "testPresets": [
+    {
+      "name": "base-test",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    { "name": "dev", "inherits": "base-test", "configurePreset": "dev" },
+    { "name": "dev-windows", "inherits": "base-test", "configurePreset": "dev-windows" },
+    { "name": "windows-vs", "inherits": "base-test", "configurePreset": "windows-vs", "configuration": "Debug" },
+    { "name": "ci-linux", "inherits": "base-test", "configurePreset": "ci-linux" },
+    { "name": "ci-macos", "inherits": "base-test", "configurePreset": "ci-macos" },
+    { "name": "ci-windows", "inherits": "base-test", "configurePreset": "ci-windows" }
+  ],
+  "workflowPresets": [
+    {
+      "name": "dev",
+      "steps": [
+        { "type": "configure", "name": "dev" },
+        { "type": "build", "name": "dev" },
+        { "type": "test", "name": "dev" }
+      ]
+    }
+  ]
+}
