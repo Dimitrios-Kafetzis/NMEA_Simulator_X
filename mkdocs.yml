@@ -69,6 +69,8 @@ nav:
       - Your first simulated voyage: tutorials/first-voyage.md
       - Following a GPX track: tutorials/following-a-gpx-track.md
       - Recording and replaying a log: tutorials/recording-and-replaying-a-log.md
+      - Feeding OpenCPN and a Signal K server at once: tutorials/opencpn-and-signal-k.md
+      - Building a test fixture from a recorded log: tutorials/test-fixture-from-a-log.md
   - How-to guides:
       - how-to/index.md
       - Install on Windows, macOS or Linux: how-to/install.md

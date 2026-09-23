@@ -52,10 +52,11 @@ become improvements in NMEA Simulator X. No code from that application is used.
 
 | Requirement | Parity | Improvement over the reference |
 | --- | --- | --- |
-| Windows, macOS and Linux desktop builds | Yes (macOS lapsed in reference) | All three on every release |
+| Windows, macOS and Linux desktop builds | Yes (macOS lapsed in reference) | Built, checked and published by the release workflow for every release: Windows x64 installer and portable ZIP, macOS arm64 and x86_64 disk images, Linux x86_64 and aarch64 AppImages and a Flatpak |
+| Installation without paid signing | Signed installers in reference | Ad-hoc signed macOS bundles, SHA-256 checksums, documented first-launch steps; manifests for winget, Scoop, a Homebrew tap and Flathub prepared for every release, submission pending |
 | Settings survive restart | Unreliable in reference | Versioned profiles with migrations |
 | Works without internet (map tiles) | Fragile in reference | Offline tile cache and graceful fallback |
-| Command-line control | No | Headless CLI and control endpoint |
+| Command-line control | No | Headless CLI, shipped in every package; a remote control endpoint is not implemented |
 | Open source | No | GPL-3.0 |
 
 ## Out of scope for 1.0

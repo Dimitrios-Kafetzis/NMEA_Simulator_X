@@ -11,10 +11,9 @@ depth, wind, engine and AIS data, and streams the result over serial, TCP, UDP a
 so that chart plotters, instrument displays and marine software can be developed and tested
 without leaving the desk.
 
-> **Status: pre-alpha.** The project is being built milestone by milestone; see the
-> [roadmap](docs/development/roadmap.md). Nothing is ready for end users yet.
+![NMEA Simulator X running a simulation](docs/assets/screenshots/main-window.png)
 
-## Planned capabilities
+## Capabilities
 
 - **Three simulation modes.** Seed values with periodic deltas and manual overrides,
   following a GPX or KML track or route, and replaying a recorded log.
@@ -30,11 +29,19 @@ without leaving the desk.
 
 ## Installation
 
-Installers and portable packages for every platform will be published on the
-[releases page](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/releases) once the first
-milestone that has a usable interface is reached. The builds are unsigned, so each operating
-system shows a one-time warning on first launch; the
-[installation guide](docs/how-to/install.md) explains what to click.
+Download the package for your system from the
+[releases page](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/releases/latest):
+
+| System | Package |
+| --- | --- |
+| Windows 10 1809 or later, x64 | `NMEASimulatorX-<version>-win64.exe` installer or `-win64-portable.zip` |
+| macOS 13.3 or later | `NMEASimulatorX-<version>-macos-arm64.dmg` (Apple Silicon) or `-macos-x86_64.dmg` (Intel) |
+| Linux x86_64 or aarch64 | `NMEASimulatorX-<version>-<arch>.AppImage` (glibc 2.39 or later) or `NMEASimulatorX-<version>-x86_64.flatpak` |
+
+Every package includes the `nmeasim` command-line tool, and `SHA256SUMS.txt` lists the
+checksums. The builds carry no paid code signature, so Windows and macOS show a one-time
+warning on first launch; the [installation guide](docs/how-to/install.md) explains what to
+click.
 
 ## Building from source
 
@@ -53,9 +60,9 @@ The full walkthrough for each platform is in
 ## Documentation
 
 The documentation lives in [`docs/`](docs/) and is organised as tutorials, how-to guides,
-reference material and explanations. Architecture decisions are recorded in
-[`docs/adr/`](docs/adr/). The site is published at
-<https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/> once the repository is public.
+reference material and explanations, with a Doxygen reference of the C++ API. Architecture
+decisions are recorded in [`docs/adr/`](docs/adr/). The site is published at
+<https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/>.
 
 ## Contributing
 
