@@ -1,9 +1,11 @@
 #pragma once
 
 #include <nmeasim/core/model/vessel_state.hpp>
+#include <nmeasim/core/simulation/emitted_sentence.hpp>
 
 #include <chrono>
 #include <optional>
+#include <vector>
 
 /// A source produces the vessel state for each simulation tick.
 namespace nmeasim::core::simulation {
@@ -36,6 +38,19 @@ public:
     /// Moves a finite source to `position`, clamped to its duration. Endless sources ignore
     /// it. The state reflects the new position immediately, without a call to `advance`.
     virtual void seek(std::chrono::milliseconds /*position*/) {}
+
+    /// True for a source that replays recorded sentences instead of producing a state for
+    /// the encoders. The simulation then returns `take_sentences()` from every step and
+    /// leaves the sentence schedule idle.
+    [[nodiscard]] virtual bool provides_sentences() const noexcept { return false; }
+
+    /// The sentences that became due during the last `advance` or `step_once`, in order.
+    /// Empty for sources that do not provide sentences.
+    virtual std::vector<EmittedSentence> take_sentences() { return {}; }
+
+    /// Advances a sentence-providing source by exactly one recorded sentence, moving its
+    /// clock to that sentence. Other sources ignore it.
+    virtual void step_once() {}
 
 protected:
     Source() = default;

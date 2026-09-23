@@ -77,6 +77,7 @@ nav:
       - NMEA 0183 sentences: reference/nmea0183-sentences.md
       - Transports: reference/transports.md
       - Track files: reference/track-files.md
+      - Log files: reference/log-format.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md
@@ -95,6 +96,7 @@ nav:
       - "0009 Desktop shell": adr/0009-desktop-shell.md
       - "0010 Map tiles": adr/0010-map-tiles.md
       - "0011 Track and replay sources": adr/0011-track-and-replay-sources.md
+      - "0012 Log file format": adr/0012-log-file-format.md
   - Development:
       - development/index.md
       - Coding standards: development/coding-standards.md

@@ -10,5 +10,6 @@ Precise, exhaustive descriptions of what the software does.
   fields and an example line.
 - [Transports](transports.md): every output channel, its settings and behaviour.
 - [Track files](track-files.md): what is read from GPX and KML files.
+- [Log files](log-format.md): what the recorder writes and what the replay reads.
 
 Signal K paths and the ViewSync packet layout are documented here as those features land.

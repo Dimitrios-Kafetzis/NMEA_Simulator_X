@@ -1,8 +1,8 @@
 # Simulation model
 
 This page explains how the delta simulation mode produces a believable vessel from a handful
-of seed values, how track mode moves the vessel along a file, and how sentences are scheduled
-from the resulting state.
+of seed values, how track mode moves the vessel along a file, how replay mode re-sends a
+recorded log, and how sentences are scheduled from the resulting state.
 
 ## Delta mode
 
@@ -84,6 +84,23 @@ A timed track that loops rewinds the clock to its first timestamp.
 
 The operator can jump to any point and seek to any elapsed time; the state is recomputed at
 once from the leg table, so seeking is as cheap as a tick.
+
+## Replay mode
+
+In replay mode the source is a [log file](../reference/log-format.md) and the sentences are
+not encoded at all: the recorded lines are sent again, unchanged, when the replay clock
+passes their offsets. The sentence schedule is idle during a replay; the per-sentence
+filters of the outputs still apply, matched on the formatter of each recorded sentence.
+
+Every replayed sentence is also decoded into the vessel state, so the dashboard and the map
+show what the log describes. Values the log never mentions keep the seed values of the
+profile, and the clock follows the time fields inside the sentences.
+
+Pausing stops the clock. **Step** emits exactly the next recorded sentence and moves the
+clock to it. **Seek** moves the clock to any offset: the entries before the new position are
+applied to the state without being sent, so the instruments show the right values the
+moment the replay continues. At the end the replay stops and the run ends, or loops,
+carrying the surplus time into the next pass so that the cadence has no hiccup.
 
 ## Sentence scheduling
 
