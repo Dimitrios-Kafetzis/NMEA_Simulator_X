@@ -89,11 +89,40 @@ Build output lands in `build/<preset>/`. The desktop application is
 | `dev` | Debug build with tests, for daily work on Linux and macOS |
 | `dev-windows` | The same with MSVC and Ninja |
 | `windows-vs` | Generates a Visual Studio 2022 solution |
-| `release` | Optimised build without tests, used for packaging |
+| `release` | Optimised build without tests, used for packaging on Linux and macOS |
+| `release-windows` | The same with MSVC and statically linked vcpkg dependencies |
 | `ci-linux`, `ci-windows`, `ci-macos` | What CI runs: warnings are errors and, on Linux, sanitizers are on |
 
 Options can be overridden on the command line, for example
 `cmake --preset dev -DNMEASIM_BUILD_APP=OFF` to skip the Qt Widgets application.
+
+## Installing and packaging
+
+The install target lays out a runnable tree; `cpack` turns it into the release packages.
+
+```bash
+cmake --preset release                      # release-windows on Windows
+cmake --build --preset release
+cmake --install build/release --prefix ~/nmeasim-install
+cpack --preset release                      # packages land in build/release/packages/
+```
+
+| Platform | Install layout | `cpack` output |
+| --- | --- | --- |
+| Windows | Executables, Qt libraries (copied by `windeployqt`) and the C++ runtime in one folder | NSIS installer `NMEASimulatorX-<version>-win64.exe` and portable `NMEASimulatorX-<version>-win64-portable.zip`; needs [NSIS](https://nsis.sourceforge.io/) in `PATH` |
+| macOS | `NMEASimulatorX.app` with the Qt frameworks (copied by `macdeployqt`) and `nmeasim` in `Contents/MacOS`, signed ad hoc | Disk image `NMEASimulatorX-<version>-macos-<arch>.dmg` |
+| Linux | `bin/`, a desktop file, AppStream metadata and icons under `share/`; Qt is not copied | AppImage `NMEASimulatorX-<version>-<arch>.AppImage`; needs `linuxdeploy` and `linuxdeploy-plugin-qt` in `PATH` and `QMAKE` set to Qt's `qmake` |
+
+`-DNMEASIM_PACKAGE_VERSION=1.0.0-rc.1` changes the version in the file names without
+changing the version compiled into the programs. Every package is accompanied by a
+`.sha256` file.
+
+The screenshot in `docs/assets/screenshots/`, which the AppStream metadata also uses, is
+taken by a hidden test:
+
+```bash
+NMEASIM_SCREENSHOT_DIR=docs/assets/screenshots build/dev/tests/nmeasim_app_tests "[.screenshot]"
+```
 
 ## Formatting and static analysis
 

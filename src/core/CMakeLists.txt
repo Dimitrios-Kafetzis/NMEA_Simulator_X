@@ -9,7 +9,22 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/include/nmeasim/core/version.hpp"
     @ONLY)
 
+# The git description is read on every build, not only at configure time, so that --version
+# and the About dialog always name the commit a development build came from.
+set(NMEASIM_VERSION_CPP "${CMAKE_CURRENT_BINARY_DIR}/src/version.cpp")
+add_custom_target(nmeasim_version_description
+    COMMAND "${CMAKE_COMMAND}"
+            "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DVERSION=${PROJECT_VERSION}"
+            "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/src/version.cpp.in"
+            "-DOUTPUT=${NMEASIM_VERSION_CPP}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/GitDescribe.cmake"
+    BYPRODUCTS "${NMEASIM_VERSION_CPP}"
+    COMMENT "Reading the git description"
+    VERBATIM)
+
 add_library(nmeasim_core STATIC
+    "${NMEASIM_VERSION_CPP}"
     src/ais/messages.cpp
     src/ais/sixbit.cpp
     src/geo/geodesic.cpp
@@ -40,6 +55,7 @@ add_library(nmeasim_core STATIC
     src/viewsync/viewsync.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
+add_dependencies(nmeasim_core nmeasim_version_description)
 
 target_include_directories(nmeasim_core
     PUBLIC

@@ -31,6 +31,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace nmeasim::app {
 
@@ -224,15 +225,8 @@ void MainWindow::build_actions() {
     quit_action->setShortcut(QKeySequence::Quit);
     connect(quit_action, &QAction::triggered, this, &QWidget::close);
     auto* about_action = new QAction(tr("&About"), this);
-    connect(about_action, &QAction::triggered, this, [this] {
-        QMessageBox::about(
-            this, tr("About NMEA Simulator X"),
-            tr("<b>NMEA Simulator X %1</b><br>Free, open-source NMEA 0183 and Signal K data stream "
-               "simulator.<br><a href=\"https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X\">"
-               "github.com/Dimitrios-Kafetzis/NMEA_Simulator_X</a>")
-                .arg(QString::fromUtf8(core::kVersion.data(),
-                                       static_cast<qsizetype>(core::kVersion.size()))));
-    });
+    connect(about_action, &QAction::triggered, this,
+            [this] { QMessageBox::about(this, tr("About NMEA Simulator X"), about_text()); });
 
     auto* file_menu = menuBar()->addMenu(tr("&File"));
     file_menu->addActions({new_action_, open_action_, save_action_, save_as_action_});
@@ -300,6 +294,14 @@ void MainWindow::clear_destination() {
     }
     refresh_view();
     statusBar()->showMessage(tr("Destination cleared"), 3000);
+}
+
+QString MainWindow::about_text() {
+    const std::string_view version = core::version_description();
+    return tr("<b>NMEA Simulator X %1</b><br>Free, open-source NMEA 0183 and Signal K data stream "
+              "simulator.<br><a href=\"https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X\">"
+              "github.com/Dimitrios-Kafetzis/NMEA_Simulator_X</a>")
+        .arg(QString::fromUtf8(version.data(), static_cast<qsizetype>(version.size())));
 }
 
 QString MainWindow::format_duration(std::chrono::milliseconds duration) {

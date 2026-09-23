@@ -1,0 +1,19 @@
+#!/bin/sh
+# Entry point of the AppImage. Starts the desktop application, or the command-line tool when
+# the AppImage is called through a link named `nmeasim` or with `nmeasim` as first argument:
+#
+#   ./NMEASimulatorX-1.0.0-x86_64.AppImage nmeasim run --stdout
+#   ln -s NMEASimulatorX-1.0.0-x86_64.AppImage ~/.local/bin/nmeasim && nmeasim --version
+#
+# linuxdeploy installs this script as AppRun.wrapped behind its own AppRun, which sources the
+# plugin hooks first.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+if [ "$(basename "${ARGV0:-$0}")" = "nmeasim" ]; then
+    exec "$HERE/usr/bin/nmeasim" "$@"
+fi
+if [ "$1" = "nmeasim" ]; then
+    shift
+    exec "$HERE/usr/bin/nmeasim" "$@"
+fi
+exec "$HERE/usr/bin/NMEASimulatorX" "$@"

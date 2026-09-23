@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NMEA Simulator X application icon. SPDX-License-Identifier: GPL-3.0-only -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b6f9e"/>
+      <stop offset="1" stop-color="#0a2f4a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#sea)"/>
+  <circle cx="128" cy="112" r="76" fill="none" stroke="#9fd8f0" stroke-width="6" opacity="0.55"/>
+  <path d="M128 30 L146 112 L128 194 L110 112 Z" fill="#ffffff"/>
+  <path d="M46 112 L128 94 L210 112 L128 130 Z" fill="#ffffff" opacity="0.8"/>
+  <path d="M128 30 L146 112 L128 112 Z" fill="#ff6b4a"/>
+  <circle cx="128" cy="112" r="10" fill="#0a2f4a"/>
+  <path d="M40 210 q22 -18 44 0 t44 0 t44 0 t44 0" fill="none" stroke="#4fd1e8" stroke-width="10"
+        stroke-linecap="round"/>
+</svg>

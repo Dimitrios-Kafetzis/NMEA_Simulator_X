@@ -49,7 +49,7 @@ saved on exit and restored at the next start.
 | View | Follow vessel on the map | ++home++ | Keeps the map centred on the vessel; dragging the map switches it off |
 | View | Download map tiles | | Fetches missing tiles from the tile server; off uses the disk cache only |
 | View | Clear map tile cache | | Deletes every cached tile from disk and memory |
-| Help | About | | Version and project link |
+| Help | About | | Version and project link; development builds add the `git describe` string of their commit, as `nmeasim --version` does |
 
 On macOS the ++ctrl++ shortcuts use ++cmd++.
 
