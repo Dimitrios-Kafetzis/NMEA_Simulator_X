@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [1.0.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.5.0...v1.0.0) (2026-09-23)
+
+
+### Features
+
+* **build:** add install rules, CPack packaging and a git describe version ([#26](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/26)) ([7bef30b](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/7bef30b42620d64bc90d52921bd74679c69642f7))
+
+
+### Bug Fixes
+
+* **core:** keep sentence periods on schedule ([#32](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/32)) ([8a0c0e8](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/8a0c0e8bd474ba35ca30de88afd2c3281171b4bb))
+
+
+### Documentation
+
+* document the 1.0 release ([#33](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/33)) ([f1514c7](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/f1514c785ace1f9d48cbf124f2089a32e2acd726))
+* publish a Doxygen API reference for core and io ([#28](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/28)) ([e3a9c30](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/e3a9c307273c49c05fab769ac5422e10460762aa))
+
 ## [0.5.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.4.0...v0.5.0) (2026-09-23)
 
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-set(NMEASIM_VERSION "0.5.0") # x-release-please-version
+set(NMEASIM_VERSION "1.0.0") # x-release-please-version
 
 project(NMEASimulatorX
     VERSION ${NMEASIM_VERSION}
