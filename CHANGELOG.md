@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [1.0.1](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v1.0.0...v1.0.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **packaging:** run the AppImage natively on Wayland ([#35](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/35)) ([804d17e](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/804d17e9c270ea44cfa9fd35d8444c7cd027e01c))
+
 ## [1.0.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.5.0...v1.0.0) (2026-09-23)
 
 
