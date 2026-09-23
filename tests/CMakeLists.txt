@@ -3,14 +3,17 @@ include(Catch)
 
 add_executable(nmeasim_core_tests
     core/geo/geodesic_test.cpp
+    core/log/log_file_test.cpp
     core/model/vessel_state_test.cpp
     core/nmea0183/checksum_test.cpp
+    core/nmea0183/decoder_test.cpp
     core/nmea0183/encoders_test.cpp
     core/nmea0183/fields_test.cpp
     core/nmea0183/registry_test.cpp
     core/nmea0183/sentence_builder_test.cpp
     core/physics/wind_test.cpp
     core/simulation/delta_source_test.cpp
+    core/simulation/replay_source_test.cpp
     core/simulation/sentence_scheduler_test.cpp
     core/simulation/simulation_test.cpp
     core/simulation/track_source_test.cpp

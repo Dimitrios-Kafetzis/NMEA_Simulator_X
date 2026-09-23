@@ -11,14 +11,17 @@ configure_file(
 
 add_library(nmeasim_core STATIC
     src/geo/geodesic.cpp
+    src/log/log_file.cpp
     src/model/vessel_state.cpp
     src/nmea0183/checksum.cpp
+    src/nmea0183/decoder.cpp
     src/nmea0183/encoders.cpp
     src/nmea0183/fields.cpp
     src/nmea0183/registry.cpp
     src/nmea0183/sentence_builder.cpp
     src/physics/wind.cpp
     src/simulation/delta_source.cpp
+    src/simulation/replay_source.cpp
     src/simulation/sentence_scheduler.cpp
     src/simulation/simulation.cpp
     src/simulation/track_source.cpp

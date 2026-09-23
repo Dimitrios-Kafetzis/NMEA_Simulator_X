@@ -19,8 +19,17 @@ class Simulation {
 public:
     Simulation(std::unique_ptr<Source> source, SentenceScheduler scheduler);
 
-    /// Advances simulated time by `dt` and returns the sentences due at the new time.
+    /// Advances simulated time by `dt` and returns the sentences due at the new time. For a
+    /// source that provides sentences (a log replay) the recorded sentences that became due
+    /// are returned instead and the schedule is not consulted.
     [[nodiscard]] std::vector<EmittedSentence> step(std::chrono::milliseconds dt);
+
+    /// The smallest step a host can take while paused: one recorded sentence for a source
+    /// that provides sentences, otherwise the same as `step(dt)`.
+    [[nodiscard]] std::vector<EmittedSentence> step_once(std::chrono::milliseconds dt);
+
+    /// Moves a finite source to `position` and makes every sentence due again.
+    void seek(std::chrono::milliseconds position);
 
     /// Time elapsed since start or the last reset.
     [[nodiscard]] std::chrono::milliseconds elapsed() const noexcept { return elapsed_; }

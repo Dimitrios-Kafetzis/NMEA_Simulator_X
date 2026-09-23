@@ -8,7 +8,23 @@ Simulation::Simulation(std::unique_ptr<Source> source, SentenceScheduler schedul
 std::vector<EmittedSentence> Simulation::step(std::chrono::milliseconds dt) {
     elapsed_ += dt;
     const auto& state = source_->advance(dt);
+    if (source_->provides_sentences()) {
+        return source_->take_sentences();
+    }
     return scheduler_.due(elapsed_, state);
+}
+
+std::vector<EmittedSentence> Simulation::step_once(std::chrono::milliseconds dt) {
+    if (!source_->provides_sentences()) {
+        return step(dt);
+    }
+    source_->step_once();
+    return source_->take_sentences();
+}
+
+void Simulation::seek(std::chrono::milliseconds position) {
+    source_->seek(position);
+    scheduler_.reset();
 }
 
 void Simulation::reset() {

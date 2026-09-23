@@ -55,7 +55,7 @@ the source either stops with zero speed and reports `finished()`, or loops. Time
 ignored on request so that a recorded track is sailed at a chosen speed. Environment values
 (depth, wind, GNSS quality) come from the profile seed and do not drift.
 
-`ReplaySource` is the second finite source. It produces sentences rather than a
+`ReplaySource` ([ADR 0012](0012-log-file-format.md)) is the second finite source. It produces sentences rather than a
 state to encode, so `Source` also gains `provides_sentences()` and `take_sentences()`; the
 `Simulation` returns the replayed sentences instead of consulting the scheduler when a source
 provides them, and decodes them into a vessel state so that the dashboard and the map keep
@@ -87,3 +87,4 @@ XML parser was rejected as more code to maintain than the feature it serves.
 
 - [Track file reference](../reference/track-files.md)
 - [Simulation model: track mode](../explanation/simulation-model.md#track-mode)
+- [ADR 0012 Log file format](0012-log-file-format.md)
