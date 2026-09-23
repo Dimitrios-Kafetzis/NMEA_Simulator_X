@@ -1,0 +1,13 @@
+// Generated from version.cpp.in by cmake/GitDescribe.cmake at build time. Do not edit the
+// generated file.
+#include <nmeasim/core/version.hpp>
+
+#include <string_view>
+
+namespace nmeasim::core {
+
+std::string_view version_description() noexcept {
+    return "@NMEASIM_VERSION_DESCRIPTION@";
+}
+
+}  // namespace nmeasim::core

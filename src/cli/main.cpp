@@ -432,8 +432,8 @@ int main(int argc, char** argv) {
 
     CLI::App cli{"NMEA Simulator X - headless NMEA 0183 / Signal K data stream simulator",
                  "nmeasim"};
-    cli.set_version_flag(
-        "-V,--version", std::format("{} {}", nmeasim::core::kProjectName, nmeasim::core::kVersion));
+    cli.set_version_flag("-V,--version", std::format("{} {}", nmeasim::core::kProjectName,
+                                                     nmeasim::core::version_description()));
     cli.require_subcommand(0, 1);
 
     auto* ports = cli.add_subcommand("ports", "List the serial ports available on this machine");

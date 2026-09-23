@@ -5,6 +5,8 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QGuiApplication>
+#include <QIcon>
 #include <QString>
 
 int main(int argc, char** argv) {
@@ -15,6 +17,9 @@ int main(int argc, char** argv) {
     QApplication::setOrganizationDomain(QStringLiteral("dimitrios-kafetzis.github.io"));
     QApplication::setApplicationVersion(QString::fromUtf8(
         nmeasim::core::kVersion.data(), static_cast<qsizetype>(nmeasim::core::kVersion.size())));
+    // The desktop file name lets Wayland compositors match the window to its icon and launcher.
+    QGuiApplication::setDesktopFileName(QStringLiteral(NMEASIM_APP_ID));
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/nmeasimulatorx.png")));
 
     nmeasim::app::MainWindow window;
     window.show();

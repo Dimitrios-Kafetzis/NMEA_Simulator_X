@@ -62,6 +62,10 @@ public:
     [[nodiscard]] QSlider* seek_slider() const noexcept { return seek_slider_; }
     [[nodiscard]] QLabel* position_label() const noexcept { return position_label_; }
 
+    /// Rich text of the About dialog, naming the version and, for development builds, the
+    /// `git describe` string of the commit.
+    [[nodiscard]] static QString about_text();
+
     /// Formats a duration as `mm:ss` or `h:mm:ss`.
     [[nodiscard]] static QString format_duration(std::chrono::milliseconds duration);
 

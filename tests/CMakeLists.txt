@@ -26,6 +26,7 @@ add_executable(nmeasim_core_tests
     core/track/gpx_test.cpp
     core/track/kml_test.cpp
     core/track/track_test.cpp
+    core/version_test.cpp
     core/viewsync/viewsync_test.cpp
 )
 target_include_directories(nmeasim_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -66,6 +67,7 @@ if(NMEASIM_BUILD_APP)
         app/main.cpp
         app/main_window_test.cpp
         app/map_test.cpp
+        app/screenshot_test.cpp
         app/settings_dialog_test.cpp
     )
     target_include_directories(nmeasim_app_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

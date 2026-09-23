@@ -102,6 +102,23 @@ jobs:
           "$NMEASIM" run --stdout --quiet --duration 1 --encoding signalk | head -2
           "$NMEASIM" run --stdout --quiet --duration 1 --encoding viewsync | head -2
 
+      - name: Install into a staging directory
+        shell: bash
+        run: |
+          cmake --install build/${{ matrix.preset }} --prefix "$PWD/staging"
+          case "${{ runner.os }}" in
+            Windows) ./staging/nmeasim.exe --version; ls staging/Qt6Core*.dll ;;
+            macOS)
+              ./staging/NMEASimulatorX.app/Contents/MacOS/nmeasim --version
+              test -d staging/NMEASimulatorX.app/Contents/Frameworks/QtCore.framework
+              codesign --verify --deep --strict --verbose=2 staging/NMEASimulatorX.app ;;
+            Linux)
+              LD_LIBRARY_PATH="$QT_ROOT_DIR/lib" ./staging/bin/nmeasim --version
+              sudo apt-get install -y --no-install-recommends appstream desktop-file-utils > /dev/null
+              desktop-file-validate staging/share/applications/*.desktop
+              appstreamcli validate --no-net staging/share/metainfo/*.metainfo.xml ;;
+          esac
+
       - name: Set up Python for the stream cross-check
         uses: actions/setup-python@v7
         with:

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=NMEA Simulator X
+GenericName=NMEA Data Simulator
+Comment=Simulate a vessel and stream NMEA 0183, AIS and Signal K data
+Exec=NMEASimulatorX %f
+Icon=io.github.dimitrios_kafetzis.NMEASimulatorX
+Terminal=false
+Categories=Development;
+Keywords=NMEA;NMEA 0183;GPS;GNSS;AIS;Signal K;marine;boat;chart plotter;simulator;
+StartupWMClass=NMEASimulatorX

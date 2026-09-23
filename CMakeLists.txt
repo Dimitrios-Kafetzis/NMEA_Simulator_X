@@ -27,6 +27,17 @@ option(NMEASIM_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorS
 
 include(ProjectWarnings)
 include(ProjectSanitizers)
+include(GNUInstallDirs)
+
+# Reverse-DNS identifier shared by the desktop file, the AppStream metadata, the Flatpak and the
+# macOS bundle.
+set(NMEASIM_APP_ID "io.github.dimitrios_kafetzis.NMEASimulatorX")
+if(WIN32)
+    # Windows packages keep the executables, the Qt libraries and the runtime in one folder.
+    set(NMEASIM_INSTALL_BINDIR ".")
+else()
+    set(NMEASIM_INSTALL_BINDIR "${CMAKE_INSTALL_BINDIR}")
+endif()
 
 add_subdirectory(src/core)
 
@@ -44,6 +55,8 @@ if(NMEASIM_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+include(Packaging)
 
 message(STATUS "${PROJECT_NAME} ${PROJECT_VERSION}: app=${NMEASIM_BUILD_APP} cli=${NMEASIM_BUILD_CLI} "
                "tests=${NMEASIM_BUILD_TESTS} werror=${NMEASIM_WARNINGS_AS_ERRORS} "

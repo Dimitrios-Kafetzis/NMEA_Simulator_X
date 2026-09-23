@@ -15,4 +15,9 @@ inline constexpr int kVersionMajor{@PROJECT_VERSION_MAJOR@};
 inline constexpr int kVersionMinor{@PROJECT_VERSION_MINOR@};
 inline constexpr int kVersionPatch{@PROJECT_VERSION_PATCH@};
 
+/// Version shown to users. A build of the release tag `v<kVersion>`, or a build from a source
+/// archive without git metadata, returns `kVersion` alone; any other build appends the
+/// `git describe` string, e.g. `"1.0.0 (v1.0.0-3-g1a2b3c4-dirty)"`.
+[[nodiscard]] std::string_view version_description() noexcept;
+
 }  // namespace nmeasim::core

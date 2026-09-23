@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configured by CMake; the release list is generated from CHANGELOG.md. -->
+<component type="desktop-application">
+  <id>@NMEASIM_APP_ID@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>NMEA Simulator X</name>
+  <summary>Simulate a vessel and stream NMEA 0183, AIS and Signal K data</summary>
+  <developer id="io.github.dimitrios_kafetzis">
+    <name>Dimitrios Kafetzis</name>
+  </developer>
+  <description>
+    <p>
+      NMEA Simulator X behaves like a vessel under way and streams navigation, environment,
+      propulsion and AIS data, so that chart plotters, instrument displays, gateways and marine
+      software can be developed and tested on a desk.
+    </p>
+    <ul>
+      <li>NMEA 0183 GNSS, heading, speed, depth, wind, rudder, autopilot and engine sentences</li>
+      <li>AIS own-vessel position and static data in VDO and VDM sentences</li>
+      <li>Signal K deltas and ViewSync packets for Google Earth</li>
+      <li>Serial, TCP, UDP and WebSocket outputs, several at once</li>
+      <li>Follow GPX and KML tracks, record logs and replay them with pause, step and seek</li>
+      <li>A headless command-line tool, nmeasim, for automated tests</li>
+    </ul>
+  </description>
+  <categories>
+    <category>Development</category>
+  </categories>
+  <launchable type="desktop-id">@NMEASIM_APP_ID@.desktop</launchable>
+  <icon type="stock">@NMEASIM_APP_ID@</icon>
+  <url type="homepage">https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/</url>
+  <url type="bugtracker">https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues</url>
+  <url type="vcs-browser">https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X</url>
+  <url type="help">https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/tutorials/</url>
+  <provides>
+    <binary>NMEASimulatorX</binary>
+    <binary>nmeasim</binary>
+  </provides>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The dashboard, console, outputs and map of a running simulation</caption>
+      <image>https://raw.githubusercontent.com/Dimitrios-Kafetzis/NMEA_Simulator_X/main/docs/assets/screenshots/main-window.png</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#9fd8f0</color>
+    <color type="primary" scheme_preference="dark">#0a2f4a</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <releases>
+@NMEASIM_METAINFO_RELEASES@
+  </releases>
+</component>

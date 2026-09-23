@@ -9,6 +9,7 @@
 
 #include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
+#include <nmeasim/core/version.hpp>
 
 #include <QFile>
 #include <QKeyEvent>
@@ -22,6 +23,7 @@
 #include <chrono>
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 using Catch::Approx;
 using namespace std::chrono_literals;
@@ -131,6 +133,12 @@ TEST_CASE("durations are formatted for the transport label", "[app]") {
     CHECK(nmeasim::app::MainWindow::format_duration(65s) == QStringLiteral("01:05"));
     CHECK(nmeasim::app::MainWindow::format_duration(12min + 500ms) == QStringLiteral("12:00"));
     CHECK(nmeasim::app::MainWindow::format_duration(3h + 7min + 9s) == QStringLiteral("3:07:09"));
+}
+
+TEST_CASE("the about text names the version and the build", "[app]") {
+    const std::string_view version = nmeasim::core::version_description();
+    CHECK(nmeasim::app::MainWindow::about_text().contains(
+        QString::fromUtf8(version.data(), static_cast<qsizetype>(version.size()))));
 }
 
 TEST_CASE("the main window follows a track and offers step and seek", "[app][track]") {

@@ -12,7 +12,7 @@ nmeasim [OPTIONS] [SUBCOMMAND]
 | Option | Description |
 | --- | --- |
 | `-h`, `--help` | Print help and exit. Every subcommand has its own `--help`. |
-| `-V`, `--version` | Print the project name and version and exit |
+| `-V`, `--version` | Print the project name and version and exit. A build of a release tag prints the version alone (`NMEASimulatorX 1.0.0`); any other build adds the `git describe` string of its commit (`NMEASimulatorX 1.0.0 (v1.0.0-3-g1a2b3c4-dirty)`) |
 
 ## `nmeasim run`
 
