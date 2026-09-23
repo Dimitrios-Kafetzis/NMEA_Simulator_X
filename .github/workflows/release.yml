@@ -368,6 +368,11 @@ jobs:
           status=0
           QT_QPA_PLATFORM=offscreen timeout 5 env -u LD_LIBRARY_PATH "$appimage" || status=$?
           test "$status" -eq 124
+          # Without the shell integration Qt cannot use Wayland and falls back to XWayland.
+          "$appimage" --appimage-extract 'usr/plugins/*' > /dev/null
+          test -f squashfs-root/usr/plugins/platforms/libqwayland.so
+          test -f squashfs-root/usr/plugins/wayland-shell-integration/libxdg-shell.so
+          ls squashfs-root/usr/plugins/wayland-decoration-client/*.so
 
       - name: Upload the packages
         uses: actions/upload-artifact@v7
