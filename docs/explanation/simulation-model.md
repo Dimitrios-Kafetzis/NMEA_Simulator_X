@@ -102,6 +102,27 @@ applied to the state without being sent, so the instruments show the right value
 moment the replay continues. At the end the replay stops and the run ends, or loops,
 carrying the surplus time into the next pass so that the cadence has no hiccup.
 
+## Destination
+
+A destination is a named waypoint together with the **origin** of the leg towards it, which
+is the vessel's position at the moment the destination was set. The autopilot sentences APB,
+RMB and XTE are derived from this leg on every emission:
+
+- Bearing and distance from the vessel to the destination, and the initial bearing and
+  length of the leg, are WGS84 geodesic solutions.
+- The **cross-track error** is the vessel's distance from the great circle through origin
+  and destination, computed with the spherical formula on the mean earth radius, which is
+  accurate to well under one percent for legs of coastal length. It is positive to the right
+  of the leg, so the sentences say to steer left; negative to the left, steer right.
+- The **along-track distance** is the vessel's progress along the leg from the origin. The
+  perpendicular flag is set once it exceeds the leg length, the arrival flag once the
+  distance to the destination is within the arrival radius (100 m by default).
+
+The vessel does not steer towards the destination by itself; the operator steers with the
+keyboard or a track file, and the sentences report the result. Without a destination the
+autopilot sentences are not sent at all. In delta and track mode the destination is set by the
+host and survives a reset; in replay mode it follows the RMB sentences of the log.
+
 ## Sentence scheduling
 
 Each sentence has its own **period** and **enabled** flag, seeded from the registry

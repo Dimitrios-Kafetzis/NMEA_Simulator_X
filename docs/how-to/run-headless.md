@@ -85,7 +85,7 @@ third-party `pynmea2` parser:
 
 ```bash
 pip install pynmea2
-nmeasim run --stdout --quiet --duration 3 | python3 tools/check_nmea_stream.py --expect 19
+nmeasim run --stdout --quiet --duration 3 | python3 tools/check_nmea_stream.py --expect 21
 ```
 
 CI runs this on every platform.

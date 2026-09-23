@@ -208,6 +208,21 @@ TEST_CASE("seeking and jumping move the vessel immediately", "[simulation][track
     CHECK(source.point_index() == 4);
 }
 
+TEST_CASE("a destination set on a track source survives seeking and reset", "[simulation][track]") {
+    sim::TrackSource source(config_for("tracks/timestamped.gpx"));
+    REQUIRE(source.current().destination.has_value());
+    source.set_destination(nmeasim::core::model::Destination{"END", {37.92, 23.62}, {37.9, 23.6}});
+    source.seek(3min);
+    source.advance(1s);
+    REQUIRE(source.current().destination.has_value());
+    CHECK(source.current().destination->name == "END");
+    source.reset();
+    CHECK(source.current().destination->name == "END");
+    source.set_destination(std::nullopt);
+    source.reset();
+    CHECK_FALSE(source.current().destination.has_value());
+}
+
 TEST_CASE("degenerate tracks are handled", "[simulation][track]") {
     sim::TrackConfig single;
     single.seed = nmeasim::test::fixture_state();

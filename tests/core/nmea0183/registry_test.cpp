@@ -15,7 +15,7 @@ namespace nmea = nmeasim::core::nmea0183;
 TEST_CASE("the standard registry lists every supported sentence once", "[nmea0183][registry]") {
     const auto& registry = nmea::SentenceRegistry::standard();
     const auto descriptors = registry.descriptors();
-    CHECK(descriptors.size() == 20U);
+    CHECK(descriptors.size() == 25U);
 
     std::set<std::string> ids;
     for (const auto& descriptor : descriptors) {
@@ -85,4 +85,20 @@ TEST_CASE("sentence groups have display names", "[nmea0183][registry]") {
     CHECK(nmea::to_string(nmea::SentenceGroup::Gnss) == "GNSS");
     CHECK(nmea::to_string(nmea::SentenceGroup::Wind) == "Wind");
     CHECK(nmea::to_string(nmea::SentenceGroup::Steering) == "Steering");
+    CHECK(nmea::to_string(nmea::SentenceGroup::Autopilot) == "Autopilot");
+    CHECK(nmea::to_string(nmea::SentenceGroup::Propulsion) == "Propulsion");
+}
+
+TEST_CASE("encoders that depend on optional state emit nothing without it",
+          "[nmea0183][registry]") {
+    const auto& registry = nmea::SentenceRegistry::standard();
+    auto state = nmeasim::test::fixture_state();
+    state.destination.reset();
+    state.engines.clear();
+    for (const auto id : {"APB", "RMB", "XTE", "RPM", "XDR"}) {
+        const auto* descriptor = registry.find(id);
+        REQUIRE(descriptor != nullptr);
+        CHECK(
+            nmea::encode_within_limit(*descriptor, state, descriptor->default_talker, {}).empty());
+    }
 }

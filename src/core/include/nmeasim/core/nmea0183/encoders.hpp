@@ -58,6 +58,19 @@ std::vector<std::string> encode_mwd(const EncoderContext& context);
 // Steering
 std::vector<std::string> encode_rsa(const EncoderContext& context);
 
+// Autopilot: one sentence each while a destination is set, nothing otherwise
+std::vector<std::string> encode_apb(const EncoderContext& context);
+std::vector<std::string> encode_rmb(const EncoderContext& context);
+std::vector<std::string> encode_xte(const EncoderContext& context);
+
+// Propulsion: one sentence per engine, nothing without engines
+std::vector<std::string> encode_rpm(const EncoderContext& context);
+std::vector<std::string> encode_xdr(const EncoderContext& context);
+
+/// Restricts a waypoint name to the characters NMEA 0183 allows in a field and to
+/// `model::kMaxWaypointNameLength` characters. An empty result becomes "WPT".
+[[nodiscard]] std::string sanitize_waypoint_name(std::string_view name);
+
 /// Mode indicator letter used by RMC, GLL and VTG: 'A' autonomous, 'D' differential,
 /// 'N' no fix.
 [[nodiscard]] char mode_indicator(const model::GnssFix& fix) noexcept;

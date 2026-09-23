@@ -51,6 +51,9 @@ inline core::model::VesselState fixture_state() {
     state.wind.true_speed_kn = 12.0;
     state.wind.apparent_angle_deg = 300.0;
     state.wind.apparent_speed_kn = 14.2;
+    state.engines = {{"Port engine", true, 1800.0, 82.0}, {"Starboard engine", false, 0.0, 65.5}};
+    // A leg from off Piraeus towards Aegina; the vessel is about 1.6 nm left of it.
+    state.destination = core::model::Destination{"AEGINA", {37.7466, 23.4275}, {38.0, 23.7}, 100.0};
     return state;
 }
 
@@ -90,6 +93,12 @@ inline core::model::VesselState fixture_state_extreme() {
     state.wind.true_speed_kn = 999.9;
     state.wind.apparent_angle_deg = 359.9;
     state.wind.apparent_speed_kn = 999.9;
+    state.engines = {{"Engine one", true, 99999.9, -99.9}, {"Two", true, 99999.9, 999.9}};
+    state.destination =
+        core::model::Destination{"A very long waypoint name, with $reserved* characters!",
+                                 {89.99999, 179.99999},
+                                 {-89.99999, -179.99999},
+                                 0.0};
     return state;
 }
 

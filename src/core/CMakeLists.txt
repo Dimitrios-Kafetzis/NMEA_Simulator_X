@@ -11,6 +11,7 @@ configure_file(
 
 add_library(nmeasim_core STATIC
     src/geo/geodesic.cpp
+    src/geo/route.cpp
     src/log/log_file.cpp
     src/model/vessel_state.cpp
     src/nmea0183/checksum.cpp

@@ -23,6 +23,10 @@ std::string_view to_string(SentenceGroup group) noexcept {
             return "Wind";
         case SentenceGroup::Steering:
             return "Steering";
+        case SentenceGroup::Autopilot:
+            return "Autopilot";
+        case SentenceGroup::Propulsion:
+            return "Propulsion";
     }
     return "Unknown";
 }
@@ -63,6 +67,19 @@ const SentenceRegistry& SentenceRegistry::standard() {
         {"MWD", "MWD", "WI", SentenceGroup::Wind, 1000ms, true, "True wind direction and speed",
          &encode_mwd},
         {"RSA", "RSA", "II", SentenceGroup::Steering, 1000ms, true, "Rudder angle", &encode_rsa},
+        {"APB", "APB", "GP", SentenceGroup::Autopilot, 1000ms, true,
+         "Autopilot sentence B: cross-track error, bearings and arrival for the destination",
+         &encode_apb},
+        {"RMB", "RMB", "GP", SentenceGroup::Autopilot, 1000ms, true,
+         "Recommended minimum navigation to the destination: cross-track error, range, bearing",
+         &encode_rmb},
+        {"XTE", "XTE", "GP", SentenceGroup::Autopilot, 1000ms, true,
+         "Cross-track error from the leg to the destination", &encode_xte},
+        {"RPM", "RPM", "ER", SentenceGroup::Propulsion, 1000ms, true,
+         "Engine revolutions, one sentence per engine", &encode_rpm},
+        {"XDR", "XDR", "ER", SentenceGroup::Propulsion, 1000ms, true,
+         "Transducer measurements: engine coolant temperature and tachometer per engine",
+         &encode_xdr},
     }};
     return registry;
 }

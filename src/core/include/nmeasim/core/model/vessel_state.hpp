@@ -3,6 +3,8 @@
 #include <nmeasim/core/geo/geodesic.hpp>
 
 #include <chrono>
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -85,6 +87,23 @@ struct Engine {
     double coolant_temperature_c{20.0};
 };
 
+/// The waypoint the vessel steers for. The autopilot sentences (APB, RMB, XTE) describe the
+/// leg from `origin` to `position`; the cross-track error is the distance of the vessel from
+/// that leg.
+struct Destination {
+    /// Waypoint identifier sent in the sentences; printable ASCII without NMEA reserved
+    /// characters, at most `kMaxWaypointNameLength` characters after sanitising.
+    std::string name{"WPT"};
+    geo::Position position;
+    /// Start of the leg, normally the vessel's position when the destination was set.
+    geo::Position origin;
+    /// Radius of the arrival circle around the destination.
+    double arrival_radius_m{100.0};
+};
+
+/// Longest waypoint identifier the encoders send.
+inline constexpr std::size_t kMaxWaypointNameLength{16};
+
 struct VesselState {
     std::chrono::system_clock::time_point time_utc{};
     Navigation navigation;
@@ -93,6 +112,8 @@ struct VesselState {
     Water water;
     Wind wind;
     std::vector<Engine> engines;
+    /// The active waypoint, when one is set. Without it no autopilot sentence is sent.
+    std::optional<Destination> destination;
 };
 
 }  // namespace nmeasim::core::model

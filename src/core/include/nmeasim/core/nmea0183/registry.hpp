@@ -20,6 +20,8 @@ enum class SentenceGroup {
     Depth,
     Wind,
     Steering,
+    Autopilot,
+    Propulsion,
 };
 
 [[nodiscard]] std::string_view to_string(SentenceGroup group) noexcept;

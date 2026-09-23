@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <utility>
 
 namespace nmeasim::core::simulation {
 
@@ -145,6 +146,11 @@ const model::VesselState& TrackSource::advance(std::chrono::milliseconds dt) {
     }
     update_state(seconds);
     return state_;
+}
+
+void TrackSource::set_destination(std::optional<model::Destination> destination) {
+    config_.seed.destination = destination;
+    state_.destination = std::move(destination);
 }
 
 void TrackSource::reset() {

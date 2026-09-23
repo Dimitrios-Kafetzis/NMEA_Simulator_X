@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <string>
 
 namespace nmeasim::core::nmea0183 {
 
@@ -291,6 +292,91 @@ bool decode_mwd(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// APB and XTE repeat what RMB carries without the destination position, so they are
+/// recognised but leave the state alone.
+bool decode_nothing(const ParsedSentence& /*s*/, model::VesselState& /*state*/) {
+    return true;
+}
+
+bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
+    if (s.field(0) != "A") {
+        return true;
+    }
+    const auto latitude = parse_coordinate(s.field(5), s.field(6));
+    const auto longitude = parse_coordinate(s.field(7), s.field(8));
+    if (!latitude || !longitude) {
+        return true;
+    }
+    const std::string name{s.field(4)};
+    // The sentence does not carry the origin: a new destination starts its leg where the
+    // vessel is, an update of the same destination keeps the leg.
+    const bool same = state.destination && state.destination->name == name;
+    model::Destination destination;
+    destination.name = name.empty() ? "WPT" : name;
+    destination.position = {*latitude, *longitude};
+    destination.origin = same ? state.destination->origin : state.navigation.position;
+    if (same) {
+        destination.arrival_radius_m = state.destination->arrival_radius_m;
+    }
+    state.destination = destination;
+    return true;
+}
+
+model::Engine& engine_at(model::VesselState& state, std::size_t index) {
+    while (state.engines.size() <= index) {
+        model::Engine engine;
+        engine.label = "Engine " + std::to_string(state.engines.size() + 1);
+        state.engines.push_back(engine);
+    }
+    return state.engines[index];
+}
+
+/// Index of the engine named by an XDR transducer id such as "ENGINE#1".
+std::optional<std::size_t> engine_index(std::string_view transducer) {
+    constexpr std::string_view kPrefix{"ENGINE#"};
+    if (!transducer.starts_with(kPrefix)) {
+        return std::nullopt;
+    }
+    const auto digits = transducer.substr(kPrefix.size());
+    if (!all_digits(digits) || digits.size() > 3) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(digits_value(digits));
+}
+
+bool decode_rpm(const ParsedSentence& s, model::VesselState& state) {
+    if (s.field(4) != "A" || s.field(0) != "E") {
+        return true;
+    }
+    const auto number = parse_number_field(s.field(1));
+    const auto rpm = parse_number_field(s.field(2));
+    if (!number || !rpm || *number < 1.0 || *number > 100.0) {
+        return true;
+    }
+    auto& engine = engine_at(state, static_cast<std::size_t>(*number) - 1);
+    engine.revolutions_rpm = *rpm;
+    engine.running = *rpm > 0.0;
+    return true;
+}
+
+bool decode_xdr(const ParsedSentence& s, model::VesselState& state) {
+    for (std::size_t i = 0; i + 3 < s.fields.size(); i += 4) {
+        const auto index = engine_index(s.field(i + 3));
+        const auto value = parse_number_field(s.field(i + 1));
+        if (!index || !value || *index >= 100) {
+            continue;
+        }
+        if (s.field(i) == "C" && s.field(i + 2) == "C") {
+            engine_at(state, *index).coolant_temperature_c = *value;
+        } else if (s.field(i) == "T" && s.field(i + 2) == "R") {
+            auto& engine = engine_at(state, *index);
+            engine.revolutions_rpm = *value;
+            engine.running = *value > 0.0;
+        }
+    }
+    return true;
+}
+
 bool decode_rsa(const ParsedSentence& s, model::VesselState& state) {
     if (s.field(1) == "A") {
         assign(parse_number_field(s.field(0)), state.steering.rudder_angle_deg);
@@ -537,6 +623,18 @@ bool apply_sentence(const ParsedSentence& sentence, model::VesselState& state) {
     }
     if (f == "RSA") {
         return decode_rsa(sentence, state);
+    }
+    if (f == "RMB") {
+        return decode_rmb(sentence, state);
+    }
+    if (f == "APB" || f == "XTE") {
+        return decode_nothing(sentence, state);
+    }
+    if (f == "RPM") {
+        return decode_rpm(sentence, state);
+    }
+    if (f == "XDR") {
+        return decode_xdr(sentence, state);
     }
     return false;
 }

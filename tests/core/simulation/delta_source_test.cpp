@@ -200,3 +200,34 @@ TEST_CASE("reset returns to the seed and clears overrides", "[simulation][delta]
     CHECK(source.current().navigation.position.latitude_deg == Approx(37.9838));
     CHECK_FALSE(source.override_value(sim::Parameter::Depth).has_value());
 }
+
+TEST_CASE("the destination and the engines can be changed and survive a reset",
+          "[simulation][delta]") {
+    sim::DeltaSource source(frozen_config());
+    REQUIRE(source.current().destination.has_value());
+    CHECK(source.current().destination->name == "AEGINA");
+    source.set_destination(nmeasim::core::model::Destination{
+        "POROS", {37.5, 23.45}, source.current().navigation.position, 50.0});
+    source.advance(10s);
+    source.reset();
+    REQUIRE(source.current().destination.has_value());
+    CHECK(source.current().destination->name == "POROS");
+    CHECK(source.current().destination->arrival_radius_m == Approx(50.0));
+    source.set_destination(std::nullopt);
+    CHECK_FALSE(source.current().destination.has_value());
+    source.reset();
+    CHECK_FALSE(source.current().destination.has_value());
+
+    REQUIRE(source.current().engines.size() == 2);
+    source.set_engine(1, {"Starboard engine", true, 2200.0, 85.0});
+    source.set_engine(5, {"Generator", true, 1500.0, 70.0});
+    REQUIRE(source.current().engines.size() == 3);
+    CHECK(source.current().engines[1].running);
+    CHECK(source.current().engines[1].revolutions_rpm == Approx(2200.0));
+    CHECK(source.current().engines[2].label == "Generator");
+    source.remove_engine(0);
+    source.remove_engine(9);
+    source.reset();
+    REQUIRE(source.current().engines.size() == 2);
+    CHECK(source.current().engines[0].label == "Starboard engine");
+}
