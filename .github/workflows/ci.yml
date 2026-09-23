@@ -108,12 +108,14 @@ jobs:
       - name: Cross-check the NMEA stream with an independent parser
         shell: bash
         run: |
-          pip install pynmea2==1.19.0
+          pip install pynmea2==1.19.0 pyais==2.9.4
           NMEASIM=./build/${{ matrix.preset }}/src/cli/nmeasim
           if [[ "${{ runner.os }}" == "Windows" ]]; then NMEASIM="$NMEASIM.exe"; fi
           "$NMEASIM" run --stdout --quiet --duration 3 --enable MWV-T | python3 tools/check_nmea_stream.py --expect 21
           "$NMEASIM" run --track samples/saronic-gulf.gpx --stdout --quiet --duration 2 | python3 tools/check_nmea_stream.py --expect 20
           "$NMEASIM" run --replay tests/fixtures/logs/recorded.log --stdout --quiet | python3 tools/check_nmea_stream.py --expect 8
+          python3 tools/check_ais_stream.py --mmsi 239000001 --name "NMEA SIMULATOR X" --callsign SIMX < tests/fixtures/ais/own_vessel.nmea
+          "$NMEASIM" run --stdout --quiet --duration 2 --enable VDM-POS --enable VDM-STATIC | python3 tools/check_ais_stream.py --mmsi 239000001 --name "NMEA SIMULATOR X" --callsign SIMX
 
   format:
     name: Code formatting

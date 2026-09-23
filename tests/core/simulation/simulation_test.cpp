@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <memory>
+#include <utility>
 
 using Catch::Approx;
 using namespace std::chrono_literals;
@@ -21,7 +22,9 @@ sim::Simulation make_simulation() {
     config.seed = nmeasim::test::fixture_state();
     config.heading = {0.0, 0.0};
     config.speed = {0.0, 0.0};
-    return sim::Simulation(std::make_unique<sim::DeltaSource>(config), sim::SentenceScheduler{});
+    sim::SentenceScheduler scheduler;
+    scheduler.set_period_for_all(1000ms);
+    return sim::Simulation(std::make_unique<sim::DeltaSource>(config), std::move(scheduler));
 }
 
 }  // namespace

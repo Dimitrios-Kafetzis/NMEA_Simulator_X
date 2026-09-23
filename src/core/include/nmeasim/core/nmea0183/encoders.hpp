@@ -67,6 +67,13 @@ std::vector<std::string> encode_xte(const EncoderContext& context);
 std::vector<std::string> encode_rpm(const EncoderContext& context);
 std::vector<std::string> encode_xdr(const EncoderContext& context);
 
+// AIS own vessel: the position report and the static data report, each as VDO (own vessel)
+// or VDM (as other receivers would relay it)
+std::vector<std::string> encode_vdo_position(const EncoderContext& context);
+std::vector<std::string> encode_vdo_static(const EncoderContext& context);
+std::vector<std::string> encode_vdm_position(const EncoderContext& context);
+std::vector<std::string> encode_vdm_static(const EncoderContext& context);
+
 /// Restricts a waypoint name to the characters NMEA 0183 allows in a field and to
 /// `model::kMaxWaypointNameLength` characters. An empty result becomes "WPT".
 [[nodiscard]] std::string sanitize_waypoint_name(std::string_view name);

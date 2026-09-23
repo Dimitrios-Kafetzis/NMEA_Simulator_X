@@ -74,6 +74,11 @@ until the file provides one. The `variation` values are not used in those modes.
 | `gnss.geoid_separation_m` | number | `0` | metres |
 | `engines` | array | two engines | objects with `label`, `running`, `rpm`, `coolant_temperature_c` |
 
+### `simulation.seed.ais`
+
+The AIS static data is added to the profile in a following milestone M4 change; until then
+the [defaults](ais.md#defaults) are transmitted.
+
 ### `simulation.variation`
 
 Each of `heading`, `speed`, `depth`, `water_temperature`, `wind_direction` and `wind_speed`

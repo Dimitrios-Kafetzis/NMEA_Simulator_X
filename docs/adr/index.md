@@ -18,6 +18,7 @@ ADR supersedes it instead. Number the next record sequentially and add it to `mk
 | [0010](0010-map-tiles.md) | Map view: painted raster tiles with a disk cache | Accepted |
 | [0011](0011-track-and-replay-sources.md) | Track following and log replay as sources with a seekable transport interface | Accepted |
 | [0012](0012-log-file-format.md) | Log file format: timestamped plain-text sentences | Accepted |
+| [0013](0013-ais-encoder.md) | AIS own-vessel messages encoded in core with an independent decoder in the tests | Accepted |
 
 ## Template
 

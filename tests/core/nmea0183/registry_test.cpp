@@ -15,7 +15,7 @@ namespace nmea = nmeasim::core::nmea0183;
 TEST_CASE("the standard registry lists every supported sentence once", "[nmea0183][registry]") {
     const auto& registry = nmea::SentenceRegistry::standard();
     const auto descriptors = registry.descriptors();
-    CHECK(descriptors.size() == 25U);
+    CHECK(descriptors.size() == 29U);
 
     std::set<std::string> ids;
     for (const auto& descriptor : descriptors) {
@@ -60,6 +60,8 @@ TEST_CASE("every registered encoder produces compliant sentences", "[nmea0183][r
                 INFO(sentence);
                 CHECK(nmea::verify_checksum(sentence));
                 CHECK(nmea::fits_limit(sentence));
+                CHECK(sentence.front() ==
+                      (descriptor.group == nmea::SentenceGroup::Ais ? '!' : '$'));
                 CHECK(sentence.substr(1, 2) == descriptor.default_talker);
                 CHECK(sentence.substr(3, 3) == descriptor.formatter);
             }

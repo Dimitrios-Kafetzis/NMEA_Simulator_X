@@ -8,6 +8,8 @@ Precise, exhaustive descriptions of what the software does.
 - [Profile file format](profile.md): every key of the JSON profile, with defaults.
 - [NMEA 0183 sentences](nmea0183-sentences.md): every sentence the simulator can emit, its
   fields and an example line.
+- [AIS messages](ais.md): the own-vessel position and static data reports, their framing in
+  VDO and VDM sentences and every bit field.
 - [Transports](transports.md): every output channel, its settings and behaviour.
 - [Track files](track-files.md): what is read from GPX and KML files.
 - [Log files](log-format.md): what the recorder writes and what the replay reads.

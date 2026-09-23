@@ -30,6 +30,9 @@ The autopilot sentences APB, RMB and XTE are sent only while a destination is se
 propulsion sentences RPM and XDR only for the engines configured. When there is nothing to
 report the sentence is skipped for that round rather than sent with empty fields.
 
+The AIS sentences VDO and VDM, which carry a six-bit encoded payload rather than fields, are
+described on the [AIS reference page](ais.md).
+
 ## Behaviour without a GNSS fix
 
 When the simulated receiver has no fix, RMC and GLL report status `V`, mode `N` and empty

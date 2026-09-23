@@ -136,6 +136,9 @@ TEST_CASE("every encoded sentence decodes back to the state it came from", "[nme
     const auto& registry = nmea::SentenceRegistry::standard();
     int applied = 0;
     for (const auto& descriptor : registry.descriptors()) {
+        if (descriptor.group == nmea::SentenceGroup::Ais) {
+            continue;  // encapsulated sentences are not decoded
+        }
         for (const auto& sentence :
              nmea::encode_within_limit(descriptor, original, descriptor.default_talker, {})) {
             INFO(sentence);
