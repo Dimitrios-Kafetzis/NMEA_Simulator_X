@@ -61,6 +61,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       publish: ${{ steps.meta.outputs.publish }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
+      commit: ${{ steps.meta.outputs.commit }}
     steps:
       - name: Check out sources
         uses: actions/checkout@v7
@@ -103,6 +104,7 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
   windows:
@@ -415,6 +417,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          path: source
+
       - name: Download the packages
         uses: actions/download-artifact@v8
         with:
@@ -430,6 +438,36 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # Filled-in winget, Scoop, Homebrew and Flathub manifests, ready to submit
+      # (docs/how-to/submit-package-manifests.md). A dry run checks that they are generated.
+      - name: Generate the package-manager manifests
+        env:
+          COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          tag="${TAG:-v$VERSION}"
+          python3 source/packaging/manifests/update_manifests.py --tag "$tag" \
+            --checksums dist/SHA256SUMS.txt --commit "$COMMIT" --output manifests
+          pip install --quiet pyyaml
+          python3 - <<'PY'
+          import glob, json, yaml
+          json.load(open("manifests/scoop/bucket/nmeasimulatorx.json"))
+          for path in glob.glob("manifests/**/*.y*ml", recursive=True):
+              yaml.safe_load(open(path))
+          print("manifests parse")
+          PY
+          ruby -c manifests/homebrew/Casks/nmeasimulatorx.rb
+
+      - name: Upload the package-manager manifests
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-manager-manifests-${{ env.VERSION }}
+          path: manifests/
 
       - name: Keep the dry-run packages
         if: needs.prepare.outputs.publish != 'true'

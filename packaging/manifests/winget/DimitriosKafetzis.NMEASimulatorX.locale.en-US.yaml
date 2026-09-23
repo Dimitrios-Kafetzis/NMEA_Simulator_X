@@ -1,0 +1,35 @@
+# Template: packaging/manifests/update_manifests.py fills in the @...@ placeholders.
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+PackageIdentifier: DimitriosKafetzis.NMEASimulatorX
+PackageVersion: "@VERSION@"
+PackageLocale: en-US
+Publisher: Dimitrios Kafetzis
+PublisherUrl: https://github.com/Dimitrios-Kafetzis
+PublisherSupportUrl: https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues
+Author: Dimitrios Kafetzis
+PackageName: NMEA Simulator X
+PackageUrl: https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/
+License: GPL-3.0-only
+LicenseUrl: https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/blob/main/LICENSE
+Copyright: Copyright 2026 Dimitrios Kafetzis
+ShortDescription: NMEA 0183, AIS and Signal K data stream simulator
+Description: |-
+  NMEA Simulator X behaves like a vessel under way and streams navigation, environment,
+  propulsion and AIS data over serial, TCP, UDP and WebSocket connections, so that chart
+  plotters, instrument displays, gateways and marine software can be developed and tested on
+  a desk. It includes the headless command-line tool nmeasim.
+Moniker: nmeasimulatorx
+Tags:
+  - nmea
+  - nmea0183
+  - ais
+  - signalk
+  - gps
+  - marine
+  - simulator
+ReleaseNotesUrl: https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/releases/tag/@TAG@
+Documentations:
+  - DocumentLabel: Documentation
+    DocumentUrl: https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

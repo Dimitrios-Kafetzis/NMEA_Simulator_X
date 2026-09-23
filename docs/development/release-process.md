@@ -24,9 +24,11 @@ in [ADR 0007](../adr/0007-trunk-based-releases.md) (versioning and Release Pleas
     | Flatpak x86_64 | KDE 6.10 builder container | `NMEASimulatorX-X.Y.Z-x86_64.flatpak` | Built from `packaging/flatpak/`, bundle installed and `nmeasim` run |
 
 5. The `publish` job writes `SHA256SUMS.txt` over all packages and attaches the packages and
-   the checksum file to the GitHub release.
-6. Package-manager manifests under `packaging/manifests/` are updated with the new version and
-   checksums, then submitted to winget, Scoop, Homebrew and Flathub.
+   the checksum file to the GitHub release. It also fills the package-manager templates
+   under `packaging/manifests/` with the version, the checksums and the tag's commit
+   (`update_manifests.py`) and keeps them as the `package-manager-manifests-X.Y.Z` artifact.
+6. The maintainer submits those manifests to winget, Scoop, the Homebrew tap and Flathub, as
+   described in [Submit the package-manager manifests](../how-to/submit-package-manifests.md).
 
 ## Choosing the version
 
@@ -92,7 +94,8 @@ After merging:
       match the [installation guide](../how-to/install.md).
 - [ ] A package downloaded from the release matches its line in `SHA256SUMS.txt`
       (`sha256sum --check --ignore-missing SHA256SUMS.txt`).
-- [ ] The package-manager manifests are updated and submitted.
+- [ ] The package-manager manifests from the release run are submitted (winget, Scoop on the
+      first release, the Homebrew tap, Flathub).
 - [ ] Any release candidate pre-releases and tags are deleted.
 
 ## Repository settings required

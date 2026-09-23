@@ -69,6 +69,9 @@ if(WIN32)
     set(CPACK_NSIS_HELP_LINK "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues")
     set(CPACK_NSIS_CONTACT "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X")
     set(CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL ON)
+    # One uninstall entry for every version, so that installing an update (by hand or through
+    # winget, which uses this key as the product code) replaces the previous version.
+    set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "NMEASimulatorX")
     set(CPACK_NSIS_MANIFEST_DPI_AWARE ON)
     set(CPACK_NSIS_BRANDING_TEXT "NMEA Simulator X ${NMEASIM_PACKAGE_VERSION}")
     # Offers to add the install folder to PATH so that `nmeasim` works in any terminal.

@@ -78,6 +78,7 @@ nav:
       - Set a destination: how-to/set-a-destination.md
       - Connect a Signal K server: how-to/signal-k.md
       - Follow the vessel in Google Earth: how-to/google-earth.md
+      - Submit the package-manager manifests: how-to/submit-package-manifests.md
   - Reference:
       - reference/index.md
       - Desktop application: reference/desktop-app.md
