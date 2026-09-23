@@ -1,13 +1,18 @@
 #include "main_window.hpp"
 
 #include "io/event_loop.hpp"
+#include "map/map_widget.hpp"
+#include "map/tile_cache.hpp"
 #include "widgets/console_widget.hpp"
 #include "widgets/dashboard_widget.hpp"
 #include "widgets/outputs_widget.hpp"
 
+#include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
 
+#include <QFile>
 #include <QKeyEvent>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -15,6 +20,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cstddef>
+#include <string>
 
 using Catch::Approx;
 using namespace std::chrono_literals;
@@ -37,6 +44,10 @@ nmeasim::io::Profile quick_profile() {
         profile.sentences[std::string{descriptor.id}] = {descriptor.enabled_by_default, "", 100ms};
     }
     return profile;
+}
+
+QString fixture(const char* relative) {
+    return QStringLiteral(NMEASIM_FIXTURES_DIR "/") + QLatin1String(relative);
 }
 
 }  // namespace
@@ -113,4 +124,115 @@ TEST_CASE("profiles round-trip through the window", "[app]") {
     CHECK(window.profile().name == QStringLiteral("Window test"));
     CHECK(window.windowTitle().startsWith(QStringLiteral("test.json")));
     CHECK_FALSE(window.load_profile(directory.filePath(QStringLiteral("missing.json"))));
+}
+
+TEST_CASE("durations are formatted for the transport label", "[app]") {
+    CHECK(nmeasim::app::MainWindow::format_duration(0ms) == QStringLiteral("00:00"));
+    CHECK(nmeasim::app::MainWindow::format_duration(65s) == QStringLiteral("01:05"));
+    CHECK(nmeasim::app::MainWindow::format_duration(12min + 500ms) == QStringLiteral("12:00"));
+    CHECK(nmeasim::app::MainWindow::format_duration(3h + 7min + 9s) == QStringLiteral("3:07:09"));
+}
+
+TEST_CASE("the main window follows a track and offers step and seek", "[app][track]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    window.set_profile(quick_profile());
+    CHECK_FALSE(window.seek_slider()->isEnabled());
+    CHECK(window.position_label()->text().isEmpty());
+    CHECK(window.dashboard()->overrides_enabled());
+
+    REQUIRE(window.load_track(fixture("tracks/timestamped.gpx")));
+    CHECK(window.profile().mode == nmeasim::io::SimulationMode::Track);
+    CHECK(window.profile().track.path == fixture("tracks/timestamped.gpx"));
+    CHECK(window.map_view()->route_length() == 5);
+    CHECK(window.seek_slider()->isEnabled());
+    CHECK(window.seek_slider()->maximum() == 720500);
+    CHECK(window.position_label()->text() == QStringLiteral("00:00 / 12:00"));
+    CHECK_FALSE(window.dashboard()->overrides_enabled());
+    CHECK(window.runner().simulation()->state().navigation.position.latitude_deg == Approx(37.9));
+    REQUIRE(window.map_view()->vessel_position().has_value());
+    CHECK(window.map_view()->vessel_position()->latitude_deg == Approx(37.9));
+
+    // Step starts the run paused and advances one tick.
+    window.step_action()->trigger();
+    CHECK(window.is_running());
+    CHECK(window.runner().is_paused());
+    CHECK(window.runner().position() == 20ms);
+    CHECK(window.runner().sentences_emitted() > 0);
+
+    // The slider seeks; the label and the map follow.
+    window.seek_slider()->setValue(180000);
+    CHECK(window.runner().position() == 3min);
+    CHECK(window.position_label()->text() == QStringLiteral("03:00 / 12:00"));
+    CHECK(window.runner().simulation()->state().navigation.position.latitude_deg ==
+          Approx(37.91).margin(1e-9));
+    CHECK(window.map_view()->vessel_position()->latitude_deg == Approx(37.91).margin(1e-9));
+    window.stop();
+    CHECK_FALSE(window.runner().is_paused());
+
+    // A bad file is reported and the previous profile stays current.
+    QSignalSpy errors(&window, &nmeasim::app::MainWindow::error_reported);
+    CHECK_FALSE(window.load_track(fixture("tracks/malformed.gpx")));
+    CHECK(errors.count() == 1);
+    CHECK(errors.first().at(1).toString().contains(QStringLiteral("Invalid XML")));
+    CHECK(window.profile().track.path == fixture("tracks/timestamped.gpx"));
+    CHECK(window.map_view()->route_length() == 5);
+
+    // Back to the delta simulation through a profile.
+    window.set_profile(quick_profile());
+    CHECK(window.map_view()->route_length() == 0);
+    CHECK(window.dashboard()->overrides_enabled());
+    CHECK_FALSE(window.seek_slider()->isEnabled());
+}
+
+TEST_CASE("the main window replays a log to its end and records a session",
+          "[app][replay][integration]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    window.set_profile(quick_profile());
+    REQUIRE(window.load_log(fixture("logs/plain.nmea")));
+    CHECK(window.profile().mode == nmeasim::io::SimulationMode::Replay);
+    CHECK(window.seek_slider()->maximum() == 1500);
+    CHECK(window.map_view()->route_length() == 0);
+
+    window.step_action()->trigger();
+    CHECK(window.runner().is_paused());
+    CHECK(window.runner().sentences_emitted() == 1);
+    CHECK(window.runner().simulation()->state().navigation.speed_over_ground_kn == Approx(6.5));
+
+    QSignalSpy stopped(&window.runner(), &nmeasim::io::SimulationRunner::stopped);
+    window.runner().resume();
+    REQUIRE(wait_until([&] { return stopped.count() == 1; }, 5000));
+    CHECK(window.runner().sentences_emitted() == 32);
+    CHECK_FALSE(window.is_running());
+
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("session.log"));
+    window.set_profile(quick_profile());
+    CHECK_FALSE(window.record_action()->isChecked());
+    REQUIRE(window.set_recording(path));
+    CHECK(window.record_action()->isChecked());
+    CHECK(window.runner().recording_path() == path);
+    window.start();
+    REQUIRE(wait_until([&] { return window.runner().sentences_emitted() >= 20; }, 5000));
+    window.stop();
+    const auto emitted = window.runner().sentences_emitted();
+    // Unticking the action stops the recording.
+    window.record_action()->setChecked(false);
+    CHECK_FALSE(window.runner().is_recording());
+
+    QFile reader(path);
+    REQUIRE(reader.open(QIODevice::ReadOnly | QIODevice::Text));
+    std::string error;
+    const auto log = nmeasim::core::log::parse_log(reader.readAll().toStdString(), {}, &error);
+    REQUIRE(log.has_value());
+    CHECK(log->entries.size() == static_cast<std::size_t>(emitted));
+
+    QSignalSpy errors(&window, &nmeasim::app::MainWindow::error_reported);
+    window.start();
+    CHECK_FALSE(window.set_recording(directory.filePath(QStringLiteral("no/dir/x.log"))));
+    CHECK(errors.count() == 1);
+    CHECK_FALSE(window.record_action()->isChecked());
+    window.stop();
 }

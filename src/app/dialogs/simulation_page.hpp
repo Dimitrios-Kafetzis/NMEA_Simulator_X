@@ -6,16 +6,19 @@
 #include <QComboBox>
 #include <QDateTimeEdit>
 #include <QDoubleSpinBox>
+#include <QGroupBox>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QSpinBox>
+#include <QString>
 #include <QWidget>
 
 #include <array>
 
 namespace nmeasim::app {
 
-/// Settings tab for the profile name, the clock, the vessel seed values, their drift and the
-/// steering model.
+/// Settings tab for the simulation mode, the profile name, the clock, the vessel seed values,
+/// their drift and the steering model.
 class SimulationPage : public QWidget {
     Q_OBJECT
 
@@ -24,8 +27,22 @@ public:
 
     void load(const io::Profile& profile);
     void store(io::Profile& profile) const;
+    /// A problem with the mode settings, for example a missing track file; empty when valid.
+    [[nodiscard]] QString validate() const;
 
     // Widgets are public so that tests can drive them like an operator would.
+    /// Delta simulation, track or replay, in `io::SimulationMode` order.
+    QComboBox* mode_combo;
+    QLineEdit* track_path_edit;
+    QPushButton* track_browse_button;
+    QDoubleSpinBox* track_speed_spin;
+    QCheckBox* track_timestamps_check;
+    QCheckBox* track_loop_check;
+    QLineEdit* replay_path_edit;
+    QPushButton* replay_browse_button;
+    QCheckBox* replay_loop_check;
+    QSpinBox* replay_interval_spin;
+
     QLineEdit* name_edit;
     QSpinBox* tick_spin;
     QCheckBox* fixed_start_check;
@@ -61,6 +78,15 @@ public:
 
     QDoubleSpinBox* turn_rate_spin;
     QDoubleSpinBox* max_rudder_spin;
+
+private:
+    void update_mode_widgets();
+    void browse_track();
+    void browse_log();
+
+    QGroupBox* track_box_;
+    QGroupBox* replay_box_;
+    QGroupBox* drift_box_;
 };
 
 }  // namespace nmeasim::app

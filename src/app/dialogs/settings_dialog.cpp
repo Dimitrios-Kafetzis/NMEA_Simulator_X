@@ -48,6 +48,13 @@ QString SettingsDialog::error_text() const {
 }
 
 void SettingsDialog::accept() {
+    const QString mode_problem = simulation_->validate();
+    if (!mode_problem.isEmpty()) {
+        error_label_->setText(mode_problem);
+        error_label_->show();
+        tabs_->setCurrentWidget(simulation_);
+        return;
+    }
     const QString problem = outputs_->validate();
     if (!problem.isEmpty()) {
         error_label_->setText(problem);

@@ -5,6 +5,14 @@ Make the simulated vessel sail a GPX track, a GPX route or a KML track. The
 and the [simulation model](../explanation/simulation-model.md#track-mode) explains how the
 vessel moves between the points.
 
+## From the desktop application
+
+Choose *File → Open track...* (++ctrl+t++) and pick the file. The current profile switches
+to track mode, the track appears in green on the map and the seek slider shows its length.
+*Start* sails it; *Step* and the slider move within it. The *Mode* group of *File →
+Settings...* holds the speed, the timestamp switch and the loop option, and *File → Save
+profile* keeps them. The [tutorial](../tutorials/following-a-gpx-track.md) walks through it.
+
 ## From the command line
 
 ```bash

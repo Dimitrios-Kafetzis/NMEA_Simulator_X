@@ -29,6 +29,10 @@ public:
     /// Reflects the current overrides of a source in the controls.
     void sync_overrides(const core::simulation::DeltaSource& source);
     void set_steering_mode(bool enabled);
+    /// Enables or disables every override control, for example while a track or a log
+    /// drives the vessel and overrides would have no effect.
+    void set_overrides_enabled(bool enabled);
+    [[nodiscard]] bool overrides_enabled() const noexcept { return overrides_enabled_; }
 
 signals:
     void override_changed(nmeasim::core::simulation::Parameter parameter, bool active,
@@ -52,6 +56,8 @@ private:
     QCheckBox* fix_check_;
     QSpinBox* satellites_spin_;
     bool suppress_signals_{false};
+    bool overrides_enabled_{true};
+    bool steering_mode_{false};
 };
 
 }  // namespace nmeasim::app

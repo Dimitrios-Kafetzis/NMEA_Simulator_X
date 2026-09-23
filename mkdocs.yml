@@ -64,6 +64,8 @@ nav:
   - Tutorials:
       - tutorials/index.md
       - Your first simulated voyage: tutorials/first-voyage.md
+      - Following a GPX track: tutorials/following-a-gpx-track.md
+      - Recording and replaying a log: tutorials/recording-and-replaying-a-log.md
   - How-to guides:
       - how-to/index.md
       - Install on Windows, macOS or Linux: how-to/install.md

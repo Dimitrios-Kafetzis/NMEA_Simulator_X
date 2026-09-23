@@ -190,8 +190,19 @@ void DashboardWidget::sync_overrides(const core::simulation::DeltaSource& source
 }
 
 void DashboardWidget::set_steering_mode(bool enabled) {
-    controls_.at(Parameter::RudderAngle)->set_override_enabled(enabled);
-    controls_.at(Parameter::HeadingTrue)->set_override_enabled(!enabled);
+    steering_mode_ = enabled;
+    controls_.at(Parameter::RudderAngle)->set_override_enabled(overrides_enabled_ && enabled);
+    controls_.at(Parameter::HeadingTrue)->set_override_enabled(overrides_enabled_ && !enabled);
+}
+
+void DashboardWidget::set_overrides_enabled(bool enabled) {
+    overrides_enabled_ = enabled;
+    for (auto& [parameter, tile] : controls_) {
+        tile->set_override_enabled(enabled);
+    }
+    fix_check_->setEnabled(enabled);
+    satellites_spin_->setEnabled(enabled);
+    set_steering_mode(steering_mode_);
 }
 
 }  // namespace nmeasim::app
