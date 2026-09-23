@@ -50,6 +50,14 @@ public:
     void clear_route();
     [[nodiscard]] int route_length() const noexcept { return static_cast<int>(route_.size()); }
 
+    /// The destination waypoint and the origin of its leg, drawn with the bearing line from
+    /// the vessel; nullopt removes them.
+    void set_destination(std::optional<core::geo::Position> destination,
+                         std::optional<core::geo::Position> origin);
+    [[nodiscard]] std::optional<core::geo::Position> destination() const noexcept {
+        return destination_;
+    }
+
     /// Widget pixel of a position at the current view.
     [[nodiscard]] QPointF point_of(core::geo::Position position) const;
     /// Position under a widget pixel at the current view.
@@ -61,6 +69,11 @@ public:
 signals:
     /// The operator double-clicked (or Ctrl+clicked) the map to move the vessel there.
     void position_picked(nmeasim::core::geo::Position position);
+    /// The operator Shift+clicked the map, or chose *Set destination here*, to steer for
+    /// that point.
+    void destination_picked(nmeasim::core::geo::Position position);
+    /// The operator chose *Clear destination*.
+    void destination_cleared();
     void view_changed();
     void follow_changed(bool follow);
 
@@ -70,6 +83,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -84,6 +98,7 @@ private:
     void draw_tiles(class QPainter& painter);
     void draw_route(QPainter& painter);
     void draw_track(QPainter& painter);
+    void draw_destination(QPainter& painter);
     void draw_vessel(QPainter& painter);
     void draw_overlay(QPainter& painter);
     /// Draws a tile, falling back to a scaled part of an ancestor when it is not cached.
@@ -98,6 +113,8 @@ private:
     std::optional<Vessel> vessel_;
     QList<core::geo::Position> track_;
     QList<core::geo::Position> route_;
+    std::optional<core::geo::Position> destination_;
+    std::optional<core::geo::Position> leg_origin_;
     std::optional<QPoint> drag_last_;
     bool dragged_{false};
 };

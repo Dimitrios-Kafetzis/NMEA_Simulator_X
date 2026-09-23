@@ -72,6 +72,7 @@ nav:
       - Build from source: how-to/build-from-source.md
       - Run the simulator headless: how-to/run-headless.md
       - Follow a track: how-to/follow-a-track.md
+      - Set a destination: how-to/set-a-destination.md
       - Connect a Signal K server: how-to/signal-k.md
       - Follow the vessel in Google Earth: how-to/google-earth.md
   - Reference:

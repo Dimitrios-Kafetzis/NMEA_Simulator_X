@@ -1,6 +1,7 @@
 #include "sentences_page.hpp"
 
 #include <nmeasim/core/nmea0183/registry.hpp>
+#include <nmeasim/core/simulation/custom_sentence.hpp>
 
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -11,6 +12,7 @@
 #include <QRegularExpressionValidator>
 #include <QVBoxLayout>
 
+#include <chrono>
 #include <string>
 
 namespace nmeasim::app {
@@ -24,7 +26,12 @@ QString from_view(std::string_view text) {
 }  // namespace
 
 SentencesPage::SentencesPage(QWidget* parent)
-    : QWidget(parent), position_decimals_spin(new QSpinBox(this)), table(new QTableWidget(this)) {
+    : QWidget(parent),
+      position_decimals_spin(new QSpinBox(this)),
+      table(new QTableWidget(this)),
+      custom_table(new QTableWidget(this)),
+      add_custom_button(new QPushButton(tr("Add custom sentence"), this)),
+      remove_custom_button(new QPushButton(tr("Remove"), this)) {
     position_decimals_spin->setRange(2, 8);
     position_decimals_spin->setToolTip(
         tr("Decimal minutes in latitude and longitude. Lowered automatically when a sentence "
@@ -89,13 +96,113 @@ SentencesPage::SentencesPage(QWidget* parent)
     }
     table->resizeColumnsToContents();
 
+    custom_table->setColumnCount(CustomColumnCount);
+    custom_table->setHorizontalHeaderLabels(
+        {tr("On"), tr("Id"), tr("Sentence"), tr("Period (ms)")});
+    custom_table->horizontalHeader()->setSectionResizeMode(CustomBody, QHeaderView::Stretch);
+    custom_table->verticalHeader()->setVisible(false);
+    custom_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    custom_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    custom_table->setToolTip(
+        tr("Sentences of your own, sent with a computed checksum. Write the sentence without "
+           "checksum, for example $PXYZ,1,2,3"));
+    connect(add_custom_button, &QPushButton::clicked, this, [this] { add_custom(); });
+    connect(remove_custom_button, &QPushButton::clicked, this,
+            &SentencesPage::remove_current_custom);
+    auto* custom_buttons = new QHBoxLayout;
+    custom_buttons->addWidget(new QLabel(tr("Custom sentences"), this));
+    custom_buttons->addStretch(1);
+    custom_buttons->addWidget(add_custom_button);
+    custom_buttons->addWidget(remove_custom_button);
+
     auto* layout_ = new QVBoxLayout(this);
     layout_->addLayout(top);
-    layout_->addWidget(table, 1);
+    layout_->addWidget(table, 3);
+    layout_->addLayout(custom_buttons);
+    layout_->addWidget(custom_table, 1);
+}
+
+void SentencesPage::add_custom(const QString& body) {
+    const int row = custom_table->rowCount();
+    custom_table->insertRow(row);
+    auto* enabled = new QTableWidgetItem;
+    enabled->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+    enabled->setCheckState(Qt::Checked);
+    custom_table->setItem(row, CustomEnabled, enabled);
+    auto* id = new QLineEdit(custom_table);
+    id->setMaxLength(12);
+    id->setPlaceholderText(QStringLiteral("CUSTOM-%1").arg(row + 1));
+    id->setValidator(new QRegularExpressionValidator(
+        QRegularExpression(QStringLiteral("[A-Za-z0-9-]{0,12}")), id));
+    custom_table->setCellWidget(row, CustomId, id);
+    auto* text = new QLineEdit(body, custom_table);
+    text->setMaxLength(80);
+    text->setPlaceholderText(QStringLiteral("$PXYZ,1,2,3"));
+    custom_table->setCellWidget(row, CustomBody, text);
+    auto* period = new QSpinBox(custom_table);
+    period->setRange(50, 3600000);
+    period->setSingleStep(100);
+    period->setValue(1000);
+    period->setKeyboardTracking(false);
+    custom_table->setCellWidget(row, CustomPeriod, period);
+    custom_table->selectRow(row);
+}
+
+void SentencesPage::remove_current_custom() {
+    const int row = custom_table->currentRow();
+    if (row >= 0) {
+        custom_table->removeRow(row);
+    }
+}
+
+int SentencesPage::custom_count() const {
+    return custom_table->rowCount();
+}
+
+core::simulation::CustomSentence SentencesPage::custom_at(int row) const {
+    core::simulation::CustomSentence sentence;
+    sentence.enabled = custom_table->item(row, CustomEnabled)->checkState() == Qt::Checked;
+    sentence.id = static_cast<QLineEdit*>(custom_table->cellWidget(row, CustomId))
+                      ->text()
+                      .trimmed()
+                      .toUpper()
+                      .toStdString();
+    sentence.body =
+        static_cast<QLineEdit*>(custom_table->cellWidget(row, CustomBody))->text().toStdString();
+    sentence.period = std::chrono::milliseconds{
+        static_cast<QSpinBox*>(custom_table->cellWidget(row, CustomPeriod))->value()};
+    return sentence;
+}
+
+QString SentencesPage::validate() const {
+    const auto& registry = core::nmea0183::SentenceRegistry::standard();
+    for (int row = 0; row < custom_table->rowCount(); ++row) {
+        const auto sentence = custom_at(row);
+        if (const auto problem = core::simulation::validate_custom_sentence(sentence.body)) {
+            return tr("Custom sentence %1: %2").arg(row + 1).arg(QString::fromStdString(*problem));
+        }
+        if (registry.find(sentence.id) != nullptr) {
+            return tr("Custom sentence %1: the id %2 belongs to a registry sentence")
+                .arg(row + 1)
+                .arg(QString::fromStdString(sentence.id));
+        }
+    }
+    return {};
 }
 
 void SentencesPage::load(const io::Profile& profile) {
     position_decimals_spin->setValue(profile.encoder.position_decimals);
+    custom_table->setRowCount(0);
+    for (const auto& sentence : profile.custom_sentences) {
+        add_custom(QString::fromStdString(sentence.body));
+        const int row = custom_table->rowCount() - 1;
+        custom_table->item(row, CustomEnabled)
+            ->setCheckState(sentence.enabled ? Qt::Checked : Qt::Unchecked);
+        static_cast<QLineEdit*>(custom_table->cellWidget(row, CustomId))
+            ->setText(QString::fromStdString(sentence.id));
+        static_cast<QSpinBox*>(custom_table->cellWidget(row, CustomPeriod))
+            ->setValue(static_cast<int>(sentence.period.count()));
+    }
     const auto scheduler = profile.make_scheduler();
     const auto descriptors = scheduler.registry().descriptors();
     for (std::size_t index = 0; index < descriptors.size(); ++index) {
@@ -111,6 +218,10 @@ void SentencesPage::load(const io::Profile& profile) {
 
 void SentencesPage::store(io::Profile& profile) const {
     profile.encoder.position_decimals = position_decimals_spin->value();
+    profile.custom_sentences.clear();
+    for (int row = 0; row < custom_table->rowCount(); ++row) {
+        profile.custom_sentences.push_back(custom_at(row));
+    }
     profile.sentences.clear();
     const auto descriptors = core::nmea0183::SentenceRegistry::standard().descriptors();
     for (std::size_t index = 0; index < descriptors.size(); ++index) {
@@ -160,6 +271,9 @@ void SentencesPage::set_all(bool enabled) {
 void SentencesPage::reset_defaults() {
     io::Profile defaults;
     defaults.sentences.clear();
+    for (int row = 0; row < custom_table->rowCount(); ++row) {
+        defaults.custom_sentences.push_back(custom_at(row));
+    }
     load(defaults);
 }
 

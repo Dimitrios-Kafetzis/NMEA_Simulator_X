@@ -43,6 +43,7 @@ saved on exit and restored at the next start.
 | Simulation | Pause | ++f6++ | Freezes the simulated clock and the vessel; outputs stay open |
 | Simulation | Step | ++f7++ | Pauses and advances by one tick, or by one recorded sentence during a replay; starts the run paused when it is stopped |
 | Simulation | Steering mode | | Arrow keys move the rudder instead of the heading; available in delta mode only |
+| Simulation | Clear destination | | Stops steering for the waypoint; APB, RMB and XTE are no longer sent |
 | Simulation | Start automatically on launch | | Starts the simulation as soon as the window opens |
 | View | Map, Console, Outputs | | Shows or hides the panel |
 | View | Follow vessel on the map | ++home++ | Keeps the map centred on the vessel; dragging the map switches it off |
@@ -122,6 +123,8 @@ is cleared from the tile.
 | True wind direction | Degrees true | Yes |
 | True wind speed | kn | Yes |
 | Apparent wind | Angle and speed derived from true wind and vessel motion | No |
+| Destination | Waypoint id, bearing and distance to it, cross-track error and the side to steer; *None* without a destination | No, set it on the map |
+| Engines | One tile per configured engine with its label, a *Running* switch, revolutions and coolant temperature | Yes, every field; changes apply at once to RPM, XDR, the AIS and Signal K output |
 
 An active override stops the random drift of that parameter. Clearing it lets the value drift
 again from where it is. In track and replay mode every override control is disabled, because
@@ -142,9 +145,16 @@ appear in the top-left corner; the OpenStreetMap attribution is always drawn.
 | ++plus++ / ++minus++ | Zooms in or out around the centre |
 | ++home++ | Switches *Follow vessel* on and recentres |
 | Double-click, or ++ctrl++ and click | Moves the vessel to that point |
+| ++shift++ and click | Sets the destination waypoint at that point; the leg starts where the vessel is |
+| Right click | Menu with *Move vessel here*, *Set destination here* and *Clear destination* |
 
 Moving the vessel changes the running simulation immediately and also the start position of
-the current profile, so saving the profile keeps the new place.
+the current profile, so saving the profile keeps the new place. The destination is drawn as a
+magenta diamond with a dashed bearing line from the vessel and a dotted line for the leg from
+its origin; the words *destination set* appear in the corner. Setting or clearing it changes
+the running simulation and the profile seed at once; the waypoint id is `WPT` until it is
+renamed on the *Simulation* tab of the settings dialog. See
+[Set a destination](../how-to/set-a-destination.md).
 
 ### Tiles
 
@@ -184,7 +194,7 @@ the other outputs.
 
 ## Settings dialog
 
-*File → Settings...* edits a copy of the current profile in three tabs. *OK* applies the
+*File → Settings...* edits a copy of the current profile in four tabs. *OK* applies the
 result as the current profile, restarting the simulation if it was running; *Cancel* discards
 every change. The profile on disk is not touched until you save it.
 
@@ -199,10 +209,18 @@ every change. The profile on disk is not touched until you save it.
 | Initial vessel values | Latitude, longitude, altitude, heading, speed over ground, magnetic variation and deviation, depth, transducer offset, water temperature, true wind direction and speed |
 | GNSS receiver | Fix, fix quality, satellites in use and in view, HDOP, PDOP, VDOP, geoid separation |
 | Drift around the initial values | Amplitude and step per second for heading, speed, depth, water temperature, wind direction and wind speed; an amplitude of 0 freezes the value; enabled in delta mode |
+| Destination | *Steer for a waypoint*, its id, latitude, longitude and arrival circle radius; a new destination starts its leg at the initial position |
 | Steering | Turn rate per degree of rudder, maximum rudder angle |
 
 The fields map one to one onto the `simulation` object of the
 [profile file](profile.md#simulation).
+
+### Vessel tab
+
+| Group | Fields |
+| --- | --- |
+| Engines | A table with one row per engine: label, running, revolutions, coolant temperature; *Add engine* and *Remove*. The first row is engine 1 in RPM and `ENGINE#0` in XDR; the Signal K id comes from the label. |
+| AIS static data | MMSI, IMO number, vessel name, call sign, ship type code, antenna distances to bow, stern, port and starboard, draught, voyage destination, navigational status, position report type; see the [AIS reference](ais.md) |
 
 ### Sentences tab
 
@@ -214,13 +232,28 @@ sets the fractional minute digits of latitude and longitude.
 Only rows that differ from the registry defaults are written to the profile, so a saved
 profile stays small and follows registry changes in later versions.
 
+Below the registry, the *Custom sentences* table holds the operator's own sentences
+([reference](nmea0183-sentences.md#custom-sentences)): an enabled flag, an id (empty gives
+`CUSTOM-n`), the sentence without checksum and its period. *OK* refuses a body that cannot
+be framed or an id that belongs to a registry sentence, naming the row.
+
 ### Outputs tab
 
 The list on the left holds the outputs in the order they are opened. *Add* offers every
 transport type, including *Log (timestamped)* for a filtered recording; *Remove* deletes the selected output. The editor on the right shows the
-common fields, *Enabled* and the comma-separated *Sentence filter*, above the fields of the
-selected type as listed in the [transport reference](transports.md). Serial ports found on
-the machine are offered in the port list, and any other device path can be typed.
+common fields, *Enabled*, the comma-separated *Sentence filter*, the *Encoding* and the
+*Period*, above the fields of the selected type as listed in the
+[transport reference](transports.md). Serial ports found on the machine are offered in the
+port list, and any other device path can be typed.
+
+The encoding decides what the output carries and which option group appears below the type
+fields ([profile reference](profile.md#outputs)):
+
+| Encoding | Filter | Option group |
+| --- | --- | --- |
+| NMEA 0183 sentences | Registry and custom sentence ids | *IEC 61162-450 TAG block*: enable, source, include the time, time in milliseconds |
+| Signal K deltas | Path prefixes such as `navigation` | *Signal K*: context (vessel with the AIS MMSI, aircraft, or a custom string) and source label; *Period* sets the delta rate |
+| ViewSync packets | not used | *ViewSync camera*: height above the vessel, tilt, roll, planet; *Period* sets the packet rate |
 
 *OK* is refused, with the reason shown under the tabs, while the track or replay mode has no
 file, a serial output has no port, a file or log output has no path or a TCP client has no

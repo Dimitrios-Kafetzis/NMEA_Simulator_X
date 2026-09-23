@@ -4,6 +4,8 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QSpinBox>
@@ -35,7 +37,26 @@ public:
     QListWidget* list;
     QCheckBox* enabled_check;
     QLineEdit* filter_edit;
+    /// NMEA 0183, Signal K, ViewSync in `io::OutputConfig::Encoding` order.
+    QComboBox* encoding_combo;
+    QSpinBox* period_spin;
     QStackedWidget* editor_stack;
+
+    // Encoding options, shown for the matching encoding.
+    QGroupBox* tag_block_box;
+    QCheckBox* tag_block_check;
+    QLineEdit* tag_source_edit;
+    QCheckBox* tag_time_check;
+    QCheckBox* tag_milliseconds_check;
+    QGroupBox* signalk_box;
+    QComboBox* signalk_context_combo;
+    QLineEdit* signalk_context_edit;
+    QLineEdit* signalk_source_edit;
+    QGroupBox* viewsync_box;
+    QDoubleSpinBox* camera_altitude_spin;
+    QDoubleSpinBox* tilt_spin;
+    QDoubleSpinBox* roll_spin;
+    QComboBox* planet_combo;
 
     // Per-type editors. Tests and the store function read them through these members.
     QLineEdit* bind_address_edit;
@@ -60,6 +81,7 @@ public:
 private:
     void show_output(int index);
     void commit_editor();
+    void update_encoding_widgets();
     void refresh_titles();
     [[nodiscard]] static QString title_of(const io::OutputConfig& output);
     [[nodiscard]] static int page_of(io::OutputConfig::Type type);

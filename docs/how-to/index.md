@@ -9,5 +9,6 @@ Task-oriented instructions for people who already know what they want to achieve
   record or replay a log, or generate test fixtures from the command line.
 - [Follow a track](follow-a-track.md) from a GPX or KML file, on its own timing or at a set
   speed.
+- [Set a destination](set-a-destination.md) so that the autopilot sentences describe a leg.
 - [Connect a Signal K server](signal-k.md) or any Signal K client to the delta stream.
 - [Follow the vessel in Google Earth](google-earth.md) with ViewSync packets.

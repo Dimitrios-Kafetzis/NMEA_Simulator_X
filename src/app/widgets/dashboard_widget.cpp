@@ -2,8 +2,12 @@
 
 #include "instrument_tile.hpp"
 
+#include <nmeasim/core/geo/route.hpp>
+#include <nmeasim/core/units.hpp>
+
 #include <QDateTime>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QTimeZone>
@@ -11,6 +15,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 
 namespace nmeasim::app {
 
@@ -35,6 +40,66 @@ QString format_time(std::chrono::system_clock::time_point time) {
 }
 
 }  // namespace
+
+EngineTile::EngineTile(const QString& text, QWidget* parent)
+    : QFrame(parent),
+      label(new QLabel(text, this)),
+      running_check(new QCheckBox(tr("Running"), this)),
+      rpm_spin(new QDoubleSpinBox(this)),
+      temperature_spin(new QDoubleSpinBox(this)) {
+    setFrameShape(QFrame::StyledPanel);
+    setFrameShadow(QFrame::Raised);
+    QFont title_font = label->font();
+    title_font.setBold(true);
+    label->setFont(title_font);
+    rpm_spin->setRange(0.0, 99999.9);
+    rpm_spin->setDecimals(0);
+    rpm_spin->setSingleStep(100.0);
+    rpm_spin->setSuffix(tr(" rpm"));
+    rpm_spin->setKeyboardTracking(false);
+    temperature_spin->setRange(-50.0, 500.0);
+    temperature_spin->setDecimals(1);
+    temperature_spin->setSuffix(tr(" °C"));
+    temperature_spin->setKeyboardTracking(false);
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(8, 6, 8, 6);
+    layout->addWidget(label);
+    layout->addWidget(running_check);
+    layout->addWidget(rpm_spin);
+    layout->addWidget(temperature_spin);
+    const auto notify = [this] {
+        if (!suppress_signals_) {
+            emit changed();
+        }
+    };
+    connect(running_check, &QCheckBox::toggled, this, notify);
+    connect(rpm_spin, &QDoubleSpinBox::valueChanged, this, notify);
+    connect(temperature_spin, &QDoubleSpinBox::valueChanged, this, notify);
+}
+
+void EngineTile::show_engine(const core::model::Engine& engine) {
+    suppress_signals_ = true;
+    label->setText(QString::fromStdString(engine.label));
+    running_check->setChecked(engine.running);
+    if (!rpm_spin->hasFocus()) {
+        rpm_spin->setValue(engine.revolutions_rpm);
+    }
+    if (!temperature_spin->hasFocus()) {
+        temperature_spin->setValue(engine.coolant_temperature_c);
+    }
+    suppress_signals_ = false;
+}
+
+core::model::Engine EngineTile::engine() const {
+    return {label->text().toStdString(), running_check->isChecked(), rpm_spin->value(),
+            temperature_spin->value()};
+}
+
+void EngineTile::set_editable(bool editable) {
+    running_check->setEnabled(editable);
+    rpm_spin->setEnabled(editable);
+    temperature_spin->setEnabled(editable);
+}
 
 QString format_position(const core::geo::Position& position) {
     return format_coordinate(position.latitude_deg, 2, 'N', 'S') + QStringLiteral("  ") +
@@ -89,8 +154,49 @@ DashboardWidget::DashboardWidget(QWidget* parent) : QWidget(parent) {
                      0.5, 1);
     apparent_wind_tile_ = add_tile(tr("Apparent wind"), QString{}, 4, 2);
 
-    grid->setRowStretch(5, 1);
+    destination_tile_ = add_tile(tr("Destination"), QString{}, 5, 0);
+    static_cast<QGridLayout*>(layout())->addWidget(destination_tile_, 5, 0, 1, 3);
+    destination_tile_->set_text(tr("None"));
+
+    auto* engines_box = new QGroupBox(tr("Engines"), this);
+    engines_row_ = new QHBoxLayout(engines_box);
+    engines_row_->addStretch(1);
+    grid->addWidget(engines_box, 6, 0, 1, 3);
+    grid->setRowStretch(7, 1);
     set_steering_mode(false);
+}
+
+void DashboardWidget::sync_engines(const std::vector<core::model::Engine>& engines) {
+    bool same = engines.size() == engines_.size();
+    for (std::size_t index = 0; same && index < engines.size(); ++index) {
+        same = engines_[index]->label->text() == QString::fromStdString(engines[index].label);
+    }
+    if (same) {
+        return;
+    }
+    for (auto* tile : engines_) {
+        engines_row_->removeWidget(tile);
+        tile->deleteLater();
+    }
+    engines_.clear();
+    for (std::size_t index = 0; index < engines.size(); ++index) {
+        auto* tile = new EngineTile(QString::fromStdString(engines[index].label), this);
+        tile->set_editable(overrides_enabled_);
+        const int position = static_cast<int>(index);
+        connect(tile, &EngineTile::changed, this,
+                [this, tile, position] { emit engine_changed(position, tile->engine()); });
+        engines_row_->insertWidget(position, tile);
+        engines_.push_back(tile);
+    }
+}
+
+EngineTile* DashboardWidget::engine_tile(int index) const {
+    return index >= 0 && index < engine_count() ? engines_[static_cast<std::size_t>(index)]
+                                                : nullptr;
+}
+
+QString DashboardWidget::destination_text() const {
+    return destination_tile_->text();
 }
 
 InstrumentTile* DashboardWidget::add_tile(const QString& title, const QString& unit, int row,
@@ -127,6 +233,23 @@ void DashboardWidget::update_state(const core::model::VesselState& state) {
     apparent_wind_tile_->set_text(tr("%1° at %2 kn")
                                       .arg(state.wind.apparent_angle_deg, 0, 'f', 1)
                                       .arg(state.wind.apparent_speed_kn, 0, 'f', 1));
+    if (state.destination) {
+        const auto leg = core::geo::solve_leg(state.destination->origin,
+                                              state.destination->position, navigation.position);
+        destination_tile_->set_text(
+            tr("%1: bearing %2°, %3 nm, XTE %4 nm %5")
+                .arg(QString::fromStdString(state.destination->name))
+                .arg(leg.bearing_deg, 0, 'f', 1)
+                .arg(leg.distance_m / core::units::kMetresPerNauticalMile, 0, 'f', 2)
+                .arg(std::fabs(leg.cross_track_m) / core::units::kMetresPerNauticalMile, 0, 'f', 2)
+                .arg(leg.cross_track_m > 0.0 ? tr("steer left") : tr("steer right")));
+    } else {
+        destination_tile_->set_text(tr("None"));
+    }
+    sync_engines(state.engines);
+    for (std::size_t index = 0; index < state.engines.size(); ++index) {
+        engines_[index]->show_engine(state.engines[index]);
+    }
 
     const std::map<Parameter, double> values{
         {Parameter::HeadingTrue, navigation.heading_true_deg},
@@ -202,6 +325,9 @@ void DashboardWidget::set_overrides_enabled(bool enabled) {
     }
     fix_check_->setEnabled(enabled);
     satellites_spin_->setEnabled(enabled);
+    for (auto* tile : engines_) {
+        tile->set_editable(enabled);
+    }
     set_steering_mode(steering_mode_);
 }
 

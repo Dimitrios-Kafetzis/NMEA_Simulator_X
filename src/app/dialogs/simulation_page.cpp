@@ -12,6 +12,9 @@
 #include <QTimeZone>
 #include <QVBoxLayout>
 
+#include <initializer_list>
+#include <string>
+
 namespace nmeasim::app {
 
 namespace {
@@ -179,6 +182,28 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     }
     right->addWidget(drift_box);
 
+    auto* destination_box = new QGroupBox(tr("Destination"), content);
+    auto* destination = new QFormLayout(destination_box);
+    destination_check = new QCheckBox(tr("Steer for a waypoint (APB, RMB, XTE)"), destination_box);
+    destination->addRow(destination_check);
+    destination_name_edit = new QLineEdit(destination_box);
+    destination_name_edit->setMaxLength(16);
+    destination_name_edit->setPlaceholderText(QStringLiteral("WPT"));
+    destination->addRow(tr("Waypoint id"), destination_name_edit);
+    destination_latitude_spin = make_double(destination_box, -90.0, 90.0, 0.001, 6, tr("°"));
+    destination->addRow(tr("Latitude"), destination_latitude_spin);
+    destination_longitude_spin = make_double(destination_box, -180.0, 180.0, 0.001, 6, tr("°"));
+    destination->addRow(tr("Longitude"), destination_longitude_spin);
+    arrival_radius_spin = make_double(destination_box, 1.0, 100000.0, 10.0, 0, tr(" m"));
+    destination->addRow(tr("Arrival circle radius"), arrival_radius_spin);
+    for (QWidget* widget :
+         std::initializer_list<QWidget*>{destination_name_edit, destination_latitude_spin,
+                                         destination_longitude_spin, arrival_radius_spin}) {
+        widget->setEnabled(false);
+        connect(destination_check, &QCheckBox::toggled, widget, &QWidget::setEnabled);
+    }
+    right->addWidget(destination_box);
+
     auto* steering_box = new QGroupBox(tr("Steering"), content);
     auto* steering = new QFormLayout(steering_box);
     turn_rate_spin = make_double(steering_box, 0.0, 100.0, 0.1, 2, tr(" °/min per °"));
@@ -291,6 +316,19 @@ void SimulationPage::load(const io::Profile& profile) {
     }
     turn_rate_spin->setValue(delta.turn_rate_per_rudder_deg);
     max_rudder_spin->setValue(delta.max_rudder_angle_deg);
+
+    destination_check->setChecked(seed.destination.has_value());
+    if (seed.destination) {
+        destination_name_edit->setText(QString::fromStdString(seed.destination->name));
+        destination_latitude_spin->setValue(seed.destination->position.latitude_deg);
+        destination_longitude_spin->setValue(seed.destination->position.longitude_deg);
+        arrival_radius_spin->setValue(seed.destination->arrival_radius_m);
+    } else {
+        destination_name_edit->clear();
+        destination_latitude_spin->setValue(seed.navigation.position.latitude_deg);
+        destination_longitude_spin->setValue(seed.navigation.position.longitude_deg);
+        arrival_radius_spin->setValue(100.0);
+    }
 }
 
 void SimulationPage::store(io::Profile& profile) const {
@@ -347,6 +385,24 @@ void SimulationPage::store(io::Profile& profile) const {
     }
     delta.turn_rate_per_rudder_deg = turn_rate_spin->value();
     delta.max_rudder_angle_deg = max_rudder_spin->value();
+
+    if (destination_check->isChecked()) {
+        core::model::Destination destination;
+        const QString name = destination_name_edit->text().trimmed();
+        destination.name = name.isEmpty() ? std::string{"WPT"} : name.toStdString();
+        destination.position = {destination_latitude_spin->value(),
+                                destination_longitude_spin->value()};
+        // A leg that already exists keeps its origin; a new one starts at the seed position.
+        const bool same_destination =
+            seed.destination &&
+            seed.destination->position.latitude_deg == destination.position.latitude_deg &&
+            seed.destination->position.longitude_deg == destination.position.longitude_deg;
+        destination.origin = same_destination ? seed.destination->origin : seed.navigation.position;
+        destination.arrival_radius_m = arrival_radius_spin->value();
+        seed.destination = destination;
+    } else {
+        seed.destination.reset();
+    }
 }
 
 }  // namespace nmeasim::app

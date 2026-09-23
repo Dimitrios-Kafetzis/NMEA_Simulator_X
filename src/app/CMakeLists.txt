@@ -15,6 +15,8 @@ add_library(nmeasim_app_lib STATIC
     dialogs/settings_dialog.hpp
     dialogs/simulation_page.cpp
     dialogs/simulation_page.hpp
+    dialogs/vessel_page.cpp
+    dialogs/vessel_page.hpp
     main_window.cpp
     main_window.hpp
     map/map_widget.cpp

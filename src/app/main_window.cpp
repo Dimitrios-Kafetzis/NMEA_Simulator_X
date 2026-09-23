@@ -27,7 +27,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <limits>
+#include <optional>
+#include <string>
 
 namespace nmeasim::app {
 
@@ -58,6 +61,9 @@ MainWindow::MainWindow(QWidget* parent)
                                    static_cast<qsizetype>(core::kVersion.size()))));
     map_->set_zoom(settings_.map_zoom());
     connect(map_, &map::MapWidget::position_picked, this, &MainWindow::move_vessel);
+    connect(map_, &map::MapWidget::destination_picked, this,
+            [this](core::geo::Position position) { set_destination(position); });
+    connect(map_, &map::MapWidget::destination_cleared, this, &MainWindow::clear_destination);
     connect(map_, &map::MapWidget::view_changed, this,
             [this] { settings_.set_map_zoom(map_->zoom()); });
 
@@ -116,6 +122,13 @@ MainWindow::MainWindow(QWidget* parent)
             source->set_satellites(in_use, source->current().gnss.satellites_in_view);
         }
     });
+    connect(dashboard_, &DashboardWidget::engine_changed, this,
+            [this](int index, const core::model::Engine& engine) {
+                if (auto* source = delta_source()) {
+                    source->set_engine(static_cast<std::size_t>(index), engine);
+                    refresh_view();
+                }
+            });
 
     restoreGeometry(settings_.window_geometry());
     restoreState(settings_.window_state());
@@ -198,6 +211,10 @@ void MainWindow::build_actions() {
     steering_action_->setToolTip(
         tr("Steer with the rudder (left and right arrows) instead of setting the heading"));
     connect(steering_action_, &QAction::toggled, this, &MainWindow::toggle_steering);
+    clear_destination_action_ = new QAction(tr("Clear destination"), this);
+    clear_destination_action_->setToolTip(
+        tr("Stop steering for the waypoint; APB, RMB and XTE are no longer sent"));
+    connect(clear_destination_action_, &QAction::triggered, this, &MainWindow::clear_destination);
     autostart_action_ = new QAction(tr("Start automatically on launch"), this);
     autostart_action_->setCheckable(true);
     connect(autostart_action_, &QAction::toggled, this,
@@ -228,6 +245,8 @@ void MainWindow::build_actions() {
     auto* simulation_menu = menuBar()->addMenu(tr("&Simulation"));
     simulation_menu->addActions({run_action_, pause_action_, step_action_, steering_action_});
     simulation_menu->addSeparator();
+    simulation_menu->addAction(clear_destination_action_);
+    simulation_menu->addSeparator();
     simulation_menu->addAction(autostart_action_);
     auto* help_menu = menuBar()->addMenu(tr("&Help"));
     help_menu->addAction(about_action);
@@ -250,6 +269,37 @@ void MainWindow::move_vessel(core::geo::Position position) {
     }
     map_->set_center(position);
     statusBar()->showMessage(tr("Vessel moved to %1").arg(format_position(position)), 3000);
+}
+
+void MainWindow::set_destination(core::geo::Position position, const QString& name) {
+    core::model::Destination destination;
+    destination.name = name.isEmpty() ? std::string{"WPT"} : name.toStdString();
+    destination.position = position;
+    destination.origin = profile_.delta.seed.navigation.position;
+    if (const auto* simulation = runner_.simulation()) {
+        destination.origin = simulation->state().navigation.position;
+    }
+    if (profile_.delta.seed.destination) {
+        destination.arrival_radius_m = profile_.delta.seed.destination->arrival_radius_m;
+    }
+    profile_.delta.seed.destination = destination;
+    if (auto* simulation = runner_.simulation()) {
+        simulation->source().set_destination(destination);
+    }
+    refresh_view();
+    statusBar()->showMessage(
+        tr("Destination %1 set at %2")
+            .arg(QString::fromStdString(destination.name), format_position(position)),
+        3000);
+}
+
+void MainWindow::clear_destination() {
+    profile_.delta.seed.destination.reset();
+    if (auto* simulation = runner_.simulation()) {
+        simulation->source().set_destination(std::nullopt);
+    }
+    refresh_view();
+    statusBar()->showMessage(tr("Destination cleared"), 3000);
 }
 
 QString MainWindow::format_duration(std::chrono::milliseconds duration) {
@@ -277,6 +327,12 @@ void MainWindow::refresh_view() {
     dashboard_->update_state(state);
     map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
                      state.navigation.course_over_ground_deg);
+    if (state.destination) {
+        map_->set_destination(state.destination->position, state.destination->origin);
+    } else {
+        map_->set_destination(std::nullopt, std::nullopt);
+    }
+    clear_destination_action_->setEnabled(state.destination.has_value());
 }
 
 void MainWindow::refresh_transport() {

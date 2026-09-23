@@ -236,3 +236,30 @@ TEST_CASE("the main window replays a log to its end and records a session",
     CHECK_FALSE(window.record_action()->isChecked());
     window.stop();
 }
+
+TEST_CASE("engine tiles on the dashboard drive the engines of the delta source",
+          "[app][integration]") {
+    nmeasim::app::MainWindow window;
+    window.set_profile(quick_profile());
+    REQUIRE(window.dashboard()->engine_count() == 2);
+    auto* tile = window.dashboard()->engine_tile(1);
+    REQUIRE(tile != nullptr);
+    CHECK(tile->label->text() == QStringLiteral("Starboard engine"));
+    CHECK(tile->running_check->isChecked());
+    tile->rpm_spin->setValue(2500.0);
+    tile->running_check->setChecked(false);
+    auto* source = dynamic_cast<sim::DeltaSource*>(&window.runner().simulation()->source());
+    REQUIRE(source != nullptr);
+    CHECK(source->current().engines[1].revolutions_rpm == Approx(2500.0));
+    CHECK_FALSE(source->current().engines[1].running);
+
+    // A profile with one engine rebuilds the tiles; a track disables them.
+    auto profile = quick_profile();
+    profile.delta.seed.engines = {{"Main", true, 900.0, 60.0}};
+    window.set_profile(profile);
+    REQUIRE(window.dashboard()->engine_count() == 1);
+    CHECK(window.dashboard()->engine_tile(0)->label->text() == QStringLiteral("Main"));
+    CHECK(window.dashboard()->engine_tile(0)->rpm_spin->isEnabled());
+    REQUIRE(window.load_track(fixture("tracks/timestamped.gpx")));
+    CHECK_FALSE(window.dashboard()->engine_tile(0)->rpm_spin->isEnabled());
+}

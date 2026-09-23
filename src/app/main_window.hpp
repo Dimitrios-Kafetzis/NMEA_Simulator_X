@@ -68,6 +68,13 @@ public:
     /// Moves the vessel to a position, both in the running simulation and in the profile
     /// seed so that saving keeps it.
     void move_vessel(core::geo::Position position);
+    /// Steers for a waypoint at `position`: the leg starts where the vessel is now. The
+    /// destination is applied to the running source and kept in the profile seed.
+    void set_destination(core::geo::Position position, const QString& name = {});
+    void clear_destination();
+    [[nodiscard]] QAction* clear_destination_action() const noexcept {
+        return clear_destination_action_;
+    }
 
 signals:
     /// Raised for every problem the window reports to the operator, so that hosts and tests
@@ -133,6 +140,7 @@ private:
     QAction* run_action_{nullptr};
     QAction* pause_action_{nullptr};
     QAction* steering_action_{nullptr};
+    QAction* clear_destination_action_{nullptr};
     QAction* autostart_action_{nullptr};
     QAction* follow_action_{nullptr};
     QAction* online_tiles_action_{nullptr};
