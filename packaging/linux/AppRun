@@ -9,6 +9,13 @@
 # plugin hooks first.
 HERE="$(dirname "$(readlink -f "$0")")"
 
+# linuxdeploy's Qt hook asks for the gtk2 theme on GNOME and Xfce, which Qt 6 does not have.
+# The desktop portal theme gives the desktop's own file dialogs and follows its light or dark
+# style instead.
+if [ "${QT_QPA_PLATFORMTHEME:-}" = "gtk2" ]; then
+    export QT_QPA_PLATFORMTHEME=xdgdesktopportal
+fi
+
 if [ "$(basename "${ARGV0:-$0}")" = "nmeasim" ]; then
     exec "$HERE/usr/bin/nmeasim" "$@"
 fi

@@ -32,6 +32,11 @@ set(ENV{LD_LIBRARY_PATH} "${qt_libs}:$ENV{LD_LIBRARY_PATH}")
 # Platform plugins beyond xcb are only deployed when asked for: Wayland for modern desktops,
 # offscreen for headless smoke tests (QT_QPA_PLATFORM=offscreen).
 set(ENV{EXTRA_PLATFORM_PLUGINS} "libqwayland.so;libqoffscreen.so")
+# The Wayland platform plugin cannot open a window without the shell integration plugins
+# (xdg-shell) and draws no title bar without a decoration plugin; the waylandcompositor module
+# makes the Qt plugin deploy wayland-shell-integration, wayland-decoration-client and
+# wayland-graphics-integration-client. Without them Qt falls back to X11 through XWayland.
+set(ENV{EXTRA_QT_MODULES} "waylandcompositor")
 set(ENV{LINUXDEPLOY_OUTPUT_VERSION} "${CPACK_NMEASIM_PACKAGE_VERSION}")
 set(ENV{OUTPUT} "${output}")
 set(ENV{ARCH} "${CPACK_NMEASIM_ARCH}")
