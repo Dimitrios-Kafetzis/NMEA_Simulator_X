@@ -6,9 +6,10 @@ environment, propulsion and AIS data over serial, TCP, UDP and WebSocket connect
 chart plotters, instrument displays, gateways and marine software can be developed and tested
 on a desk.
 
-!!! warning "Pre-alpha"
-    The project is under construction. Follow the [roadmap](development/roadmap.md) to see
-    which milestone is in progress.
+![The dashboard, map, console and outputs of a running simulation](assets/screenshots/main-window.png)
+
+**Get started:** [install it](how-to/install.md) on Windows, macOS or Linux, then follow
+[your first simulated voyage](tutorials/first-voyage.md).
 
 ## How this documentation is organised
 
@@ -27,7 +28,11 @@ answers a different kind of question.
 ## Key facts
 
 - **Language and toolkit:** C++20 with Qt 6 Widgets. No web technologies.
-- **Platforms:** Windows 10 and later, macOS 13 and later, Linux with glibc 2.35 or later.
+- **Platforms:** Windows 10 1809 and later (x64), macOS 13.3 and later (Apple Silicon and
+  Intel), Linux x86_64 and aarch64 as an AppImage (glibc 2.39 or later) or as a Flatpak on any
+  distribution.
 - **License:** GPL-3.0. Qt is linked dynamically under the LGPL v3.
-- **Distribution:** unsigned, free downloads from GitHub Releases plus package managers.
+- **Distribution:** unsigned, free downloads from GitHub Releases with SHA-256 checksums,
+  plus manifests for winget, Scoop, Homebrew and Flathub.
+- **API:** the `core` and `io` libraries are documented in the [C++ API reference](reference/api.md).
 - **Headless mode:** the `nmeasim` command-line tool runs the same engine without a display.

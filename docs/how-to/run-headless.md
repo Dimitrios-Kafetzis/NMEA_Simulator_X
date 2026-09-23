@@ -95,8 +95,11 @@ The [log file reference](../reference/log-format.md) lists the accepted line sha
 nmeasim run --stdout --quiet --duration 10 --rate 1000 > fixture.nmea
 ```
 
-The stream is deterministic for a given profile and random seed, apart from the timestamps
-when `start_time` is `"now"`. Set `start_time` in the profile for fully reproducible files.
+With `start_time` set in the profile, the time fields are the same in every run; the drifting
+values follow the random seed but integrate real step lengths, so their last digit can
+differ between runs. Record a fixture once and commit it; the tutorial
+[Building a test fixture from a recorded log](../tutorials/test-fixture-from-a-log.md) walks
+through it.
 
 ## Validate the stream with an independent parser
 

@@ -100,12 +100,15 @@ Several transports can run at once, for example a serial port carrying NMEA 0183
 WebSocket server carrying Signal K. Supported transports: serial port, TCP server, TCP client,
 UDP unicast, broadcast and multicast with interface selection, WebSocket server, file.
 
-## Control bus
+## Control bus (planned)
 
-Every action a user can take is a command on the control bus: start, stop, pause, set a value,
-override a value, steer, load a track. The desktop application, the CLI's standard input and
-an optional local HTTP/WebSocket control endpoint all speak the same command vocabulary, so
-external tools can automate the simulator.
+The intended design is that every action a user can take becomes a command on a control bus:
+start, stop, pause, set a value, override a value, steer, load a track. The desktop
+application, the CLI's standard input and an optional local HTTP/WebSocket control endpoint
+would all speak the same command vocabulary, so that external tools can automate the
+simulator. It is not part of 1.0 and is listed on the [roadmap](../development/roadmap.md)
+under *After 1.0*: today the desktop application drives the `SimulationRunner` directly, and
+the CLI is configured by its arguments and a profile.
 
 ## Persistence
 

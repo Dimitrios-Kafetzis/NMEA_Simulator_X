@@ -8,6 +8,10 @@ Tutorials are step-by-step lessons that take a newcomer from nothing to a workin
   own timing or at a speed of your choice, and jump around in it.
 - [Recording and replaying a log](recording-and-replaying-a-log.md): capture a session and
   play it back with pause, step and seek, and replay logs from other programs.
+- [Feeding OpenCPN and a Signal K server at once](opencpn-and-signal-k.md): one profile with
+  an NMEA 0183 output for a chart plotter and a Signal K output for a server, from the same
+  vessel.
+- [Building a test fixture from a recorded log](test-fixture-from-a-log.md): record a
+  scenario once, check it with an independent parser and replay it in automated tests.
 
-The [build from source guide](../how-to/build-from-source.md) explains how to get a build
-until installers are published.
+Start by [installing the application](../how-to/install.md).
