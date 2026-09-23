@@ -41,12 +41,14 @@ TEST_CASE("stepping advances time, state and emits due sentences", "[simulation]
         CHECK(nmeasim::core::nmea0183::verify_checksum(sentence.text));
     }
 
-    CHECK(simulation.step(100ms).empty());
+    // The first step sent the sentences due at 0 ms; the next ones are due one period later,
+    // at 1000 ms, however late the step that sent the first ones was.
     for (int i = 0; i < 8; ++i) {
-        (void)simulation.step(100ms);
+        CHECK(simulation.step(100ms).empty());
     }
-    CHECK(simulation.elapsed() == 1000ms);
     CHECK(simulation.step(100ms).size() == first.size());
+    CHECK(simulation.elapsed() == 1000ms);
+    CHECK(simulation.step(100ms).empty());
 
     const auto& state = simulation.state();
     CHECK(state.time_utc - nmeasim::test::fixture_state().time_utc == 1100ms);
@@ -59,9 +61,9 @@ TEST_CASE("the schedule and source can be reconfigured through the simulation", 
     auto& source = dynamic_cast<sim::DeltaSource&>(simulation.source());
     source.set_override(sim::Parameter::HeadingTrue, 90.0);
 
-    (void)simulation.step(100ms);  // everything is due on the first step, next due at 600 ms
+    (void)simulation.step(100ms);  // everything is due on the first step, next due at 500 ms
     CHECK(simulation.state().navigation.heading_true_deg == Approx(90.0));
-    CHECK(simulation.step(400ms).empty());
+    CHECK(simulation.step(300ms).empty());
     CHECK_FALSE(simulation.step(100ms).empty());
     CHECK_FALSE(simulation.finished());
 }

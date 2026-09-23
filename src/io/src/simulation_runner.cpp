@@ -3,6 +3,7 @@
 #include <nmeasim/core/signalk/delta.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
 #include <nmeasim/core/simulation/replay_source.hpp>
+#include <nmeasim/core/simulation/sentence_scheduler.hpp>
 #include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/core/track/track_file.hpp>
 #include <nmeasim/core/viewsync/viewsync.hpp>
@@ -210,7 +211,7 @@ void SimulationRunner::start() {
         (void)recorder_->open();
     }
     paused_ = false;
-    wall_clock_.start();
+    restart_wall_clock();
     tick_timer_.start(profile_.tick_ms);
     emit started();
 }
@@ -228,7 +229,7 @@ void SimulationRunner::resume() {
         return;
     }
     paused_ = false;
-    wall_clock_.restart();
+    restart_wall_clock();
     emit paused_changed(false);
 }
 
@@ -267,7 +268,7 @@ void SimulationRunner::seek(std::chrono::milliseconds position) {
         return;
     }
     simulation_->seek(position);
-    wall_clock_.restart();
+    restart_wall_clock();
     emit ticked();
 }
 
@@ -346,7 +347,8 @@ void SimulationRunner::emit_state_messages() {
             now < channel.next_due) {
             continue;
         }
-        channel.next_due = now + std::chrono::milliseconds{channel.config.period_ms};
+        channel.next_due = core::simulation::next_due_after(
+            channel.next_due, now, std::chrono::milliseconds{channel.config.period_ms});
         std::string message;
         QString id;
         if (channel.config.encoding == OutputConfig::Encoding::SignalK) {
@@ -376,12 +378,28 @@ void SimulationRunner::finish_if_done() {
     }
 }
 
+void SimulationRunner::restart_wall_clock() {
+    wall_clock_.start();
+    wall_consumed_ = std::chrono::nanoseconds{0};
+}
+
 void SimulationRunner::tick() {
     if (paused_ || !simulation_) {
         return;
     }
-    const auto elapsed = std::chrono::milliseconds{wall_clock_.restart()};
-    const auto dt = std::clamp(elapsed, std::chrono::milliseconds{1}, kMaxStep);
+    // Hand the simulation whole milliseconds of wall-clock time and carry the fraction to the
+    // next tick, so that the simulated clock keeps pace with the real one.
+    const auto wall = std::chrono::nanoseconds{wall_clock_.nsecsElapsed()};
+    auto dt = std::chrono::floor<std::chrono::milliseconds>(wall - wall_consumed_);
+    if (dt < std::chrono::milliseconds{1}) {
+        return;
+    }
+    if (dt > kMaxStep) {
+        dt = kMaxStep;
+        wall_consumed_ = wall;
+    } else {
+        wall_consumed_ += dt;
+    }
 
     emit_sentences(simulation_->step(dt));
     emit_state_messages();

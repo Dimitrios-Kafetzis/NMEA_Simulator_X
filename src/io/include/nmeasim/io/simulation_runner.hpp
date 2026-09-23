@@ -148,6 +148,7 @@ private:
     void emit_state_messages();
     void finish_if_done();
     void refresh_greetings();
+    void restart_wall_clock();
     std::unique_ptr<Transport> make_transport(const OutputConfig& config) const;
     std::unique_ptr<core::simulation::Source> make_source(const Profile& profile,
                                                           QString* error) const;
@@ -158,6 +159,8 @@ private:
     std::unique_ptr<LogTransport> recorder_;
     QTimer tick_timer_;
     QElapsedTimer wall_clock_;
+    /// Wall-clock time since `wall_clock_` started that has been handed to the simulation.
+    std::chrono::nanoseconds wall_consumed_{0};
     bool paused_{false};
     qint64 sentences_emitted_{0};
 };

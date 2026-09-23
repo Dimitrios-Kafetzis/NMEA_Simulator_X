@@ -26,6 +26,14 @@ struct SentenceSetting {
     std::chrono::milliseconds period{1000};
 };
 
+/// Next due time of a periodic message that was due at `due` and is sent at `now` (`now` is
+/// at or after `due`): one `period` after `due`, so that the cadence follows the simulated
+/// clock even when steps arrive slightly late, or one `period` after `now` when the message
+/// is more than a period behind, so that a stalled host does not send a burst to catch up.
+[[nodiscard]] std::chrono::milliseconds next_due_after(std::chrono::milliseconds due,
+                                                       std::chrono::milliseconds now,
+                                                       std::chrono::milliseconds period) noexcept;
+
 /// Per-sentence enable flags, talkers and periods, plus the operator's custom sentences, with
 /// the time each one is next due.
 class SentenceScheduler {
