@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [1.1.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v1.0.1...v1.1.0) (2026-09-23)
+
+
+### Features
+
+* **app:** add a compass rose and a wind dial to the dashboard ([#40](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/40)) ([eb2a51b](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/eb2a51bb3c5132fb00026f2f04025a60989fb1cb))
+* **app:** add night bridge and daylight themes with icons, status lights and a coloured console ([#38](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/38)) ([137d2fb](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/137d2fb445e6fcabb1d7da0b74f2045860dc6388))
+* **app:** zoom the map smoothly and add scale bar, zoom buttons and position readout ([#41](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/41)) ([331b0d1](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/331b0d133e78f23105d43a25bcb97093179953ef))
+
+
+### Bug Fixes
+
+* **app:** zoom the map with touchpads and stop drawing a line when the vessel is moved ([#37](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/37)) ([5354d8c](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/5354d8c7f7bde270af62c6fcd9a68a1602de3212))
+
+
+### Documentation
+
+* show the redesigned interface in both themes ([#42](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/42)) ([a9b057b](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/a9b057b8c2e830e153a764d2cee6f3e63a36037e))
+
 ## [1.0.1](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v1.0.0...v1.0.1) (2026-09-23)
 
 
