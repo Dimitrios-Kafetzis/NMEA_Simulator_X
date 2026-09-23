@@ -79,6 +79,8 @@ nav:
       - Profile file format: reference/profile.md
       - NMEA 0183 sentences: reference/nmea0183-sentences.md
       - AIS messages: reference/ais.md
+      - Signal K output: reference/signalk.md
+      - ViewSync output: reference/viewsync.md
       - Transports: reference/transports.md
       - Track files: reference/track-files.md
       - Log files: reference/log-format.md
@@ -102,6 +104,7 @@ nav:
       - "0011 Track and replay sources": adr/0011-track-and-replay-sources.md
       - "0012 Log file format": adr/0012-log-file-format.md
       - "0013 AIS encoder": adr/0013-ais-encoder.md
+      - "0014 Multi-encoding outputs": adr/0014-multi-encoding-outputs.md
   - Development:
       - development/index.md
       - Coding standards: development/coding-standards.md

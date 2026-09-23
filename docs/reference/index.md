@@ -10,8 +10,8 @@ Precise, exhaustive descriptions of what the software does.
   fields and an example line.
 - [AIS messages](ais.md): the own-vessel position and static data reports, their framing in
   VDO and VDM sentences and every bit field.
+- [Signal K output](signalk.md): the hello and delta messages and every path published.
+- [ViewSync output](viewsync.md): the packet Google Earth and Liquid Galaxy receive.
 - [Transports](transports.md): every output channel, its settings and behaviour.
 - [Track files](track-files.md): what is read from GPX and KML files.
 - [Log files](log-format.md): what the recorder writes and what the replay reads.
-
-Signal K paths and the ViewSync packet layout are documented here as those features land.

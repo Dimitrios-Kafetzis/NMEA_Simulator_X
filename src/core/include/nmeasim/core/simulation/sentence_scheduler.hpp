@@ -2,6 +2,7 @@
 
 #include <nmeasim/core/model/vessel_state.hpp>
 #include <nmeasim/core/nmea0183/registry.hpp>
+#include <nmeasim/core/simulation/custom_sentence.hpp>
 #include <nmeasim/core/simulation/emitted_sentence.hpp>
 
 #include <chrono>
@@ -46,6 +47,14 @@ public:
     [[nodiscard]] nmea0183::EncoderOptions encoder_options() const noexcept { return options_; }
     void set_encoder_options(nmea0183::EncoderOptions options) noexcept { options_ = options; }
 
+    /// Replaces the operator's custom sentences. Bodies that cannot be framed and ids that
+    /// clash with a registry id are dropped; empty ids become `CUSTOM-n`, numbered from 1 in
+    /// list order. Custom sentences are emitted after the registry ones.
+    void set_custom_sentences(const std::vector<CustomSentence>& sentences);
+    [[nodiscard]] const std::vector<CustomSentence>& custom_sentences() const noexcept {
+        return custom_;
+    }
+
     /// Encodes every enabled sentence that is due at `now` (time since start) and schedules
     /// its next emission. Sentences are returned without line terminators, in registry order.
     [[nodiscard]] std::vector<EmittedSentence> due(std::chrono::milliseconds now,
@@ -63,9 +72,17 @@ private:
         std::chrono::milliseconds next_due{0};
     };
 
+    struct CustomEntry {
+        CustomSentence sentence;
+        std::string framed;
+        std::chrono::milliseconds next_due{0};
+    };
+
     const nmea0183::SentenceRegistry* registry_;
     std::map<std::string, Entry, std::less<>> entries_;
     nmea0183::EncoderOptions options_{};
+    std::vector<CustomSentence> custom_;
+    std::vector<CustomEntry> custom_entries_;
 };
 
 }  // namespace nmeasim::core::simulation

@@ -1,5 +1,8 @@
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
 
+#include <cstddef>
+#include <string>
+
 namespace nmeasim::core::simulation {
 
 SentenceScheduler::SentenceScheduler(const nmea0183::SentenceRegistry& registry)
@@ -75,6 +78,28 @@ void append_encoded(std::vector<EmittedSentence>& sentences, std::string_view id
 
 }  // namespace
 
+void SentenceScheduler::set_custom_sentences(const std::vector<CustomSentence>& sentences) {
+    custom_.clear();
+    custom_entries_.clear();
+    std::size_t number = 0;
+    for (const auto& sentence : sentences) {
+        ++number;
+        CustomSentence accepted = sentence;
+        if (accepted.id.empty()) {
+            accepted.id = "CUSTOM-" + std::to_string(number);
+        }
+        const auto framed = frame_custom_sentence(accepted.body);
+        if (!framed || registry_->find(accepted.id) != nullptr) {
+            continue;
+        }
+        if (accepted.period.count() <= 0) {
+            accepted.period = std::chrono::milliseconds{1000};
+        }
+        custom_.push_back(accepted);
+        custom_entries_.push_back({accepted, *framed, std::chrono::milliseconds{0}});
+    }
+}
+
 std::vector<EmittedSentence> SentenceScheduler::due(std::chrono::milliseconds now,
                                                     const model::VesselState& state) {
     std::vector<EmittedSentence> sentences;
@@ -90,6 +115,13 @@ std::vector<EmittedSentence> SentenceScheduler::due(std::chrono::milliseconds no
                        nmea0183::encode_within_limit(descriptor, state,
                                                      effective_talker(descriptor), options_));
     }
+    for (auto& entry : custom_entries_) {
+        if (!entry.sentence.enabled || now < entry.next_due) {
+            continue;
+        }
+        entry.next_due = now + entry.sentence.period;
+        sentences.push_back({entry.sentence.id, entry.framed});
+    }
     return sentences;
 }
 
@@ -103,11 +135,19 @@ std::vector<EmittedSentence> SentenceScheduler::encode_all(const model::VesselSt
                        nmea0183::encode_within_limit(descriptor, state,
                                                      effective_talker(descriptor), options_));
     }
+    for (const auto& entry : custom_entries_) {
+        if (entry.sentence.enabled) {
+            sentences.push_back({entry.sentence.id, entry.framed});
+        }
+    }
     return sentences;
 }
 
 void SentenceScheduler::reset() {
     for (auto& [id, entry] : entries_) {
+        entry.next_due = std::chrono::milliseconds{0};
+    }
+    for (auto& entry : custom_entries_) {
         entry.next_due = std::chrono::milliseconds{0};
     }
 }
