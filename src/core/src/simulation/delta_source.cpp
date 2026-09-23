@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <utility>
 
 namespace nmeasim::core::simulation {
 
@@ -100,6 +102,29 @@ void DeltaSource::nudge(Parameter parameter, double delta) {
 
 void DeltaSource::set_position(geo::Position position) {
     state_.navigation.position = position;
+}
+
+void DeltaSource::set_destination(std::optional<model::Destination> destination) {
+    config_.seed.destination = destination;
+    state_.destination = std::move(destination);
+}
+
+void DeltaSource::set_engine(std::size_t index, model::Engine engine) {
+    for (auto* engines : {&config_.seed.engines, &state_.engines}) {
+        if (index < engines->size()) {
+            (*engines)[index] = engine;
+        } else {
+            engines->push_back(engine);
+        }
+    }
+}
+
+void DeltaSource::remove_engine(std::size_t index) {
+    for (auto* engines : {&config_.seed.engines, &state_.engines}) {
+        if (index < engines->size()) {
+            engines->erase(engines->begin() + static_cast<std::ptrdiff_t>(index));
+        }
+    }
 }
 
 void DeltaSource::set_satellites(int in_use, int in_view) noexcept {

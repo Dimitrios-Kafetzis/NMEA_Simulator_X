@@ -1,3 +1,4 @@
+#include <nmeasim/core/geo/route.hpp>
 #include <nmeasim/core/nmea0183/encoders.hpp>
 #include <nmeasim/core/nmea0183/fields.hpp>
 #include <nmeasim/core/nmea0183/sentence_builder.hpp>
@@ -7,6 +8,7 @@
 #include <array>
 #include <cmath>
 #include <numbers>
+#include <string>
 
 namespace nmeasim::core::nmea0183 {
 
@@ -48,6 +50,45 @@ SentenceBuilder& add_position(SentenceBuilder& builder, const EncoderContext& co
 
 double degrees_to_radians(double degrees) {
     return degrees * std::numbers::pi / 180.0;
+}
+
+/// Values shared by the autopilot sentences for the current destination.
+struct AutopilotView {
+    std::string name;
+    geo::LegSolution leg;
+    /// Cross-track error magnitude in nautical miles and the side to steer to.
+    double cross_track_nm;
+    char steer;
+    bool arrived;
+    bool perpendicular_passed;
+};
+
+AutopilotView autopilot_view(const model::VesselState& state) {
+    const auto& destination = *state.destination;
+    AutopilotView view;
+    view.name = sanitize_waypoint_name(destination.name);
+    view.leg = geo::solve_leg(destination.origin, destination.position, state.navigation.position);
+    view.cross_track_nm = std::fabs(view.leg.cross_track_m) / units::kMetresPerNauticalMile;
+    // A vessel to the right of the leg steers left to regain it.
+    view.steer = view.leg.cross_track_m > 0.0 ? 'L' : 'R';
+    view.arrived = view.leg.distance_m <= destination.arrival_radius_m;
+    view.perpendicular_passed = view.leg.along_track_m >= view.leg.leg_length_m;
+    return view;
+}
+
+char valid(bool flag) noexcept {
+    return flag ? 'A' : 'V';
+}
+
+/// The engine number sent in RPM: engines are numbered from 1 in profile order.
+int engine_number(std::size_t index) noexcept {
+    return static_cast<int>(index) + 1;
+}
+
+/// The transducer identifier sent in XDR, following the ENGINE#n convention of Signal K and
+/// common gateways, numbered from 0 in profile order.
+std::string transducer_id(std::size_t index) {
+    return "ENGINE#" + std::to_string(index);
 }
 
 }  // namespace
@@ -343,6 +384,139 @@ std::vector<std::string> encode_rsa(const EncoderContext& context) {
     SentenceBuilder builder(context.talker, "RSA");
     builder.field(context.state.steering.rudder_angle_deg, 1).field('A').empty().field('V');
     return {builder.build()};
+}
+
+// ---------------------------------------------------------------------------------------------
+// Autopilot
+
+std::string sanitize_waypoint_name(std::string_view name) {
+    std::string result;
+    for (const char c : name) {
+        const bool printable = c > ' ' && c <= '~';
+        const bool reserved =
+            c == ',' || c == '*' || c == '$' || c == '!' || c == '\\' || c == '^' || c == '~';
+        if (printable && !reserved) {
+            result += c;
+        }
+        if (result.size() == model::kMaxWaypointNameLength) {
+            break;
+        }
+    }
+    return result.empty() ? "WPT" : result;
+}
+
+std::vector<std::string> encode_apb(const EncoderContext& context) {
+    const auto& state = context.state;
+    if (!state.destination) {
+        return {};
+    }
+    const auto view = autopilot_view(state);
+    SentenceBuilder builder(context.talker, "APB");
+    builder.field('A')
+        .field('A')
+        .field(view.cross_track_nm, 2)
+        .field(view.steer)
+        .field('N')
+        .field(valid(view.arrived))
+        .field(valid(view.perpendicular_passed))
+        .field(view.leg.leg_bearing_deg, 1)
+        .field('T')
+        .field(view.name)
+        .field(view.leg.bearing_deg, 1)
+        .field('T')
+        .field(view.leg.bearing_deg, 1)
+        .field('T')
+        .field(mode_indicator(state.gnss));
+    return {builder.build()};
+}
+
+std::vector<std::string> encode_rmb(const EncoderContext& context) {
+    const auto& state = context.state;
+    if (!state.destination) {
+        return {};
+    }
+    const auto view = autopilot_view(state);
+    const auto& navigation = state.navigation;
+    const auto lat = format_latitude(state.destination->position.latitude_deg,
+                                     context.options.position_decimals);
+    const auto lon = format_longitude(state.destination->position.longitude_deg,
+                                      context.options.position_decimals);
+    const double range_nm = std::min(view.leg.distance_m / units::kMetresPerNauticalMile, 999.9);
+    const double closing_kn =
+        navigation.speed_over_ground_kn *
+        std::cos(degrees_to_radians(navigation.course_over_ground_deg - view.leg.bearing_deg));
+    SentenceBuilder builder(context.talker, "RMB");
+    builder.field('A')
+        .field(view.cross_track_nm, 2)
+        .field(view.steer)
+        .empty()
+        .field(view.name)
+        .field(lat.value)
+        .field(lat.hemisphere)
+        .field(lon.value)
+        .field(lon.hemisphere)
+        .field(range_nm, 1)
+        .field(view.leg.bearing_deg, 1)
+        .field(closing_kn, 1)
+        .field(valid(view.arrived))
+        .field(mode_indicator(state.gnss));
+    return {builder.build()};
+}
+
+std::vector<std::string> encode_xte(const EncoderContext& context) {
+    const auto& state = context.state;
+    if (!state.destination) {
+        return {};
+    }
+    const auto view = autopilot_view(state);
+    SentenceBuilder builder(context.talker, "XTE");
+    builder.field('A')
+        .field('A')
+        .field(view.cross_track_nm, 2)
+        .field(view.steer)
+        .field('N')
+        .field(mode_indicator(state.gnss));
+    return {builder.build()};
+}
+
+// ---------------------------------------------------------------------------------------------
+// Propulsion
+
+std::vector<std::string> encode_rpm(const EncoderContext& context) {
+    std::vector<std::string> sentences;
+    const auto& engines = context.state.engines;
+    sentences.reserve(engines.size());
+    for (std::size_t index = 0; index < engines.size(); ++index) {
+        const auto& engine = engines[index];
+        SentenceBuilder builder(context.talker, "RPM");
+        builder.field('E')
+            .field(engine_number(index))
+            .field(engine.running ? engine.revolutions_rpm : 0.0, 1)
+            .empty()
+            .field('A');
+        sentences.push_back(builder.build());
+    }
+    return sentences;
+}
+
+std::vector<std::string> encode_xdr(const EncoderContext& context) {
+    std::vector<std::string> sentences;
+    const auto& engines = context.state.engines;
+    sentences.reserve(engines.size());
+    for (std::size_t index = 0; index < engines.size(); ++index) {
+        const auto& engine = engines[index];
+        SentenceBuilder builder(context.talker, "XDR");
+        builder.field('C')
+            .field(engine.coolant_temperature_c, 1)
+            .field('C')
+            .field(transducer_id(index))
+            .field('T')
+            .field(engine.running ? engine.revolutions_rpm : 0.0, 1)
+            .field('R')
+            .field(transducer_id(index));
+        sentences.push_back(builder.build());
+    }
+    return sentences;
 }
 
 }  // namespace nmeasim::core::nmea0183

@@ -105,6 +105,67 @@ TEST_CASE("rudder sentence", "[nmea0183][encoders][steering]") {
     CHECK(single_body(&nmea::encode_rsa, state, "II") == "IIRSA,-3.5,A,,V");
 }
 
+TEST_CASE("autopilot sentences describe the leg to the destination",
+          "[nmea0183][encoders][autopilot]") {
+    const auto state = nmeasim::test::fixture_state();
+    CHECK(single_body(&nmea::encode_apb, state, "GP") ==
+          "GPAPB,A,A,1.62,R,N,V,V,220.5,T,AEGINA,225.2,T,225.2,T,A");
+    CHECK(single_body(&nmea::encode_rmb, state, "GP") ==
+          "GPRMB,A,1.62,R,,AEGINA,3744.7960,N,02325.6500,E,20.1,225.2,-6.5,V,A");
+    CHECK(single_body(&nmea::encode_xte, state, "GP") == "GPXTE,A,A,1.62,R,N,A");
+
+    // Arrival and perpendicular flags, and the side to steer, follow the geometry.
+    auto arriving = state;
+    arriving.navigation.position = {37.7470, 23.4280};
+    CHECK(single_body(&nmea::encode_apb, arriving, "GP").starts_with("GPAPB,A,A,0.0"));
+    CHECK(single_body(&nmea::encode_apb, arriving, "GP").find(",A,V,220.5,T,") !=
+          std::string::npos);
+    CHECK(single_body(&nmea::encode_rmb, arriving, "GP").ends_with(",A,A"));
+    auto right_of_leg = state;
+    right_of_leg.navigation.position = {37.85, 23.50};
+    CHECK(single_body(&nmea::encode_xte, right_of_leg, "GP").find(",L,N,") != std::string::npos);
+
+    // Without a fix the mode indicator changes; without a destination nothing is sent.
+    CHECK(single_body(&nmea::encode_xte, nmeasim::test::fixture_state_without_fix(), "GP")
+              .ends_with(",N"));
+    auto none = state;
+    none.destination.reset();
+    CHECK(nmea::encode_apb(nmea::EncoderContext{none, "GP"}).empty());
+    CHECK(nmea::encode_rmb(nmea::EncoderContext{none, "GP"}).empty());
+    CHECK(nmea::encode_xte(nmea::EncoderContext{none, "GP"}).empty());
+}
+
+TEST_CASE("waypoint names are restricted to what a field may carry", "[nmea0183][encoders]") {
+    CHECK(nmea::sanitize_waypoint_name("AEGINA") == "AEGINA");
+    CHECK(nmea::sanitize_waypoint_name("Piraeus East, ferry $dock*!") == "PiraeusEastferry");
+    CHECK(nmea::sanitize_waypoint_name("a\\b^c~d") == "abcd");
+    CHECK(nmea::sanitize_waypoint_name("") == "WPT");
+    CHECK(nmea::sanitize_waypoint_name(" , ") == "WPT");
+}
+
+TEST_CASE("propulsion sentences list every engine", "[nmea0183][encoders][propulsion]") {
+    const auto state = nmeasim::test::fixture_state();
+    const auto rpm = nmea::encode_rpm(nmea::EncoderContext{state, "ER"});
+    REQUIRE(rpm.size() == 2);
+    CHECK(body_of(rpm[0]) == "ERRPM,E,1,1800.0,,A");
+    CHECK(body_of(rpm[1]) == "ERRPM,E,2,0.0,,A");
+    const auto xdr = nmea::encode_xdr(nmea::EncoderContext{state, "ER"});
+    REQUIRE(xdr.size() == 2);
+    CHECK(body_of(xdr[0]) == "ERXDR,C,82.0,C,ENGINE#0,T,1800.0,R,ENGINE#0");
+    CHECK(body_of(xdr[1]) == "ERXDR,C,65.5,C,ENGINE#1,T,0.0,R,ENGINE#1");
+    for (const auto& sentence : rpm) {
+        CHECK(nmea::verify_checksum(sentence));
+    }
+    for (const auto& sentence : xdr) {
+        CHECK(nmea::verify_checksum(sentence));
+    }
+
+    auto none = state;
+    none.engines.clear();
+    CHECK(nmea::encode_rpm(nmea::EncoderContext{none, "ER"}).empty());
+    CHECK(nmea::encode_xdr(nmea::EncoderContext{none, "ER"}).empty());
+}
+
 TEST_CASE("the talker identifier is taken from the context", "[nmea0183][encoders]") {
     const auto state = nmeasim::test::fixture_state();
     CHECK(single_body(&nmea::encode_rmc, state, "GN").starts_with("GNRMC,"));

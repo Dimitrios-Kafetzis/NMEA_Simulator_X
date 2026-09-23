@@ -3,6 +3,7 @@ include(Catch)
 
 add_executable(nmeasim_core_tests
     core/geo/geodesic_test.cpp
+    core/geo/route_test.cpp
     core/log/log_file_test.cpp
     core/model/vessel_state_test.cpp
     core/nmea0183/checksum_test.cpp

@@ -3,8 +3,9 @@
 Every sentence the simulator emits, grouped by instrument. Each entry lists the registry
 identifier used in profiles, the default talker, the field layout and an example line
 produced from the standard test fixture (a vessel off Athens at 12:34:56.78 UTC on
-22 September 2026, making 6.5 knots on course 047.3). The examples are the golden values the
-test suite checks; a change to any example is a change to the output.
+22 September 2026, making 6.5 knots on course 047.3, with two engines and a destination named
+AEGINA). The examples are the golden values the test suite checks; a change to any example is
+a change to the output.
 
 ## Framing rules that apply to every sentence
 
@@ -22,6 +23,12 @@ test suite checks; a change to any example is a change to the output.
 - Talker IDs are configurable per sentence; the tables show the defaults.
 - When the IEC 61162-450 option is enabled (milestone M4) each sentence is preceded by a TAG
   block of the form `\s:<source>,c:<unix time>*hh\`.
+
+## Sentences that depend on optional state
+
+The autopilot sentences APB, RMB and XTE are sent only while a destination is set; the
+propulsion sentences RPM and XDR only for the engines configured. When there is nothing to
+report the sentence is skipped for that round rather than sent with empty fields.
 
 ## Behaviour without a GNSS fix
 
@@ -346,3 +353,116 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 | 3 | Port rudder angle (empty) |
 | 4 | Status `V` (not fitted) |
 
+## Autopilot
+
+The three sentences describe the leg from the point where the destination was set (the
+origin) to the destination waypoint. The cross-track error is the vessel's distance from
+that leg, with the side to steer towards to regain it; bearings are true; the arrival flag is
+set inside the arrival circle around the destination and the perpendicular flag once the
+vessel has passed the destination along the leg. See the
+[simulation model](../explanation/simulation-model.md#destination) for the geometry.
+
+### APB: Autopilot sentence B
+
+- **Registry id:** `APB`
+- **Default talker:** `GP`
+- **Example:** `$GPAPB,A,A,1.62,R,N,V,V,220.5,T,AEGINA,225.2,T,225.2,T,A*54`
+
+| # | Field |
+| --- | --- |
+| 1 | Status `A` (no LORAN-C blink or SNR warning) |
+| 2 | Status `A` (no cycle lock warning) |
+| 3 | Cross-track error magnitude, nautical miles, two decimals |
+| 4 | Direction to steer: `L` or `R` |
+| 5 | `N` nautical miles |
+| 6 | Arrival circle entered: `A` inside, `V` outside |
+| 7 | Perpendicular passed at the destination: `A` or `V` |
+| 8 | Bearing from origin to destination, degrees |
+| 9 | `T` |
+| 10 | Destination waypoint id |
+| 11 | Bearing from present position to destination, degrees |
+| 12 | `T` |
+| 13 | Heading to steer to destination, degrees (equal to field 11) |
+| 14 | `T` |
+| 15 | Mode indicator, as in RMC |
+
+### RMB: Recommended minimum navigation to the destination
+
+- **Registry id:** `RMB`
+- **Default talker:** `GP`
+- **Example:** `$GPRMB,A,1.62,R,,AEGINA,3744.7960,N,02325.6500,E,20.1,225.2,-6.5,V,A*56`
+
+| # | Field |
+| --- | --- |
+| 1 | Status `A` |
+| 2 | Cross-track error magnitude, nautical miles |
+| 3 | Direction to steer: `L` or `R` |
+| 4 | Origin waypoint id (empty: the origin is the point where the destination was set) |
+| 5 | Destination waypoint id |
+| 6 | Destination latitude `ddmm.mmmm` |
+| 7 | `N`/`S` |
+| 8 | Destination longitude `dddmm.mmmm` |
+| 9 | `E`/`W` |
+| 10 | Range to destination, nautical miles, at most 999.9 |
+| 11 | Bearing to destination, degrees true |
+| 12 | Destination closing velocity, knots: the component of the speed over ground towards the destination, negative when sailing away |
+| 13 | Arrival status: `A` inside the arrival circle, `V` otherwise |
+| 14 | Mode indicator, as in RMC |
+
+### XTE: Cross-track error
+
+- **Registry id:** `XTE`
+- **Default talker:** `GP`
+- **Example:** `$GPXTE,A,A,1.62,R,N,A*18`
+
+| # | Field |
+| --- | --- |
+| 1 | Status `A` |
+| 2 | Status `A` |
+| 3 | Cross-track error magnitude, nautical miles |
+| 4 | Direction to steer: `L` or `R` |
+| 5 | `N` nautical miles |
+| 6 | Mode indicator, as in RMC |
+
+Waypoint ids are sent as configured after removing characters that NMEA 0183 reserves
+(`,`, `*`, `$`, `!`, `\`, `^`, `~`), spaces and control characters, and truncating to 16
+characters; an id that ends up empty is sent as `WPT`.
+
+## Propulsion
+
+One sentence per configured engine, in profile order. A stopped engine reports zero
+revolutions. Engines are numbered from 1 in RPM and their XDR transducers are named
+`ENGINE#0`, `ENGINE#1`, ... following the convention Signal K and common gateways expect.
+
+### RPM: Engine revolutions
+
+- **Registry id:** `RPM`
+- **Default talker:** `ER`
+- **Example:** `$ERRPM,E,1,1800.0,,A*56`
+
+| # | Field |
+| --- | --- |
+| 1 | Source: `E` engine |
+| 2 | Engine number, 1 for the first configured engine |
+| 3 | Revolutions per minute |
+| 4 | Propeller pitch, percent (empty: not simulated) |
+| 5 | Status `A` |
+
+### XDR: Transducer measurements
+
+- **Registry id:** `XDR`
+- **Default talker:** `ER`
+- **Example:** `$ERXDR,C,82.0,C,ENGINE#0,T,1800.0,R,ENGINE#0*5C`
+
+Two transducers per engine, each four fields:
+
+| # | Field |
+| --- | --- |
+| 1 | Transducer type `C` (temperature) |
+| 2 | Coolant temperature, degrees Celsius |
+| 3 | Unit `C` |
+| 4 | Transducer id `ENGINE#n` |
+| 5 | Transducer type `T` (tachometer) |
+| 6 | Revolutions per minute |
+| 7 | Unit `R` |
+| 8 | Transducer id `ENGINE#n` |

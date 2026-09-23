@@ -64,6 +64,8 @@ public:
 
     /// Simulates losing or regaining the GNSS fix.
     void set_fix(bool has_fix) noexcept { state_.gnss.has_fix = has_fix; }
+    /// Sets or clears the destination; it survives `reset` and `seek`.
+    void set_destination(std::optional<model::Destination> destination) override;
 
 private:
     struct Leg {

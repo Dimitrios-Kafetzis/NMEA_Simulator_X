@@ -52,6 +52,10 @@ public:
     /// clock to that sentence. Other sources ignore it.
     virtual void step_once() {}
 
+    /// Sets or clears the destination the autopilot sentences describe. Sources that decode
+    /// their state from recorded sentences ignore it.
+    virtual void set_destination(std::optional<model::Destination> /*destination*/) {}
+
 protected:
     Source() = default;
     Source(const Source&) = default;

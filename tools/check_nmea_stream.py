@@ -7,7 +7,7 @@ to parse, has a bad checksum, exceeds the length limit, or when fewer than the e
 number of distinct sentence formatters were seen.
 
 Usage:
-    nmeasim run --stdout --quiet --duration 3 | python3 tools/check_nmea_stream.py --expect 19
+    nmeasim run --stdout --quiet --duration 3 | python3 tools/check_nmea_stream.py --expect 21
 """
 import argparse
 import sys

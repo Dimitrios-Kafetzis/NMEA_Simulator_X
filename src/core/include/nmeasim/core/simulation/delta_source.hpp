@@ -5,6 +5,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <optional>
 #include <random>
 
@@ -73,6 +74,11 @@ public:
 
     /// Moves the vessel instantly.
     void set_position(geo::Position position);
+    /// Sets or clears the destination; it survives `reset`.
+    void set_destination(std::optional<model::Destination> destination) override;
+    /// Replaces one engine; an index past the end appends. Survives `reset`.
+    void set_engine(std::size_t index, model::Engine engine);
+    void remove_engine(std::size_t index);
 
     /// Simulates losing or regaining the GNSS fix.
     void set_fix(bool has_fix) noexcept { state_.gnss.has_fix = has_fix; }

@@ -143,7 +143,7 @@ TEST_CASE("every encoded sentence decodes back to the state it came from", "[nme
             ++applied;
         }
     }
-    CHECK(applied >= 20);
+    CHECK(applied >= 27);
     CHECK(decoded.time_utc == original.time_utc);
     CHECK(decoded.navigation.position.latitude_deg ==
           Approx(original.navigation.position.latitude_deg).margin(2e-6));
@@ -172,6 +172,60 @@ TEST_CASE("every encoded sentence decodes back to the state it came from", "[nme
     CHECK(decoded.wind.true_speed_kn == Approx(12.0));
     CHECK(decoded.wind.apparent_angle_deg == Approx(300.0));
     CHECK(decoded.wind.apparent_speed_kn == Approx(14.2));
+    REQUIRE(decoded.engines.size() == 2);
+    CHECK(decoded.engines[0].running);
+    CHECK(decoded.engines[0].revolutions_rpm == Approx(1800.0));
+    CHECK(decoded.engines[0].coolant_temperature_c == Approx(82.0));
+    CHECK_FALSE(decoded.engines[1].running);
+    CHECK(decoded.engines[1].coolant_temperature_c == Approx(65.5));
+    REQUIRE(decoded.destination.has_value());
+    CHECK(decoded.destination->name == "AEGINA");
+    CHECK(decoded.destination->position.latitude_deg == Approx(37.7466).margin(2e-6));
+    CHECK(decoded.destination->position.longitude_deg == Approx(23.4275).margin(2e-6));
+}
+
+TEST_CASE("autopilot and propulsion sentences update the destination and the engines",
+          "[nmea0183][decoder]") {
+    nmeasim::core::model::VesselState state;
+    state.navigation.position = {38.0, 23.7};
+    // A new destination starts its leg at the vessel; the same name keeps the leg.
+    CHECK(nmea::apply_sentence(
+        "$GPRMB,A,0.10,L,,AEGINA,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A", state));
+    REQUIRE(state.destination.has_value());
+    CHECK(state.destination->name == "AEGINA");
+    CHECK(state.destination->origin.latitude_deg == Approx(38.0));
+    state.navigation.position = {37.9, 23.6};
+    CHECK(nmea::apply_sentence(
+        "$GPRMB,A,0.10,L,,AEGINA,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A", state));
+    CHECK(state.destination->origin.latitude_deg == Approx(38.0));
+    CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A",
+                               state));
+    CHECK(state.destination->name == "WPT");
+    CHECK(state.destination->origin.latitude_deg == Approx(37.9));
+    // An invalid RMB or one without a position changes nothing.
+    CHECK(nmea::apply_sentence("$GPRMB,V,,,,,,,,,,,,V,N", state));
+    CHECK(state.destination->name == "WPT");
+    CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,NOWHERE,,,,,20.1,225.2,6.5,V,A", state));
+    CHECK(state.destination->name == "WPT");
+
+    CHECK(nmea::apply_sentence("$ERRPM,E,2,1500.0,,A", state));
+    REQUIRE(state.engines.size() == 2);
+    CHECK(state.engines[0].label == "Engine 1");
+    CHECK_FALSE(state.engines[0].running);
+    CHECK(state.engines[1].running);
+    CHECK(state.engines[1].revolutions_rpm == Approx(1500.0));
+    CHECK(nmea::apply_sentence("$ERRPM,S,1,900.0,,A", state));  // shafts are not engines
+    CHECK_FALSE(state.engines[0].running);
+    CHECK(nmea::apply_sentence("$ERRPM,E,1,900.0,,V", state));
+    CHECK_FALSE(state.engines[0].running);
+    CHECK(nmea::apply_sentence("$ERRPM,E,0,900.0,,A", state));
+    CHECK(state.engines.size() == 2);
+    CHECK(nmea::apply_sentence("$ERXDR,C,79.5,C,ENGINE#0,T,0.0,R,ENGINE#1,P,1.0,B,BARO", state));
+    CHECK(state.engines[0].coolant_temperature_c == Approx(79.5));
+    CHECK_FALSE(state.engines[1].running);
+    CHECK(nmea::apply_sentence("$ERXDR,C,30.0,C,ENGINE#x,C,31.0,F,ENGINE#0", state));
+    CHECK(state.engines[0].coolant_temperature_c == Approx(79.5));
+    CHECK(state.engines.size() == 2);
 }
 
 TEST_CASE("a receiver without a fix decodes as such", "[nmea0183][decoder]") {
