@@ -1,11 +1,14 @@
 #include "simulation_page.hpp"
 
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QScrollArea>
+#include <QStandardPaths>
 #include <QTimeZone>
 #include <QVBoxLayout>
 
@@ -38,8 +41,55 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     auto* content = new QWidget;
     auto* columns = new QHBoxLayout(content);
 
-    // Left column: profile, clock, seed values.
+    // Left column: mode, profile, clock, seed values.
     auto* left = new QVBoxLayout;
+    auto* mode_box = new QGroupBox(tr("Mode"), content);
+    auto* mode_form = new QFormLayout(mode_box);
+    mode_combo = new QComboBox(mode_box);
+    mode_combo->addItems({tr("Delta simulation"), tr("Follow a track"), tr("Replay a log")});
+    mode_form->addRow(tr("Vessel driven by"), mode_combo);
+    connect(mode_combo, &QComboBox::currentIndexChanged, this,
+            &SimulationPage::update_mode_widgets);
+    left->addWidget(mode_box);
+
+    track_box_ = new QGroupBox(tr("Track"), content);
+    auto* track_form = new QFormLayout(track_box_);
+    auto* track_path_row = new QHBoxLayout;
+    track_path_edit = new QLineEdit(track_box_);
+    track_path_edit->setPlaceholderText(tr("GPX or KML file"));
+    track_browse_button = new QPushButton(tr("Browse..."), track_box_);
+    connect(track_browse_button, &QPushButton::clicked, this, &SimulationPage::browse_track);
+    track_path_row->addWidget(track_path_edit, 1);
+    track_path_row->addWidget(track_browse_button);
+    track_form->addRow(tr("File"), track_path_row);
+    track_speed_spin = make_double(track_box_, 0.1, 999.9, 0.5, 1, tr(" kn"));
+    track_speed_spin->setToolTip(
+        tr("Used along legs whose points carry neither timestamps nor a recorded speed"));
+    track_form->addRow(tr("Speed without timestamps"), track_speed_spin);
+    track_timestamps_check = new QCheckBox(tr("Follow the track's own timestamps"), track_box_);
+    track_form->addRow(track_timestamps_check);
+    track_loop_check = new QCheckBox(tr("Start again at the end"), track_box_);
+    track_form->addRow(track_loop_check);
+    left->addWidget(track_box_);
+
+    replay_box_ = new QGroupBox(tr("Log replay"), content);
+    auto* replay_form = new QFormLayout(replay_box_);
+    auto* replay_path_row = new QHBoxLayout;
+    replay_path_edit = new QLineEdit(replay_box_);
+    replay_path_edit->setPlaceholderText(tr("Recorded or plain NMEA log"));
+    replay_browse_button = new QPushButton(tr("Browse..."), replay_box_);
+    connect(replay_browse_button, &QPushButton::clicked, this, &SimulationPage::browse_log);
+    replay_path_row->addWidget(replay_path_edit, 1);
+    replay_path_row->addWidget(replay_browse_button);
+    replay_form->addRow(tr("File"), replay_path_row);
+    replay_interval_spin = make_int(replay_box_, 1, 60000, tr(" ms"));
+    replay_interval_spin->setToolTip(
+        tr("Spacing of the sentences when the log carries no time information"));
+    replay_form->addRow(tr("Interval without times"), replay_interval_spin);
+    replay_loop_check = new QCheckBox(tr("Start again at the end"), replay_box_);
+    replay_form->addRow(replay_loop_check);
+    left->addWidget(replay_box_);
+
     auto* general_box = new QGroupBox(tr("Profile and clock"), content);
     auto* general = new QFormLayout(general_box);
     name_edit = new QLineEdit(general_box);
@@ -112,6 +162,7 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     right->addWidget(gnss_box);
 
     auto* drift_box = new QGroupBox(tr("Drift around the initial values"), content);
+    drift_box_ = drift_box;
     auto* drift = new QGridLayout(drift_box);
     drift->addWidget(new QLabel(tr("Amplitude"), drift_box), 0, 1);
     drift->addWidget(new QLabel(tr("Step per second"), drift_box), 0, 2);
@@ -145,9 +196,60 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     outer->addWidget(scroll);
+    update_mode_widgets();
+}
+
+void SimulationPage::update_mode_widgets() {
+    const auto mode = static_cast<io::SimulationMode>(mode_combo->currentIndex());
+    track_box_->setEnabled(mode == io::SimulationMode::Track);
+    replay_box_->setEnabled(mode == io::SimulationMode::Replay);
+    drift_box_->setEnabled(mode == io::SimulationMode::Delta);
+}
+
+void SimulationPage::browse_track() {
+    const QString start = track_path_edit->text().isEmpty()
+                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                              : QFileInfo(track_path_edit->text()).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Choose a track"), start,
+                                                      tr("Tracks (*.gpx *.kml);;All files (*)"));
+    if (!path.isEmpty()) {
+        track_path_edit->setText(path);
+    }
+}
+
+void SimulationPage::browse_log() {
+    const QString start = replay_path_edit->text().isEmpty()
+                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                              : QFileInfo(replay_path_edit->text()).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Choose a log"), start, tr("Logs (*.log *.nmea *.txt);;All files (*)"));
+    if (!path.isEmpty()) {
+        replay_path_edit->setText(path);
+    }
+}
+
+QString SimulationPage::validate() const {
+    const auto mode = static_cast<io::SimulationMode>(mode_combo->currentIndex());
+    if (mode == io::SimulationMode::Track && track_path_edit->text().trimmed().isEmpty()) {
+        return tr("Choose the track file to follow.");
+    }
+    if (mode == io::SimulationMode::Replay && replay_path_edit->text().trimmed().isEmpty()) {
+        return tr("Choose the log file to replay.");
+    }
+    return {};
 }
 
 void SimulationPage::load(const io::Profile& profile) {
+    mode_combo->setCurrentIndex(static_cast<int>(profile.mode));
+    track_path_edit->setText(profile.track.path);
+    track_speed_spin->setValue(profile.track.speed_kn);
+    track_timestamps_check->setChecked(profile.track.use_timestamps);
+    track_loop_check->setChecked(profile.track.loop);
+    replay_path_edit->setText(profile.replay.path);
+    replay_interval_spin->setValue(profile.replay.fixed_interval_ms);
+    replay_loop_check->setChecked(profile.replay.loop);
+    update_mode_widgets();
+
     name_edit->setText(profile.name);
     tick_spin->setValue(profile.tick_ms);
     fixed_start_check->setChecked(profile.start_time.has_value());
@@ -192,6 +294,15 @@ void SimulationPage::load(const io::Profile& profile) {
 }
 
 void SimulationPage::store(io::Profile& profile) const {
+    profile.mode = static_cast<io::SimulationMode>(mode_combo->currentIndex());
+    profile.track.path = track_path_edit->text().trimmed();
+    profile.track.speed_kn = track_speed_spin->value();
+    profile.track.use_timestamps = track_timestamps_check->isChecked();
+    profile.track.loop = track_loop_check->isChecked();
+    profile.replay.path = replay_path_edit->text().trimmed();
+    profile.replay.fixed_interval_ms = replay_interval_spin->value();
+    profile.replay.loop = replay_loop_check->isChecked();
+
     profile.name = name_edit->text().trimmed().isEmpty() ? QStringLiteral("Untitled")
                                                          : name_edit->text().trimmed();
     profile.tick_ms = tick_spin->value();

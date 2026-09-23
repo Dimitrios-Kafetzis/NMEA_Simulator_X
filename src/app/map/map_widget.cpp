@@ -19,6 +19,8 @@ namespace {
 constexpr int kMaxTrackPoints{5000};
 constexpr int kMaxParentLevels{4};
 constexpr double kTrackMinPixelDistance{2.0};
+/// Routes with more points than this are drawn without point markers.
+constexpr qsizetype kMaxRouteMarkers{500};
 
 }  // namespace
 
@@ -110,6 +112,16 @@ void MapWidget::clear_track() {
     update();
 }
 
+void MapWidget::set_route(const QList<core::geo::Position>& route) {
+    route_ = route;
+    update();
+}
+
+void MapWidget::clear_route() {
+    route_.clear();
+    update();
+}
+
 QPointF MapWidget::center_pixel() const {
     return pixel_coordinates(center_, zoom_);
 }
@@ -142,6 +154,7 @@ void MapWidget::paintEvent(QPaintEvent* /*event*/) {
     painter.fillRect(rect(), QColor(0xe8, 0xe8, 0xe8));
     draw_tiles(painter);
     painter.setRenderHint(QPainter::Antialiasing);
+    draw_route(painter);
     draw_track(painter);
     draw_vessel(painter);
     draw_overlay(painter);
@@ -193,6 +206,27 @@ void MapWidget::draw_tile(QPainter& painter, TileKey key, const QRect& target) {
     painter.fillRect(target, QColor(0xdd, 0xdd, 0xdd));
     painter.setPen(QColor(0xc8, 0xc8, 0xc8));
     painter.drawRect(target.adjusted(0, 0, -1, -1));
+}
+
+void MapWidget::draw_route(QPainter& painter) {
+    if (route_.isEmpty()) {
+        return;
+    }
+    QPainterPath path;
+    path.moveTo(point_of(route_.first()));
+    for (qsizetype index = 1; index < route_.size(); ++index) {
+        path.lineTo(point_of(route_.at(index)));
+    }
+    painter.setPen(QPen(QColor(0x20, 0x90, 0x40, 0xc0), 2.5));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawPath(path);
+    if (route_.size() <= kMaxRouteMarkers) {
+        painter.setPen(QPen(QColor(0x10, 0x60, 0x30), 1.0));
+        painter.setBrush(QColor(0xff, 0xff, 0xff));
+        for (const auto& position : route_) {
+            painter.drawEllipse(point_of(position), 3.0, 3.0);
+        }
+    }
 }
 
 void MapWidget::draw_track(QPainter& painter) {

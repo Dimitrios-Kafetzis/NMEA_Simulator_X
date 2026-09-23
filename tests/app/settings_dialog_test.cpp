@@ -165,3 +165,52 @@ TEST_CASE("the main window applies a dialog result as the current profile", "[ap
     CHECK(window.profile().name == QStringLiteral("From dialog"));
     CHECK(window.windowTitle().startsWith(QStringLiteral("From dialog")));
 }
+
+TEST_CASE("the simulation tab selects the mode and validates its files", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.simulation_page();
+    CHECK(page->mode_combo->currentIndex() == 0);
+    CHECK(page->track_speed_spin->value() == Approx(6.0));
+    CHECK(page->track_timestamps_check->isChecked());
+    CHECK(page->replay_interval_spin->value() == 100);
+
+    // Track mode without a file is refused on the simulation tab.
+    page->mode_combo->setCurrentIndex(1);
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("track")));
+    CHECK(dialog.tabs()->currentWidget() == page);
+    CHECK(dialog.result() != QDialog::Accepted);
+
+    page->track_path_edit->setText(QStringLiteral("/tracks/harbour.gpx"));
+    page->track_speed_spin->setValue(8.5);
+    page->track_timestamps_check->setChecked(false);
+    page->track_loop_check->setChecked(true);
+    dialog.accept();
+    CHECK(dialog.error_text().isEmpty());
+    const auto& result = dialog.profile();
+    CHECK(result.mode == nmeasim::io::SimulationMode::Track);
+    CHECK(result.track.path == QStringLiteral("/tracks/harbour.gpx"));
+    CHECK(result.track.speed_kn == Approx(8.5));
+    CHECK_FALSE(result.track.use_timestamps);
+    CHECK(result.track.loop);
+
+    // Replay settings load back into the widgets.
+    profile.mode = nmeasim::io::SimulationMode::Replay;
+    profile.replay.path = QStringLiteral("/logs/monday.log");
+    profile.replay.loop = true;
+    profile.replay.fixed_interval_ms = 250;
+    nmeasim::app::SettingsDialog replay_dialog(profile);
+    auto* replay_page = replay_dialog.simulation_page();
+    CHECK(replay_page->mode_combo->currentIndex() == 2);
+    CHECK(replay_page->replay_path_edit->text() == QStringLiteral("/logs/monday.log"));
+    CHECK(replay_page->replay_loop_check->isChecked());
+    CHECK(replay_page->replay_interval_spin->value() == 250);
+    replay_page->replay_path_edit->clear();
+    replay_dialog.accept();
+    CHECK(replay_dialog.error_text().contains(QStringLiteral("log")));
+    replay_page->replay_path_edit->setText(QStringLiteral("/logs/tuesday.log"));
+    replay_dialog.accept();
+    CHECK(replay_dialog.profile().replay.path == QStringLiteral("/logs/tuesday.log"));
+    CHECK(replay_dialog.profile().mode == nmeasim::io::SimulationMode::Replay);
+}

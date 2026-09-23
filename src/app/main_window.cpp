@@ -7,18 +7,27 @@
 #include "widgets/dashboard_widget.hpp"
 #include "widgets/outputs_widget.hpp"
 
+#include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/core/version.hpp>
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDateTime>
+#include <QDir>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QKeyEvent>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QSignalBlocker>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QToolBar>
+
+#include <algorithm>
+#include <chrono>
+#include <limits>
 
 namespace nmeasim::app {
 
@@ -32,7 +41,9 @@ MainWindow::MainWindow(QWidget* parent)
       outputs_(new OutputsWidget(this)),
       map_(new map::MapWidget(tile_cache_, this)),
       status_label_(new QLabel(this)),
-      counter_label_(new QLabel(this)) {
+      counter_label_(new QLabel(this)),
+      seek_slider_(new QSlider(Qt::Horizontal, this)),
+      position_label_(new QLabel(this)) {
     setWindowTitle(QStringLiteral("NMEA Simulator X"));
     setMinimumSize(900, 600);
     setFocusPolicy(Qt::StrongFocus);
@@ -57,18 +68,28 @@ MainWindow::MainWindow(QWidget* parent)
     statusBar()->addPermanentWidget(counter_label_);
 
     connect(&runner_, &io::SimulationRunner::ticked, this, [this] {
-        if (const auto* simulation = runner_.simulation()) {
-            const auto& state = simulation->state();
-            dashboard_->update_state(state);
-            map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
-                             state.navigation.course_over_ground_deg);
-        }
+        refresh_view();
+        refresh_transport();
         refresh_status();
     });
     connect(&runner_, &io::SimulationRunner::sentence_emitted, console_,
             &ConsoleWidget::append_sentence);
     connect(&runner_, &io::SimulationRunner::started, this, &MainWindow::update_actions);
     connect(&runner_, &io::SimulationRunner::stopped, this, &MainWindow::update_actions);
+    connect(&runner_, &io::SimulationRunner::paused_changed, this, [this](bool paused) {
+        pause_action_->setChecked(paused);
+        refresh_status();
+    });
+    connect(&runner_, &io::SimulationRunner::finished, this,
+            [this] { statusBar()->showMessage(tr("End of the track or log reached"), 5000); });
+    connect(&runner_, &io::SimulationRunner::recording_changed, this, [this](const QString& path) {
+        const QSignalBlocker blocker(record_action_);
+        record_action_->setChecked(!path.isEmpty());
+        record_action_->setToolTip(path.isEmpty() ? tr("Record every sentence to a log file")
+                                                  : tr("Recording to %1").arg(path));
+        statusBar()->showMessage(
+            path.isEmpty() ? tr("Recording stopped") : tr("Recording to %1").arg(path), 5000);
+    });
     connect(&runner_, &io::SimulationRunner::output_error, this,
             [this](const QString& description, const QString& message) {
                 statusBar()->showMessage(QStringLiteral("%1: %2").arg(description, message), 10000);
@@ -120,6 +141,19 @@ void MainWindow::build_actions() {
     open_action_ = new QAction(tr("&Open profile..."), this);
     open_action_->setShortcut(QKeySequence::Open);
     connect(open_action_, &QAction::triggered, this, &MainWindow::open_profile);
+    open_track_action_ = new QAction(tr("Open &track..."), this);
+    open_track_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    open_track_action_->setToolTip(tr("Follow a GPX or KML track with the current profile"));
+    connect(open_track_action_, &QAction::triggered, this, &MainWindow::open_track);
+    open_log_action_ = new QAction(tr("Open &log for replay..."), this);
+    open_log_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
+    open_log_action_->setToolTip(tr("Replay a recorded or plain NMEA log"));
+    connect(open_log_action_, &QAction::triggered, this, &MainWindow::open_log);
+    record_action_ = new QAction(tr("&Record log..."), this);
+    record_action_->setCheckable(true);
+    record_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_R));
+    record_action_->setToolTip(tr("Record every sentence to a log file"));
+    connect(record_action_, &QAction::toggled, this, &MainWindow::toggle_recording);
     save_action_ = new QAction(tr("&Save profile"), this);
     save_action_->setShortcut(QKeySequence::Save);
     connect(save_action_, &QAction::triggered, this, &MainWindow::save_profile);
@@ -138,6 +172,27 @@ void MainWindow::build_actions() {
     pause_action_->setCheckable(true);
     pause_action_->setShortcut(Qt::Key_F6);
     connect(pause_action_, &QAction::toggled, this, &MainWindow::toggle_pause);
+    step_action_ = new QAction(tr("Step"), this);
+    step_action_->setShortcut(Qt::Key_F7);
+    step_action_->setToolTip(
+        tr("Pause and advance by one tick, or by one recorded sentence during a replay"));
+    connect(step_action_, &QAction::triggered, this, [this] {
+        runner_.step();
+        update_actions();
+    });
+    seek_slider_->setObjectName(QStringLiteral("seek_slider"));
+    seek_slider_->setMinimumWidth(180);
+    seek_slider_->setTracking(false);
+    seek_slider_->setToolTip(tr("Position within the track or log"));
+    connect(seek_slider_, &QSlider::valueChanged, this, &MainWindow::seek_from_slider);
+    connect(seek_slider_, &QSlider::sliderMoved, this, [this](int value) {
+        if (const auto duration = runner_.duration()) {
+            position_label_->setText(QStringLiteral("%1 / %2").arg(
+                format_duration(std::chrono::milliseconds{value}), format_duration(*duration)));
+        }
+    });
+    position_label_->setMinimumWidth(110);
+    position_label_->setAlignment(Qt::AlignCenter);
     steering_action_ = new QAction(tr("Steering mode"), this);
     steering_action_->setCheckable(true);
     steering_action_->setToolTip(
@@ -165,11 +220,13 @@ void MainWindow::build_actions() {
     auto* file_menu = menuBar()->addMenu(tr("&File"));
     file_menu->addActions({new_action_, open_action_, save_action_, save_as_action_});
     file_menu->addSeparator();
+    file_menu->addActions({open_track_action_, open_log_action_, record_action_});
+    file_menu->addSeparator();
     file_menu->addAction(settings_action_);
     file_menu->addSeparator();
     file_menu->addAction(quit_action);
     auto* simulation_menu = menuBar()->addMenu(tr("&Simulation"));
-    simulation_menu->addActions({run_action_, pause_action_, steering_action_});
+    simulation_menu->addActions({run_action_, pause_action_, step_action_, steering_action_});
     simulation_menu->addSeparator();
     simulation_menu->addAction(autostart_action_);
     auto* help_menu = menuBar()->addMenu(tr("&Help"));
@@ -177,19 +234,145 @@ void MainWindow::build_actions() {
 
     toolbar->addActions({open_action_, save_action_, settings_action_});
     toolbar->addSeparator();
-    toolbar->addActions({run_action_, pause_action_, steering_action_});
+    toolbar->addActions({run_action_, pause_action_, step_action_, steering_action_});
+    toolbar->addSeparator();
+    toolbar->addAction(record_action_);
+    toolbar->addSeparator();
+    toolbar->addWidget(seek_slider_);
+    toolbar->addWidget(position_label_);
 }
 
 void MainWindow::move_vessel(core::geo::Position position) {
     profile_.delta.seed.navigation.position = position;
     if (auto* source = delta_source()) {
         source->set_position(position);
-        dashboard_->update_state(source->current());
-        map_->set_vessel(position, source->current().navigation.heading_true_deg,
-                         source->current().navigation.course_over_ground_deg);
+        refresh_view();
     }
     map_->set_center(position);
     statusBar()->showMessage(tr("Vessel moved to %1").arg(format_position(position)), 3000);
+}
+
+QString MainWindow::format_duration(std::chrono::milliseconds duration) {
+    const auto total = std::max<long long>(0, duration.count() / 1000);
+    const auto hours = total / 3600;
+    const auto minutes = (total % 3600) / 60;
+    const auto seconds = total % 60;
+    if (hours > 0) {
+        return QStringLiteral("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(seconds, 2, 10, QLatin1Char('0'));
+    }
+    return QStringLiteral("%1:%2")
+        .arg(minutes, 2, 10, QLatin1Char('0'))
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+void MainWindow::refresh_view() {
+    const auto* simulation = runner_.simulation();
+    if (simulation == nullptr) {
+        return;
+    }
+    const auto& state = simulation->state();
+    dashboard_->update_state(state);
+    map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
+                     state.navigation.course_over_ground_deg);
+}
+
+void MainWindow::refresh_transport() {
+    const auto duration = runner_.duration();
+    const bool finite = duration.has_value() && duration->count() > 0;
+    updating_slider_ = true;
+    seek_slider_->setEnabled(finite);
+    if (finite) {
+        const auto clamp = [](std::chrono::milliseconds value) {
+            return static_cast<int>(
+                std::min<long long>(value.count(), std::numeric_limits<int>::max()));
+        };
+        seek_slider_->setRange(0, clamp(*duration));
+        if (!seek_slider_->isSliderDown()) {
+            seek_slider_->setValue(clamp(runner_.position()));
+        }
+        position_label_->setText(QStringLiteral("%1 / %2").arg(format_duration(runner_.position()),
+                                                               format_duration(*duration)));
+    } else {
+        seek_slider_->setRange(0, 0);
+        position_label_->clear();
+    }
+    updating_slider_ = false;
+    step_action_->setEnabled(runner_.simulation() != nullptr);
+}
+
+void MainWindow::seek_from_slider(int value) {
+    if (updating_slider_ || !seek_slider_->isEnabled()) {
+        return;
+    }
+    runner_.seek(std::chrono::milliseconds{value});
+}
+
+bool MainWindow::load_track(const QString& path) {
+    io::Profile profile = profile_;
+    profile.mode = io::SimulationMode::Track;
+    profile.track.path = path;
+    return set_profile(profile, profile_path_);
+}
+
+bool MainWindow::load_log(const QString& path) {
+    io::Profile profile = profile_;
+    profile.mode = io::SimulationMode::Replay;
+    profile.replay.path = path;
+    return set_profile(profile, profile_path_);
+}
+
+bool MainWindow::set_recording(const QString& path) {
+    if (!runner_.set_recording(path)) {
+        report_error(tr("Cannot record"), tr("The log file %1 cannot be written").arg(path));
+        runner_.set_recording({});
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::open_track() {
+    const QString start = profile_.track.path.isEmpty()
+                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                              : QFileInfo(profile_.track.path).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open track"), start,
+                                                      tr("Tracks (*.gpx *.kml);;All files (*)"));
+    if (!path.isEmpty()) {
+        load_track(path);
+    }
+}
+
+void MainWindow::open_log() {
+    const QString start = profile_.replay.path.isEmpty()
+                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                              : QFileInfo(profile_.replay.path).absolutePath();
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Open log for replay"), start, tr("Logs (*.log *.nmea *.txt);;All files (*)"));
+    if (!path.isEmpty()) {
+        load_log(path);
+    }
+}
+
+void MainWindow::toggle_recording(bool checked) {
+    if (!checked) {
+        runner_.set_recording({});
+        return;
+    }
+    const QString suggested =
+        QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+            .filePath(QStringLiteral("nmeasim-%1.log")
+                          .arg(QDateTime::currentDateTimeUtc().toString(
+                              QStringLiteral("yyyyMMdd-HHmmss"))));
+    const QString path = QFileDialog::getSaveFileName(this, tr("Record log"), suggested,
+                                                      tr("Logs (*.log);;All files (*)"));
+    if (path.isEmpty()) {
+        const QSignalBlocker blocker(record_action_);
+        record_action_->setChecked(false);
+        return;
+    }
+    set_recording(path);
 }
 
 void MainWindow::build_docks() {
@@ -260,32 +443,50 @@ bool MainWindow::load_profile(const QString& path) {
     return true;
 }
 
-void MainWindow::set_profile(const io::Profile& profile, const QString& path) {
+bool MainWindow::set_profile(const io::Profile& profile, const QString& path) {
     const bool was_running = is_running();
     stop();
+    QString error;
+    if (!runner_.apply_profile(profile, &error)) {
+        report_error(tr("Cannot apply profile"), error);
+        if (was_running) {
+            start();
+        }
+        return false;
+    }
     profile_ = profile;
     profile_path_ = path;
     if (!path.isEmpty()) {
         settings_.set_last_profile_path(path);
     }
-    QString error;
-    if (!runner_.apply_profile(profile_, &error)) {
-        report_error(tr("Cannot apply profile"), error);
-    }
     map_->clear_track();
+    const bool delta = profile_.mode == io::SimulationMode::Delta;
+    dashboard_->set_overrides_enabled(delta);
+    steering_action_->setEnabled(delta);
     if (const auto* source = delta_source()) {
-        const auto& state = source->current();
-        dashboard_->update_state(state);
         dashboard_->sync_overrides(*source);
-        map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
-                         state.navigation.course_over_ground_deg);
-        map_->set_center(state.navigation.position);
     }
+    if (const auto* simulation = runner_.simulation()) {
+        refresh_view();
+        map_->set_center(simulation->state().navigation.position);
+        if (const auto* track =
+                dynamic_cast<const core::simulation::TrackSource*>(&simulation->source())) {
+            QList<core::geo::Position> route;
+            for (const auto& point : track->config().track.points) {
+                route.append(point.position);
+            }
+            map_->set_route(route);
+        } else {
+            map_->clear_route();
+        }
+    }
+    refresh_transport();
     outputs_->refresh();
     update_title();
     if (was_running) {
         start();
     }
+    return true;
 }
 
 void MainWindow::start() {
@@ -343,7 +544,7 @@ void MainWindow::nudge(Parameter parameter, double delta) {
     if (auto* source = delta_source()) {
         source->nudge(parameter, delta);
         dashboard_->sync_overrides(*source);
-        dashboard_->update_state(source->current());
+        refresh_view();
     }
 }
 
@@ -440,6 +641,7 @@ void MainWindow::update_actions() {
     if (!running) {
         pause_action_->setChecked(false);
     }
+    refresh_transport();
     refresh_status();
 }
 
@@ -448,7 +650,18 @@ void MainWindow::refresh_status() {
     if (is_running()) {
         state = runner_.is_paused() ? tr("Paused") : tr("Running");
     }
-    status_label_->setText(tr("%1 - %2").arg(state, profile_.name));
+    QString mode;
+    switch (profile_.mode) {
+        case io::SimulationMode::Delta:
+            break;
+        case io::SimulationMode::Track:
+            mode = tr(" (track %1)").arg(QFileInfo(profile_.track.path).fileName());
+            break;
+        case io::SimulationMode::Replay:
+            mode = tr(" (replay %1)").arg(QFileInfo(profile_.replay.path).fileName());
+            break;
+    }
+    status_label_->setText(tr("%1 - %2%3").arg(state, profile_.name, mode));
     counter_label_->setText(tr("%1 sentences").arg(runner_.sentences_emitted()));
 }
 

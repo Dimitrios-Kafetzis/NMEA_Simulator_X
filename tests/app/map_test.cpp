@@ -200,3 +200,32 @@ TEST_CASE("the main window moves the vessel when the map picks a position",
     REQUIRE(window.map_view()->vessel_position().has_value());
     CHECK(window.map_view()->vessel_position()->longitude_deg == Approx(151.21));
 }
+
+TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(300, 300);
+    widget.set_follow_vessel(false);
+    widget.set_zoom(10);
+    widget.set_center({37.95, 23.65});
+    CHECK(widget.route_length() == 0);
+    widget.set_route({{37.90, 23.60}, {37.95, 23.65}, {38.00, 23.70}});
+    CHECK(widget.route_length() == 3);
+
+    QImage image(widget.size(), QImage::Format_ARGB32);
+    widget.render(&image);
+    // The route passes through the centre; a green pixel is found on it.
+    bool green_found = false;
+    for (int y = 140; y < 160 && !green_found; ++y) {
+        for (int x = 140; x < 160 && !green_found; ++x) {
+            const QColor color = image.pixelColor(x, y);
+            green_found = color.green() > color.red() + 40 && color.green() > color.blue() + 40;
+        }
+    }
+    CHECK(green_found);
+
+    widget.clear_route();
+    CHECK(widget.route_length() == 0);
+}

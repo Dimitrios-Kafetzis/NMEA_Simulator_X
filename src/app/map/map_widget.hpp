@@ -45,6 +45,11 @@ public:
     void clear_track();
     [[nodiscard]] int track_length() const noexcept { return static_cast<int>(track_.size()); }
 
+    /// The track or route loaded from a file, drawn under the sailed track.
+    void set_route(const QList<core::geo::Position>& route);
+    void clear_route();
+    [[nodiscard]] int route_length() const noexcept { return static_cast<int>(route_.size()); }
+
     /// Widget pixel of a position at the current view.
     [[nodiscard]] QPointF point_of(core::geo::Position position) const;
     /// Position under a widget pixel at the current view.
@@ -77,6 +82,7 @@ private:
     };
 
     void draw_tiles(class QPainter& painter);
+    void draw_route(QPainter& painter);
     void draw_track(QPainter& painter);
     void draw_vessel(QPainter& painter);
     void draw_overlay(QPainter& painter);
@@ -91,6 +97,7 @@ private:
     bool follow_{true};
     std::optional<Vessel> vessel_;
     QList<core::geo::Position> track_;
+    QList<core::geo::Position> route_;
     std::optional<QPoint> drag_last_;
     bool dragged_{false};
 };
