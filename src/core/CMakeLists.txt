@@ -2,6 +2,7 @@
 # can be unit-tested in isolation and reused by the CLI, the desktop app and future hosts.
 
 find_package(GeographicLib CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)
 
 configure_file(
     include/nmeasim/core/version.hpp.in
@@ -20,6 +21,13 @@ add_library(nmeasim_core STATIC
     src/simulation/delta_source.cpp
     src/simulation/sentence_scheduler.cpp
     src/simulation/simulation.cpp
+    src/simulation/track_source.cpp
+    src/time/iso8601.cpp
+    src/track/gpx.cpp
+    src/track/kml.cpp
+    src/track/track.cpp
+    src/track/track_file.cpp
+    src/track/xml_helpers.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
 
@@ -33,5 +41,5 @@ target_compile_features(nmeasim_core PUBLIC cxx_std_20)
 
 target_link_libraries(nmeasim_core
     PUBLIC GeographicLib::GeographicLib
-    PRIVATE nmeasim::warnings nmeasim::sanitizers
+    PRIVATE pugixml::pugixml nmeasim::warnings nmeasim::sanitizers
 )

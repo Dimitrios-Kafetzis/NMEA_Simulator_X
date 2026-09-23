@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <name>Saronic Gulf</name>
+    <Placemark>
+      <name>Piraeus to Aegina and Agistri</name>
+      <gx:MultiTrack>
+        <gx:Track>
+          <when>2026-09-23T08:00:00Z</when>
+          <when>2026-09-23T08:09:34Z</when>
+          <when>2026-09-23T08:26:33Z</when>
+          <when>2026-09-23T08:46:13Z</when>
+          <when>2026-09-23T09:07:58Z</when>
+          <when>2026-09-23T09:29:43Z</when>
+          <when>2026-09-23T09:48:12Z</when>
+          <when>2026-09-23T10:04:51Z</when>
+          <gx:coord>23.6280 37.9350 0</gx:coord>
+          <gx:coord>23.6100 37.9230 0</gx:coord>
+          <gx:coord>23.5800 37.9000 0</gx:coord>
+          <gx:coord>23.5500 37.8700 0</gx:coord>
+          <gx:coord>23.5200 37.8350 0</gx:coord>
+          <gx:coord>23.4900 37.8000 0</gx:coord>
+          <gx:coord>23.4650 37.7700 0</gx:coord>
+          <gx:coord>23.4350 37.7480 0</gx:coord>
+        </gx:Track>
+        <gx:Track>
+          <when>2026-09-23T10:24:51Z</when>
+          <when>2026-09-23T10:38:37Z</when>
+          <when>2026-09-23T10:53:04Z</when>
+          <when>2026-09-23T11:01:36Z</when>
+          <gx:coord>23.4350 37.7480 0</gx:coord>
+          <gx:coord>23.4100 37.7300 0</gx:coord>
+          <gx:coord>23.3800 37.7150 0</gx:coord>
+          <gx:coord>23.3600 37.7200 0</gx:coord>
+        </gx:Track>
+      </gx:MultiTrack>
+    </Placemark>
+  </Document>
+</kml>

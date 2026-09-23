@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx:gpx version="1.1" creator="prefixed" xmlns:gpx="http://www.topografix.com/GPX/1/1">
+  <gpx:trk>
+    <gpx:trkseg>
+      <gpx:trkpt lat="1.0" lon="2.0"><gpx:time>2026-01-01T00:00:00Z</gpx:time></gpx:trkpt>
+      <gpx:trkpt lat="1.1" lon="2.0"><gpx:time>2026-01-01T00:01:00Z</gpx:time></gpx:trkpt>
+    </gpx:trkseg>
+  </gpx:trk>
+</gpx:gpx>

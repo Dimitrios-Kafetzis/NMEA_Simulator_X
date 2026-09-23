@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Document name</name>
+    <Placemark>
+      <name>Harbour approach</name>
+      <Point><coordinates>23.65,37.95,0</coordinates></Point>
+    </Placemark>
+    <Placemark>
+      <name>Leg one</name>
+      <LineString>
+        <tessellate>1</tessellate>
+        <coordinates>
+          23.6000,37.9000,0
+          23.6000,37.9100,2.5
+          23.6100,37.9100
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>

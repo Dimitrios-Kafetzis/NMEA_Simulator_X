@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+  <Document>
+    <Folder>
+      <name>Recorded tracks</name>
+      <Placemark>
+        <name>Morning sail</name>
+        <gx:MultiTrack>
+          <gx:Track>
+            <when>2026-09-23T10:00:00Z</when>
+            <when>2026-09-23T10:03:00Z</when>
+            <gx:coord>23.6000 37.9000 1.0</gx:coord>
+            <gx:coord>23.6000 37.9100 3.0</gx:coord>
+          </gx:Track>
+          <gx:Track>
+            <when>2026-09-23T10:06:00Z</when>
+            <when>2026-09-23T10:09:00Z</when>
+            <gx:coord>23.6000 37.9200</gx:coord>
+            <gx:coord>23.6100 37.9200</gx:coord>
+          </gx:Track>
+        </gx:MultiTrack>
+      </Placemark>
+    </Folder>
+  </Document>
+</kml>
