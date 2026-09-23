@@ -26,6 +26,8 @@ nmeasim run [--profile FILE] [--duration SECONDS] [--rate MS] [--quiet]
             [--stdout] [--tcp-server PORT]... [--udp HOST:PORT]... [--websocket PORT]...
             [--serial DEVICE[@BAUD]]... [--file PATH]...
             [--enable ID]... [--disable ID]...
+            [--encoding nmea0183|signalk|viewsync] [--tag-block [--tag-source ID]]
+            [--destination LAT,LON[,NAME]]
 ```
 
 | Option | Description |
@@ -48,6 +50,10 @@ nmeasim run [--profile FILE] [--duration SECONDS] [--rate MS] [--quiet]
 | `--serial DEVICE[@BAUD]` | Write to a serial device, 4800 baud unless given. Repeatable. |
 | `--file PATH` | Append sentences to a file. Repeatable. |
 | `--enable ID`, `--disable ID` | Turn a sentence on or off by registry id, for example `--enable MWV-T` or `--disable GSV`. Repeatable. |
+| `--encoding ENC` | What the outputs given on the command line carry: `nmea0183` (default), `signalk` deltas or `viewsync` packets, see the [profile reference](profile.md#outputs). Outputs from a profile keep their own encoding. |
+| `--tag-block` | Prefix every sentence of the command-line outputs with an IEC 61162-450 [TAG block](nmea0183-sentences.md#tag-blocks). |
+| `--tag-source ID` | Source identifier of the TAG block, `SIM0001` unless given. |
+| `--destination LAT,LON[,NAME]` | Steer for a waypoint so that APB, RMB and XTE are sent and the Signal K course paths appear; the leg starts at the seed position. |
 
 When any output option is given, the outputs of the profile are replaced by those from the
 command line; `--record` adds a log output in either case. Sentence options are applied on
@@ -89,6 +95,15 @@ nmeasim run --replay monday.log --tcp-server 10110
 
 # Replay a log captured by another program, spacing untimed sentences 200 ms apart
 nmeasim run --replay plotter-capture.txt --replay-interval 200 --stdout --quiet
+
+# Serve Signal K deltas to a Signal K server or web instrument on the usual port
+nmeasim run --websocket 3000 --encoding signalk
+
+# Drive Google Earth on another machine, with a destination for the course paths
+nmeasim run --udp 192.168.1.20:42000 --encoding viewsync --destination 37.7466,23.4275,AEGINA
+
+# Send sentences with TAG blocks, as an IEC 61162-450 gateway would
+nmeasim run --tcp-server 10110 --tag-block --tag-source GP0001
 
 # Run a saved profile but only GNSS sentences on a serial port
 nmeasim run --profile harbour.json --serial /dev/ttyUSB0@38400 \

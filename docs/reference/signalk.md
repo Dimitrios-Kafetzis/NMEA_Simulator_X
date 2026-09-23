@@ -5,7 +5,8 @@ built from the vessel state instead of NMEA 0183 sentences, one JSON document pe
 per WebSocket text frame). A WebSocket server output greets every client with the Signal K
 *hello* message first, so a Signal K server or a web instrument can treat the simulator as a
 Signal K source. The design is recorded in
-[ADR 0014](../adr/0014-multi-encoding-outputs.md).
+[ADR 0014](../adr/0014-multi-encoding-outputs.md) and the
+[how-to guide](../how-to/signal-k.md) walks through connecting a server.
 
 ## Hello message
 

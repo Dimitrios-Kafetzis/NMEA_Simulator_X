@@ -10,7 +10,7 @@ optional except `schema_version`; missing keys take the defaults shown below.
 ## Versioning
 
 ```json
-{ "schema_version": 2 }
+{ "schema_version": 3 }
 ```
 
 `schema_version` is the version of the format the file was written with. The simulator reads
@@ -22,12 +22,13 @@ misread.
 | --- | --- | --- |
 | 1 | 0.2.0 | First format |
 | 2 | 0.4.0 | `simulation.mode` gains `track` and `replay`, with the `simulation.track` and `simulation.replay` objects; the `log` output type. Version 1 files are always in `delta` mode and load unchanged. |
+| 3 | 0.5.0 | `simulation.seed.destination` and `simulation.seed.ais`, `sentences.custom`, the output `encoding` values `signalk` and `viewsync` with their `period_ms`, `tag_block`, `signalk` and `viewsync` objects. Every new key has a default, so version 2 files load unchanged. |
 
 ## Top level
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `schema_version` | integer | required | Format version, currently `2` |
+| `schema_version` | integer | required | Format version, currently `3` |
 | `name` | string | `"Default"` | Display name of the profile |
 | `simulation` | object | see below | Vessel seed and behaviour |
 | `sentences` | object | see below | Sentence schedule |
@@ -72,12 +73,45 @@ until the file provides one. The `variation` values are not used in those modes.
 | `gnss.satellites_in_use`, `gnss.satellites_in_view` | integer | `8`, `10` | 0 to 12 |
 | `gnss.hdop`, `gnss.pdop`, `gnss.vdop` | number | `0.9`, `1.7`, `1.4` | dilution of precision |
 | `gnss.geoid_separation_m` | number | `0` | metres |
-| `engines` | array | two engines | objects with `label`, `running`, `rpm`, `coolant_temperature_c` |
+| `engines` | array | two engines | objects with `label`, `running`, `rpm`, `coolant_temperature_c`; the order gives the RPM engine numbers and the XDR transducer ids |
+| `destination` | object or `null` | `null` | The waypoint the autopilot sentences describe, see below |
+| `ais` | object | see below | AIS static data of the own vessel |
+
+### `simulation.seed.destination`
+
+`null` (or a missing key) means no destination: APB, RMB and XTE are not sent and the Signal K
+course paths are absent. See the [simulation model](../explanation/simulation-model.md#destination).
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | `"WPT"` | Waypoint id, sent after removing NMEA reserved characters and truncating to 16 characters |
+| `latitude`, `longitude` | number | required | Destination, decimal degrees |
+| `origin_latitude`, `origin_longitude` | number | the seed position | Start of the leg, from which the cross-track error is measured |
+| `arrival_radius_m` | number | `100` | Radius of the arrival circle |
+
+```json
+"destination": { "name": "AEGINA", "latitude": 37.7466, "longitude": 23.4275,
+                 "origin_latitude": 38.0, "origin_longitude": 23.7, "arrival_radius_m": 100 }
+```
 
 ### `simulation.seed.ais`
 
-The AIS static data is added to the profile in a following milestone M4 change; until then
-the [defaults](ais.md#defaults) are transmitted.
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `mmsi` | integer | `239000001` | Maritime Mobile Service Identity, at most nine digits |
+| `imo_number` | integer | `0` | IMO number, 0 for none |
+| `name` | string | `"NMEA SIMULATOR X"` | Vessel name, 20 characters of the AIS alphabet |
+| `call_sign` | string | `"SIMX"` | Call sign, 7 characters |
+| `ship_type` | integer | `37` | Type of ship and cargo code, 0 to 255 |
+| `dimension_to_bow_m`, `dimension_to_stern_m` | number | `12`, `4` | Metres from the antenna, at most 511 |
+| `dimension_to_port_m`, `dimension_to_starboard_m` | number | `3`, `3` | Metres from the antenna, at most 63 |
+| `draught_m` | number | `1.8` | Maximum static draught, at most 25.5 |
+| `destination` | string | `""` | Voyage destination, 20 characters |
+| `navigation_status` | integer | `0` | Navigational status code, 0 to 15 |
+| `position_report_type` | integer | `1` | Message type of the position report: 1, 2 or 3 |
+
+The fields are described on the [AIS reference page](ais.md). The MMSI also forms the default
+Signal K context.
 
 ### `simulation.variation`
 
@@ -132,6 +166,7 @@ value. See the [simulation model](../explanation/simulation-model.md).
 | --- | --- | --- | --- |
 | `position_decimals` | integer | `4` | Decimal minutes in latitude and longitude, 2 to 8. Reduced automatically when a sentence would exceed 82 bytes. |
 | `settings` | object | `{}` | Per-sentence overrides keyed by registry id |
+| `custom` | array | `[]` | Sentences typed in by the operator, see below |
 
 Each entry of `settings` may contain `enabled` (boolean), `talker` (two characters, empty for
 the default) and `period_ms` (integer). Ids and defaults are listed by `nmeasim sentences`
@@ -147,11 +182,51 @@ and on the [sentence reference](nmea0183-sentences.md).
 }
 ```
 
+### `sentences.custom`
+
+Each entry is one [custom sentence](nmea0183-sentences.md#custom-sentences):
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | string | `""` | Identifier for filters and the console, upper-cased; empty gives `CUSTOM-n`; must not be a registry id |
+| `body` | string | required | The sentence without checksum, for example `$PXYZ,1,2,3`; validated when the profile is loaded |
+| `period_ms` | integer | `1000` | Emission period, 50 to 3600000 |
+| `enabled` | boolean | `true` | |
+
+```json
+"sentences": {
+  "custom": [
+    { "id": "BARO", "body": "$IIXDR,P,1.013,B,BARO", "period_ms": 5000, "enabled": true }
+  ]
+}
+```
+
 ## `outputs`
 
-Every entry has `type`, `enabled` (default `true`), `encoding` (only `"nmea0183"` yet) and
-`filter`, a list of registry ids to send on that output (empty sends everything). The other
-keys depend on the type.
+Every entry has `type`, `enabled` (default `true`), `encoding` and `filter`. The encoding
+decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.md)):
+
+| `encoding` | Carries | `filter` matches | Extra keys |
+| --- | --- | --- | --- |
+| `nmea0183` (default) | The sentences the simulation emits | Registry ids and custom sentence ids; empty sends everything | `tag_block` |
+| `signalk` | One [Signal K delta](signalk.md) built from the state every `period_ms` | Path prefixes such as `navigation` or `environment.wind`; empty sends every path | `period_ms`, `signalk` |
+| `viewsync` | One [ViewSync packet](viewsync.md) built from the state every `period_ms` | not used | `period_ms`, `viewsync` |
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `period_ms` | integer | `1000` | Period of the Signal K or ViewSync messages, 50 to 3600000; the simulation tick bounds the resolution |
+| `tag_block.enabled` | boolean | `false` | Prefix every sentence with an IEC 61162-450 [TAG block](nmea0183-sentences.md#tag-blocks) |
+| `tag_block.source` | string | `"SIM0001"` | The `s:` source identifier |
+| `tag_block.include_time` | boolean | `true` | Send the `c:` time |
+| `tag_block.milliseconds` | boolean | `false` | Send `c:` in milliseconds instead of seconds |
+| `signalk.context` | string | `""` | Signal K context; empty derives `vessels.urn:mrn:imo:mmsi:<mmsi>` from the AIS data |
+| `signalk.source_label` | string | `"nmeasim"` | The `source.label` of every update |
+| `viewsync.camera_altitude_m` | number | `500` | Camera height above the vessel |
+| `viewsync.tilt_deg` | number | `60` | Camera tilt |
+| `viewsync.roll_deg` | number | `0` | Camera roll |
+| `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon` |
+
+The other keys depend on the type.
 
 | `type` | Keys |
 | --- | --- |
@@ -166,9 +241,11 @@ keys depend on the type.
 
 ```json
 "outputs": [
-  { "type": "tcp-server", "port": 10110 },
+  { "type": "tcp-server", "port": 10110, "tag_block": { "enabled": true, "source": "GP0001" } },
   { "type": "udp", "mode": "broadcast", "address": "", "port": 10110, "interface": "eth0" },
-  { "type": "serial", "port_name": "/dev/ttyUSB0", "baud_rate": 38400, "filter": ["RMC", "GGA", "VTG"] }
+  { "type": "serial", "port_name": "/dev/ttyUSB0", "baud_rate": 38400, "filter": ["RMC", "GGA", "VTG"] },
+  { "type": "websocket-server", "port": 3000, "encoding": "signalk", "period_ms": 500 },
+  { "type": "udp", "address": "192.168.1.20", "port": 42000, "encoding": "viewsync", "period_ms": 200 }
 ]
 ```
 

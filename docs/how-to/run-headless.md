@@ -47,6 +47,26 @@ point. Add `--loop` to sail it again and again, `--speed 8 --ignore-timestamps` 
 at a set speed, or use a route file without timestamps, which is always sailed at `--speed`.
 See [Follow a track](follow-a-track.md) for the details and the profile keys.
 
+## Serve Signal K or drive Google Earth
+
+```bash
+nmeasim run --websocket 3000 --encoding signalk
+nmeasim run --udp 192.168.1.20:42000 --encoding viewsync
+```
+
+`--encoding` applies to every output given on the command line; a profile mixes encodings
+per output. See [Connect a Signal K server](signal-k.md) and
+[Follow the vessel in Google Earth](google-earth.md).
+
+## Steer for a waypoint
+
+```bash
+nmeasim run --tcp-server 10110 --destination 37.7466,23.4275,AEGINA
+```
+
+APB, RMB and XTE describe the leg from the start position to the waypoint; without a
+destination they are not sent.
+
 ## Record a session
 
 ```bash
@@ -88,7 +108,8 @@ pip install pynmea2
 nmeasim run --stdout --quiet --duration 3 | python3 tools/check_nmea_stream.py --expect 21
 ```
 
-CI runs this on every platform.
+CI runs this on every platform, together with `tools/check_ais_stream.py` (pyais),
+`tools/check_signalk_stream.py` and `tools/check_viewsync_stream.py`.
 
 ## Run in the background on Linux
 

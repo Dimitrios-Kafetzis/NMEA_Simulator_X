@@ -1,8 +1,11 @@
 #include <nmeasim/core/log/log_file.hpp>
+#include <nmeasim/core/nmea0183/tag_block.hpp>
+#include <nmeasim/core/signalk/delta.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
 #include <nmeasim/core/simulation/replay_source.hpp>
 #include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/core/track/track_file.hpp>
+#include <nmeasim/core/viewsync/viewsync.hpp>
 #include <nmeasim/io/simulation_runner.hpp>
 #include <nmeasim/io/transports/file_transport.hpp>
 #include <nmeasim/io/transports/log_transport.hpp>
@@ -19,6 +22,7 @@
 #include <algorithm>
 #include <chrono>
 #include <string>
+#include <string_view>
 
 namespace nmeasim::io {
 
@@ -37,6 +41,18 @@ core::simulation::EndBehaviour end_behaviour(bool loop) {
 }
 
 }  // namespace
+
+bool OutputChannel::admits_path(const QString& path) const {
+    if (filter.isEmpty()) {
+        return true;
+    }
+    for (const auto& prefix : filter) {
+        if (path.startsWith(prefix, Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 SimulationRunner::SimulationRunner(QObject* parent) : QObject(parent) {
     tick_timer_.setTimerType(Qt::PreciseTimer);
@@ -148,7 +164,7 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
         if (!output.enabled) {
             continue;
         }
-        OutputChannel channel{output, make_transport(output), {}, 0};
+        OutputChannel channel{output, make_transport(output), {}, 0, {}, 0};
         for (const auto& id : output.filter) {
             channel.filter.insert(id);
         }
@@ -166,11 +182,26 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
     return true;
 }
 
+void SimulationRunner::refresh_greetings() {
+    for (auto& channel : outputs_) {
+        if (channel.config.encoding != OutputConfig::Encoding::SignalK) {
+            continue;
+        }
+        if (auto* websocket = dynamic_cast<WebSocketServerTransport*>(channel.transport.get())) {
+            websocket->set_greeting(QString::fromStdString(core::signalk::encode_hello(
+                channel.config.signalk, simulation_->state(), std::chrono::system_clock::now())));
+        }
+    }
+}
+
 void SimulationRunner::start() {
     if (!simulation_ || is_running()) {
         return;
     }
+    refresh_greetings();
     for (auto& channel : outputs_) {
+        channel.next_due = simulation_->elapsed();
+        channel.counter = 0;
         if (!channel.transport->is_open()) {
             (void)channel.transport->open();
         }
@@ -226,6 +257,7 @@ void SimulationRunner::step() {
     pause();
     const auto sentences = simulation_->step_once(std::chrono::milliseconds{profile_.tick_ms});
     emit_sentences(sentences);
+    emit_state_messages();
     emit ticked();
     finish_if_done();
 }
@@ -276,20 +308,64 @@ QString SimulationRunner::recording_path() const {
 
 void SimulationRunner::emit_sentences(
     const std::vector<core::simulation::EmittedSentence>& sentences) {
+    const auto time =
+        simulation_ ? simulation_->state().time_utc : std::chrono::system_clock::now();
     for (const auto& sentence : sentences) {
         const QString id = QString::fromStdString(sentence.id);
         const QByteArray line = QByteArray::fromStdString(sentence.text + "\r\n");
         ++sentences_emitted_;
         for (auto& channel : outputs_) {
-            if (channel.transport->is_open() && channel.admits(id)) {
-                channel.transport->write(line);
-                ++channel.sentences_sent;
+            if (!channel.carries_sentences() || !channel.transport->is_open() ||
+                !channel.admits(id)) {
+                continue;
             }
+            if (channel.config.tag_block.enabled) {
+                channel.transport->write(QByteArray::fromStdString(core::nmea0183::format_tag_block(
+                                             channel.config.tag_block.options, time)) +
+                                         line);
+            } else {
+                channel.transport->write(line);
+            }
+            ++channel.sentences_sent;
         }
         if (recorder_ && recorder_->is_open()) {
             recorder_->write(line);
         }
         emit sentence_emitted(id, QString::fromStdString(sentence.text));
+    }
+}
+
+void SimulationRunner::emit_state_messages() {
+    if (!simulation_) {
+        return;
+    }
+    const auto now = simulation_->elapsed();
+    const auto& state = simulation_->state();
+    for (auto& channel : outputs_) {
+        if (channel.carries_sentences() || !channel.transport->is_open() ||
+            now < channel.next_due) {
+            continue;
+        }
+        channel.next_due = now + std::chrono::milliseconds{channel.config.period_ms};
+        std::string message;
+        QString id;
+        if (channel.config.encoding == OutputConfig::Encoding::SignalK) {
+            id = QStringLiteral("SIGNALK");
+            message = core::signalk::encode_delta(
+                state, channel.config.signalk, [&channel](std::string_view path) {
+                    return channel.admits_path(
+                        QString::fromUtf8(path.data(), static_cast<qsizetype>(path.size())));
+                });
+        } else {
+            id = QStringLiteral("VIEWSYNC");
+            message =
+                core::viewsync::encode_packet(state, channel.config.viewsync, channel.counter);
+            ++channel.counter;
+        }
+        channel.transport->write(QByteArray::fromStdString(message + "\r\n"));
+        ++channel.sentences_sent;
+        ++sentences_emitted_;
+        emit sentence_emitted(id, QString::fromStdString(message));
     }
 }
 
@@ -308,6 +384,7 @@ void SimulationRunner::tick() {
     const auto dt = std::clamp(elapsed, std::chrono::milliseconds{1}, kMaxStep);
 
     emit_sentences(simulation_->step(dt));
+    emit_state_messages();
     emit ticked();
     finish_if_done();
 }

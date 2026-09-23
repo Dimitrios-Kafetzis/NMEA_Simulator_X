@@ -28,12 +28,24 @@ class LogTransport;
 struct OutputChannel {
     OutputConfig config;
     std::unique_ptr<Transport> transport;
-    /// Registry ids admitted by this channel; empty admits everything.
+    /// Registry ids admitted by this channel; empty admits everything. For a Signal K
+    /// channel the entries are path prefixes.
     QSet<QString> filter;
     qint64 sentences_sent{0};
+    /// Simulated time at which the next state message (Signal K, ViewSync) is due.
+    std::chrono::milliseconds next_due{0};
+    /// Packets sent so far on a ViewSync channel.
+    quint32 counter{0};
 
     [[nodiscard]] bool admits(const QString& id) const {
         return filter.isEmpty() || filter.contains(id);
+    }
+    /// True for a Signal K path admitted by the filter: empty admits everything, otherwise
+    /// the path must start with one of the entries.
+    [[nodiscard]] bool admits_path(const QString& path) const;
+    /// True when this channel carries NMEA 0183 sentences.
+    [[nodiscard]] bool carries_sentences() const noexcept {
+        return config.encoding == OutputConfig::Encoding::Nmea0183;
     }
 };
 
@@ -97,7 +109,8 @@ signals:
     /// `simulation()->state()`.
     void ticked();
     /// Every sentence produced, before filtering, with its registry id (or the formatter of
-    /// a replayed sentence).
+    /// a replayed sentence). Signal K and ViewSync messages are reported with the ids
+    /// `SIGNALK` and `VIEWSYNC`.
     void sentence_emitted(const QString& id, const QString& text);
     void output_error(const QString& description, const QString& message);
     /// The track or log reached its end; `stopped` follows.
@@ -108,7 +121,10 @@ signals:
 private:
     void tick();
     void emit_sentences(const std::vector<core::simulation::EmittedSentence>& sentences);
+    /// Sends the state messages of the Signal K and ViewSync channels that are due.
+    void emit_state_messages();
     void finish_if_done();
+    void refresh_greetings();
     std::unique_ptr<Transport> make_transport(const OutputConfig& config) const;
     std::unique_ptr<core::simulation::Source> make_source(const Profile& profile,
                                                           QString* error) const;
