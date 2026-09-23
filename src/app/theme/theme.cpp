@@ -153,6 +153,9 @@ QScrollBar::handle:hover { background: {text_dim}; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: none; }
 QSplitter::handle { background: {border}; }
+QToolButton#map_button { background: {panel_translucent}; color: {text}; border: 1px solid {border_strong}; border-radius: 6px; font-size: 13pt; font-weight: 700; padding: 0; }
+QToolButton#map_button:hover { border-color: {accent}; }
+QToolButton#map_button:checked { background: {accent_soft}; border-color: {accent}; }
 QScrollArea#dashboard_scroll { background: transparent; border: none; }
 QWidget#dashboard_content { background: {window}; }
 QMainWindow::separator { background: {border}; width: 1px; height: 1px; }
@@ -200,6 +203,7 @@ QString style_sheet(const Colors& colors) {
         {"{text_dim}", colors.text_dim},
         {"{text}", colors.text},
         {"{accent_soft}", with_alpha(colors.accent, colors.dark ? 0x38 : 0x26)},
+        {"{panel_translucent}", with_alpha(colors.panel, 0xe0)},
         {"{accent_text}", colors.accent_text},
         {"{accent}", colors.accent},
         {"{warning}", colors.warning},

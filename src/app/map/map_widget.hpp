@@ -7,22 +7,41 @@
 #include <QList>
 #include <QPoint>
 #include <QPointF>
+#include <QString>
 #include <QWidget>
 
 #include <optional>
+
+class QToolButton;
 
 namespace nmeasim::app::map {
 
 class TileCache;
 
-/// A slippy map: raster tiles from a `TileCache`, the vessel with its heading, the track it
-/// has sailed, and mouse and keyboard navigation.
+/// Length and caption of the scale bar.
+struct ScaleBar {
+    /// Length of the bar in pixels.
+    double length_px{0.0};
+    /// Distance it stands for, e.g. `0.5 nm` or `50 m`.
+    QString label;
+};
+
+/// The longest round distance that fits in `max_length_px` at `metres_per_pixel`: nautical
+/// miles (0.1 to 2000 nm in 1, 2, 5 steps), or metres (10 to 100 m) below 0.1 nm.
+[[nodiscard]] ScaleBar scale_bar(double metres_per_pixel, double max_length_px);
+
+/// A slippy map: raster tiles from a `TileCache`, the vessel with its heading and a vector
+/// of its course and speed, the track it has sailed, and mouse, touchpad and keyboard
+/// navigation. Overlays show zoom buttons, a follow button, a scale bar, a north arrow and
+/// the position under the pointer.
+///
+/// The zoom level is fractional, so the wheel, the touchpad and pinch gestures zoom smoothly:
+/// tiles come from the nearest whole level and are scaled by the remaining factor. The
+/// keyboard and the buttons step to whole levels. In follow mode the centre tracks the
+/// vessel; dragging the map switches follow mode off.
 ///
 /// The sailed track is a list of segments: moving the vessel by hand or seeking in a track or
 /// log starts a new segment, so that no line joins the old and the new position.
-///
-/// The widget keeps a centre position and an integer zoom level. In follow mode the centre
-/// tracks the vessel; dragging the map switches follow mode off.
 class MapWidget : public QWidget {
     Q_OBJECT
 
@@ -33,17 +52,25 @@ public:
 
     [[nodiscard]] core::geo::Position center() const noexcept { return center_; }
     void set_center(core::geo::Position center);
-    [[nodiscard]] int zoom() const noexcept { return zoom_; }
+    /// The zoom level rounded to a whole level.
+    [[nodiscard]] int zoom() const noexcept;
+    /// The fractional zoom level.
+    [[nodiscard]] double zoom_level() const noexcept { return zoom_; }
     void set_zoom(int zoom);
-    /// Zooms by `steps` levels keeping the position under `anchor` (widget pixels) fixed.
+    /// Zooms by `steps` whole levels keeping the position under `anchor` (widget pixels)
+    /// fixed; the result is a whole level.
     void zoom_by(int steps, QPoint anchor);
+    /// Zooms to a fractional `level` keeping the position under `anchor` fixed, or keeping
+    /// the vessel in the centre in follow mode.
+    void zoom_to(double level, QPointF anchor);
 
     [[nodiscard]] bool follows_vessel() const noexcept { return follow_; }
     void set_follow_vessel(bool follow);
 
-    /// Places the vessel. In follow mode the map recentres on it.
+    /// Places the vessel. In follow mode the map recentres on it. The speed over ground sets
+    /// the length of the course vector, which ends where the vessel will be in six minutes.
     void set_vessel(core::geo::Position position, double heading_true_deg,
-                    double course_over_ground_deg);
+                    double course_over_ground_deg, double speed_over_ground_kn = 0.0);
     [[nodiscard]] std::optional<core::geo::Position> vessel_position() const noexcept;
     void clear_track();
     /// Ends the current track segment; the next vessel position starts a new one.
@@ -74,6 +101,17 @@ public:
 
     /// Metres per pixel at the centre latitude.
     [[nodiscard]] double scale_m_per_px() const;
+    /// Length in pixels of the course vector drawn ahead of the vessel.
+    [[nodiscard]] double course_vector_length_px() const;
+    /// Position under the pointer while it is over the map.
+    [[nodiscard]] std::optional<core::geo::Position> pointer_position() const noexcept {
+        return pointer_;
+    }
+
+    /// The on-map buttons, for tests.
+    [[nodiscard]] QToolButton* zoom_in_button() const noexcept { return zoom_in_button_; }
+    [[nodiscard]] QToolButton* zoom_out_button() const noexcept { return zoom_out_button_; }
+    [[nodiscard]] QToolButton* follow_button() const noexcept { return follow_button_; }
 
 signals:
     /// The operator double-clicked (or Ctrl+clicked) the map to move the vessel there.
@@ -87,11 +125,13 @@ signals:
     void follow_changed(bool follow);
 
 protected:
+    bool event(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void leaveEvent(QEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;
     void wheelEvent(QWheelEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -102,6 +142,7 @@ private:
         core::geo::Position position;
         double heading_true_deg{0.0};
         double course_over_ground_deg{0.0};
+        double speed_over_ground_kn{0.0};
     };
 
     void draw_tiles(class QPainter& painter);
@@ -112,12 +153,19 @@ private:
     void draw_overlay(QPainter& painter);
     /// Draws a tile, falling back to a scaled part of an ancestor when it is not cached.
     void draw_tile(QPainter& painter, TileKey key, const QRect& target);
+    /// The whole zoom level tiles are taken from, and the factor they are scaled by.
+    [[nodiscard]] int tile_zoom() const noexcept;
+    [[nodiscard]] double tile_scale() const noexcept;
+    /// Pixel coordinates of the whole map at the current fractional zoom, and back.
+    [[nodiscard]] QPointF world_pixel(core::geo::Position position) const;
+    [[nodiscard]] core::geo::Position position_of_world(QPointF pixel) const;
     [[nodiscard]] QPointF center_pixel() const;
     void pan_by(QPointF delta_px);
+    void place_buttons();
 
     TileCache* cache_;
     core::geo::Position center_{37.9838, 23.7275};
-    int zoom_{12};
+    double zoom_{12.0};
     bool follow_{true};
     std::optional<Vessel> vessel_;
     QList<QList<core::geo::Position>> track_;
@@ -125,10 +173,12 @@ private:
     QList<core::geo::Position> route_;
     std::optional<core::geo::Position> destination_;
     std::optional<core::geo::Position> leg_origin_;
+    std::optional<core::geo::Position> pointer_;
     std::optional<QPoint> drag_last_;
     bool dragged_{false};
-    /// Wheel rotation not yet turned into whole zoom levels, in eighths of a degree.
-    int wheel_remainder_{0};
+    QToolButton* zoom_in_button_;
+    QToolButton* zoom_out_button_;
+    QToolButton* follow_button_;
 };
 
 }  // namespace nmeasim::app::map

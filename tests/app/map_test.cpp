@@ -15,10 +15,13 @@
 #include <QPainter>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QWheelEvent>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
 
 using Catch::Approx;
 using nmeasim::core::geo::Position;
@@ -164,18 +167,20 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
                       Qt::NoModifier, Qt::NoScrollPhase, false);
     QApplication::sendEvent(&widget, &wheel);
     CHECK(widget.zoom() == 11);
-    // Touchpads and high-resolution wheels send small deltas that add up to a zoom level.
-    for (int i = 0; i < 4; ++i) {
+    // Touchpads and high-resolution wheels send small deltas that zoom by fractions of a level.
+    for (int i = 1; i <= 4; ++i) {
         QWheelEvent small(QPointF(256, 192), QPointF(256, 192), QPoint(0, 3), QPoint(0, 30),
                           Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
         QApplication::sendEvent(&widget, &small);
-        CHECK(widget.zoom() == (i < 3 ? 11 : 12));
+        CHECK(widget.zoom_level() == Approx(11.0 + 0.25 * i));
     }
+    CHECK(widget.zoom() == 12);
     for (int i = 0; i < 8; ++i) {
         QWheelEvent back(QPointF(256, 192), QPointF(256, 192), QPoint(0, -3), QPoint(0, -30),
                          Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
         QApplication::sendEvent(&widget, &back);
     }
+    CHECK(widget.zoom_level() == Approx(10.0));
     CHECK(widget.zoom() == 10);
     widget.set_zoom(99);
     CHECK(widget.zoom() == map::kMaxZoom);
@@ -361,4 +366,87 @@ TEST_CASE("the main window steers for a destination picked on the map", "[app][m
     CHECK_FALSE(window.runner().simulation()->state().destination.has_value());
     CHECK_FALSE(window.map_view()->destination().has_value());
     CHECK(window.dashboard()->destination_text() == QStringLiteral("None"));
+}
+
+TEST_CASE("the scale bar picks round nautical distances", "[app][map]") {
+    // 10 m per pixel, at most 160 pixels: 1 nm is 185.2 px, too long; 0.5 nm is 92.6 px.
+    auto bar = map::scale_bar(10.0, 160.0);
+    CHECK(bar.label == QStringLiteral("0.5 nm"));
+    CHECK(bar.length_px == Approx(92.6));
+    // 0.5 m per pixel: 0.1 nm would be 370 px, so metres are used.
+    bar = map::scale_bar(0.5, 160.0);
+    CHECK(bar.label == QStringLiteral("50 m"));
+    CHECK(bar.length_px == Approx(100.0));
+    bar = map::scale_bar(20000.0, 160.0);
+    CHECK(bar.label == QStringLiteral("1000 nm"));
+    CHECK(map::scale_bar(0.0, 160.0).label.isEmpty());
+}
+
+TEST_CASE("the map buttons zoom and follow, and the pointer position is tracked", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(400, 300);
+    widget.set_zoom(10);
+    widget.set_vessel({37.9838, 23.7275}, 45.0, 45.0, 6.0);
+
+    REQUIRE(widget.zoom_in_button() != nullptr);
+    CHECK(widget.zoom_in_button()->x() > 300);
+    widget.zoom_in_button()->click();
+    CHECK(widget.zoom() == 11);
+    widget.zoom_out_button()->click();
+    widget.zoom_out_button()->click();
+    CHECK(widget.zoom() == 9);
+
+    CHECK(widget.follow_button()->isChecked());
+    QSignalSpy follow(&widget, &map::MapWidget::follow_changed);
+    widget.follow_button()->click();
+    CHECK_FALSE(widget.follows_vessel());
+    CHECK(follow.count() == 1);
+    widget.set_follow_vessel(true);
+    CHECK(widget.follow_button()->isChecked());
+
+    // Fractional zoom keeps positions and pixels consistent.
+    widget.zoom_to(9.5, QPointF(200, 150));
+    CHECK(widget.zoom_level() == Approx(9.5));
+    const Position probe{37.99, 23.74};
+    const Position back = widget.position_at(widget.point_of(probe));
+    CHECK(back.latitude_deg == Approx(probe.latitude_deg).margin(1e-9));
+    CHECK(back.longitude_deg == Approx(probe.longitude_deg).margin(1e-9));
+
+    // The course vector is six minutes of travel: 0.6 nm at 6 kn.
+    const double expected = 0.6 * 1852.0 / widget.scale_m_per_px();
+    CHECK(widget.course_vector_length_px() == Approx(std::min(expected, 400.0)));
+
+    CHECK_FALSE(widget.pointer_position().has_value());
+    QMouseEvent move(QEvent::MouseMove, QPointF(200, 150), QPointF(200, 150), Qt::NoButton,
+                     Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &move);
+    REQUIRE(widget.pointer_position().has_value());
+    CHECK(widget.pointer_position()->latitude_deg == Approx(37.9838).margin(1e-6));
+    QEvent leave(QEvent::Leave);
+    QApplication::sendEvent(&widget, &leave);
+    CHECK_FALSE(widget.pointer_position().has_value());
+
+    QImage image(widget.size(), QImage::Format_ARGB32);
+    widget.render(&image);
+    CHECK_FALSE(image.isNull());
+}
+
+TEST_CASE("zooming in free view keeps the point under the pointer", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(400, 300);
+    widget.set_follow_vessel(false);
+    widget.set_center({37.9838, 23.7275});
+    widget.set_zoom(10);
+    const QPointF anchor(320, 60);
+    const Position before = widget.position_at(anchor);
+    widget.zoom_to(11.3, anchor);
+    const Position after = widget.position_at(anchor);
+    CHECK(after.latitude_deg == Approx(before.latitude_deg).margin(1e-7));
+    CHECK(after.longitude_deg == Approx(before.longitude_deg).margin(1e-7));
 }
