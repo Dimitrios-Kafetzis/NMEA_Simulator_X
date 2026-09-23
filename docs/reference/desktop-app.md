@@ -144,18 +144,34 @@ the file drives the vessel.
 
 ## Map
 
-The map shows the vessel as a yellow hull pointing along its true heading, a dashed blue
-line along its course over ground, and a red track of the positions sailed since the profile
-was applied (at most 5000 points). In track mode the loaded track or route is drawn in green
-underneath, with a marker on every point when it has 500 points or fewer. The zoom level and the words *offline* and *free view*
-appear in the top-left corner; the OpenStreetMap attribution is always drawn.
+The map shows the vessel as a yellow hull pointing along its true heading, with a thin
+heading line ahead of the bow and a dashed course vector along the course over ground that
+ends, with a small circle, where the vessel will be in six minutes at its speed over ground.
+The positions sailed since the profile was applied form a red track (at most 5000 points).
+In track mode the loaded track or route is drawn in green underneath, with a marker on every
+point when it has 500 points or fewer.
+
+Overlays keep the chart readable:
+
+| Where | Overlay |
+| --- | --- |
+| Top left | Zoom level (with one decimal between whole levels) and *offline*, *free view* or *destination set*; below it a north arrow, as the chart is always north up |
+| Top right | Buttons *+* and *−* (zoom one level) and *Follow the vessel* (lit while following) |
+| Bottom left | Scale bar in round nautical miles (0.1 to 5000 nm), or metres below 0.1 nm |
+| Bottom right | The position under the pointer while it is over the map, and the OpenStreetMap attribution |
+
+The zoom level is continuous: the wheel, the touchpad and pinch gestures zoom smoothly, using
+the tiles of the nearest whole level scaled to fit, while the keys and buttons step to whole
+levels.
 
 | Input | Effect |
 | --- | --- |
 | Drag with the left button | Pans the map and switches *Follow vessel* off |
-| Mouse wheel or two-finger touchpad scroll | Zooms in or out around the pointer, or around the vessel while *Follow vessel* is on; small touchpad movements add up to a zoom level |
+| Mouse wheel or two-finger touchpad scroll | Zooms smoothly around the pointer, or around the vessel while *Follow vessel* is on; one wheel notch is one level |
+| Pinch on a touchpad | Zooms smoothly around the fingers, where the platform reports pinch gestures (macOS, Wayland) |
+| *+* / *−* buttons | Zoom in or out one level around the centre |
 | ++plus++ / ++minus++ | Zooms in or out around the centre |
-| ++home++ | Switches *Follow vessel* on and recentres |
+| ++home++, or the *Follow the vessel* button | Switches *Follow vessel* on and recentres |
 | Double-click, or ++ctrl++ and click | Moves the vessel to that point |
 | ++shift++ and click | Sets the destination waypoint at that point; the leg starts where the vessel is |
 | Right click | Menu with *Move vessel here*, *Set destination here* and *Clear destination* |

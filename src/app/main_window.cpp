@@ -369,7 +369,8 @@ void MainWindow::refresh_view() {
     const auto& state = simulation->state();
     dashboard_->update_state(state);
     map_->set_vessel(state.navigation.position, state.navigation.heading_true_deg,
-                     state.navigation.course_over_ground_deg);
+                     state.navigation.course_over_ground_deg,
+                     state.navigation.speed_over_ground_kn);
     if (state.destination) {
         map_->set_destination(state.destination->position, state.destination->origin);
     } else {
