@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [0.4.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.3.0...v0.4.0) (2026-09-23)
+
+
+### Features
+
+* **app:** open tracks and logs, add transport controls and draw the route ([#19](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/19)) ([51fb82d](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/51fb82d4e3ebed34944582c0121c89cf4b5d4fd2))
+* **core:** add GPX and KML track parsing and the track-following source ([#15](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/15)) ([12f5404](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/12f5404b15c841bd76f123f22380dd61c14e476a))
+* **core:** add the NMEA decoder, log parsing and the replay source ([#17](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/17)) ([6e00bbe](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/6e00bbe7c96e14a22d95eefc9f5aa53176796a3d))
+* **io:** add track and replay profile modes, log recording and the CLI flags ([#18](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/18)) ([dcea1be](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/dcea1be180f237e5f330667433b38a41a91020c5))
+
 ## [0.3.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.2.0...v0.3.0) (2026-09-22)
 
 
