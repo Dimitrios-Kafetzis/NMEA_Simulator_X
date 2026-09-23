@@ -229,6 +229,10 @@ the other outputs.
 
 ## Appearance
 
+![The night bridge theme](../assets/screenshots/main-window.png)
+
+![The daylight theme](../assets/screenshots/main-window-day.png)
+
 *View → Theme* switches between two looks at once, and the choice is kept:
 
 | Theme | Look |

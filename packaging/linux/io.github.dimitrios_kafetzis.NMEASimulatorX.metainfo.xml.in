@@ -39,8 +39,12 @@
   </provides>
   <screenshots>
     <screenshot type="default">
-      <caption>The dashboard, console, outputs and map of a running simulation</caption>
+      <caption>A running simulation in the night bridge theme: compass, wind dial, instruments, map and console</caption>
       <image>https://raw.githubusercontent.com/Dimitrios-Kafetzis/NMEA_Simulator_X/main/docs/assets/screenshots/main-window.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The same simulation in the daylight theme</caption>
+      <image>https://raw.githubusercontent.com/Dimitrios-Kafetzis/NMEA_Simulator_X/main/docs/assets/screenshots/main-window-day.png</image>
     </screenshot>
   </screenshots>
   <branding>

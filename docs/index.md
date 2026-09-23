@@ -6,7 +6,7 @@ environment, propulsion and AIS data over serial, TCP, UDP and WebSocket connect
 chart plotters, instrument displays, gateways and marine software can be developed and tested
 on a desk.
 
-![The dashboard, map, console and outputs of a running simulation](assets/screenshots/main-window.png)
+![A running simulation in the night bridge theme: compass, wind dial, instruments, map and console](assets/screenshots/main-window.png)
 
 **Get started:** [install it](how-to/install.md) on Windows, macOS or Linux, then follow
 [your first simulated voyage](tutorials/first-voyage.md).
