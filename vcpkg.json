@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "nmea-simulator-x",
-  "version-string": "0.4.0",
+  "version-string": "0.5.0",
   "description": "NMEA 0183 and Signal K data stream simulator",
   "homepage": "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X",
   "license": "GPL-3.0-only",
