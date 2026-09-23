@@ -25,7 +25,7 @@ flowchart TB
         cli[nmeasim_cli\nCLI11 + Qt Core]
     end
     io[nmeasim_io\nQt Core, Network, SerialPort, WebSockets]
-    core[nmeasim_core\nPure C++20, GeographicLib]
+    core[nmeasim_core\nPure C++20, GeographicLib, pugixml]
     app --> io
     cli --> io
     io --> core
@@ -33,7 +33,7 @@ flowchart TB
 
 | Layer | Directory | Allowed dependencies | Responsibility |
 | --- | --- | --- | --- |
-| `nmeasim::core` | `src/core` | Standard library, GeographicLib | Vessel model, kinematics, geodesy, sources, route logic, all encoders, GPX/KML/log parsing |
+| `nmeasim::core` | `src/core` | Standard library, GeographicLib, pugixml | Vessel model, kinematics, geodesy, sources, route logic, all encoders, GPX/KML/log parsing |
 | `nmeasim::io` | `src/io` | `core`, Qt Core, Network, SerialPort, WebSockets | Transports, scheduler, file recording and replay, profile persistence, control bus |
 | `nmeasim_cli` | `src/cli` | `core`, `io`, CLI11 | Headless host |
 | `nmeasim_app` | `src/app` | `core`, `io`, Qt Widgets | Desktop host: dashboard, settings, console, map |

@@ -1,7 +1,8 @@
 # Simulation model
 
 This page explains how the delta simulation mode produces a believable vessel from a handful
-of seed values, and how sentences are scheduled from the resulting state.
+of seed values, how track mode moves the vessel along a file, and how sentences are scheduled
+from the resulting state.
 
 ## Delta mode
 
@@ -49,6 +50,40 @@ heading `H` at speed `V` through the water, the apparent wind velocity is the tr
 velocity minus the vessel velocity. Its magnitude is the apparent wind speed and the
 direction it comes from, minus the heading, is the apparent wind angle reported by MWV.
 A head wind at 10 knots on a vessel making 5 knots is felt as 15 knots from dead ahead.
+
+## Track mode
+
+In track mode the vessel follows a [GPX or KML file](../reference/track-files.md). The
+source reduces the file to a table of **legs**, one per pair of consecutive points, and gives
+every leg a duration:
+
+- On a **timed** track (every point has a timestamp and the times never decrease) the
+  duration of a leg is the difference between the timestamps of its two points. The speed
+  shown is the recorded point speed when the file has one, otherwise the leg length divided
+  by its duration.
+- On an **untimed** track the duration is the leg length divided by the speed to sail it at:
+  the recorded point speed when the file has one, otherwise the speed configured in the
+  profile (6 knots by default). Timestamps can also be ignored on request so that a recorded
+  track is sailed at a chosen speed.
+
+On every tick the elapsed time along the track grows by the tick length. The current leg is
+found from the elapsed time, and the position is the WGS84 geodesic point at the elapsed
+fraction of the leg length, so the file's point density never shows in the output: a track
+with a point every minute still yields a smooth position at 10 Hz. Course over ground is the
+recorded course of the leg's start point when there is one, otherwise the leg's initial
+bearing; heading equals course and the rate of turn follows from the heading change.
+Altitude is interpolated between points that carry an elevation.
+
+The simulated clock follows the track's own timestamps on a timed track, and the profile
+start time plus elapsed time otherwise. Depth, water temperature, wind and GNSS quality come
+from the profile seed and do not drift; apparent wind is recomputed from the vessel's motion.
+
+At the end of the track the source either **stops**, holding the last point with zero speed
+and reporting that it is finished so that the run ends, or **loops** back to the first point.
+A timed track that loops rewinds the clock to its first timestamp.
+
+The operator can jump to any point and seek to any elapsed time; the state is recomputed at
+once from the leg table, so seeking is as cheap as a tick.
 
 ## Sentence scheduling
 

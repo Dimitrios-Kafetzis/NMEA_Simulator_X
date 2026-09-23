@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="NMEA Simulator X fixtures" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v2">
+  <trk>
+    <trkseg>
+      <trkpt lat="37.9000" lon="23.6000">
+        <extensions>
+          <gpxtpx:TrackPointExtension>
+            <gpxtpx:speed>3.0</gpxtpx:speed>
+            <gpxtpx:course>90</gpxtpx:course>
+          </gpxtpx:TrackPointExtension>
+        </extensions>
+      </trkpt>
+      <trkpt lat="37.9000" lon="23.6100">
+        <extensions>
+          <speed>4.0</speed>
+        </extensions>
+      </trkpt>
+      <trkpt lat="37.9000" lon="23.6200"/>
+    </trkseg>
+  </trk>
+</gpx>

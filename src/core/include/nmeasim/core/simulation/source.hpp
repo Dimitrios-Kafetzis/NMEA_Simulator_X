@@ -3,6 +3,7 @@
 #include <nmeasim/core/model/vessel_state.hpp>
 
 #include <chrono>
+#include <optional>
 
 /// A source produces the vessel state for each simulation tick.
 namespace nmeasim::core::simulation {
@@ -22,6 +23,19 @@ public:
 
     /// True once a finite source (a track, a log) has nothing more to produce.
     [[nodiscard]] virtual bool finished() const noexcept { return false; }
+
+    /// Length of a finite source in simulated time; nullopt for an endless one.
+    [[nodiscard]] virtual std::optional<std::chrono::milliseconds> duration() const noexcept {
+        return std::nullopt;
+    }
+
+    /// Elapsed position within a finite source, between zero and `duration()`. Endless
+    /// sources report zero.
+    [[nodiscard]] virtual std::chrono::milliseconds position() const noexcept { return {}; }
+
+    /// Moves a finite source to `position`, clamped to its duration. Endless sources ignore
+    /// it. The state reflects the new position immediately, without a call to `advance`.
+    virtual void seek(std::chrono::milliseconds /*position*/) {}
 
 protected:
     Source() = default;

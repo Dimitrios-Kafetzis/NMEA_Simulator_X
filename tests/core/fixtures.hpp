@@ -3,10 +3,23 @@
 #include <nmeasim/core/model/vessel_state.hpp>
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <string_view>
 
 namespace nmeasim::test {
+
+/// Absolute path of a file under `tests/fixtures/`.
+inline std::string fixture_path(std::string_view relative) {
+    return std::string{NMEASIM_FIXTURES_DIR} + "/" + std::string{relative};
+}
+
+/// Contents of a file under `tests/fixtures/`; empty when it does not exist.
+inline std::string read_fixture(std::string_view relative) {
+    std::ifstream file(fixture_path(relative), std::ios::binary);
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
 
 /// A fully populated vessel state near Athens, used as the golden-file fixture.
 inline core::model::VesselState fixture_state() {

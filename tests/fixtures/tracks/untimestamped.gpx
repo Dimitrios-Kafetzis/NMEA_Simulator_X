@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="NMEA Simulator X fixtures" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Plain track</name>
+    <trkseg>
+      <trkpt lat="37.9000" lon="23.6000"/>
+      <trkpt lat="37.9100" lon="23.6000"/>
+      <trkpt lat="37.9100" lon="23.6100"/>
+    </trkseg>
+  </trk>
+</gpx>

@@ -16,6 +16,7 @@ ADR supersedes it instead. Number the next record sequentially and add it to `mk
 | [0008](0008-testing-strategy.md) | Testing strategy | Accepted |
 | [0009](0009-desktop-shell.md) | Desktop shell: one main window with dock panels, tested offscreen | Accepted |
 | [0010](0010-map-tiles.md) | Map view: painted raster tiles with a disk cache | Accepted |
+| [0011](0011-track-and-replay-sources.md) | Track following and log replay as sources with a seekable transport interface | Accepted |
 
 ## Template
 

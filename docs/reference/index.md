@@ -9,6 +9,6 @@ Precise, exhaustive descriptions of what the software does.
 - [NMEA 0183 sentences](nmea0183-sentences.md): every sentence the simulator can emit, its
   fields and an example line.
 - [Transports](transports.md): every output channel, its settings and behaviour.
+- [Track files](track-files.md): what is read from GPX and KML files.
 
-Signal K paths, the ViewSync packet layout and the log file format are documented here as
-those features land.
+Signal K paths and the ViewSync packet layout are documented here as those features land.

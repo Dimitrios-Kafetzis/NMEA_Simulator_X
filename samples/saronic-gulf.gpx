@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="NMEA Simulator X" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Saronic Gulf: Piraeus to Aegina and Agistri</name>
+    <time>2026-09-23T08:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Saronic Gulf</name>
+    <trkseg>
+      <trkpt lat="37.9350" lon="23.6280">
+        <ele>0.0</ele>
+        <time>2026-09-23T08:00:00Z</time>
+      </trkpt>
+      <trkpt lat="37.9230" lon="23.6100">
+        <ele>0.0</ele>
+        <time>2026-09-23T08:09:34Z</time>
+      </trkpt>
+      <trkpt lat="37.9000" lon="23.5800">
+        <ele>0.0</ele>
+        <time>2026-09-23T08:26:33Z</time>
+      </trkpt>
+      <trkpt lat="37.8700" lon="23.5500">
+        <ele>0.0</ele>
+        <time>2026-09-23T08:46:13Z</time>
+      </trkpt>
+      <trkpt lat="37.8350" lon="23.5200">
+        <ele>0.0</ele>
+        <time>2026-09-23T09:07:58Z</time>
+      </trkpt>
+      <trkpt lat="37.8000" lon="23.4900">
+        <ele>0.0</ele>
+        <time>2026-09-23T09:29:43Z</time>
+      </trkpt>
+      <trkpt lat="37.7700" lon="23.4650">
+        <ele>0.0</ele>
+        <time>2026-09-23T09:48:12Z</time>
+      </trkpt>
+      <trkpt lat="37.7480" lon="23.4350">
+        <ele>0.0</ele>
+        <time>2026-09-23T10:04:51Z</time>
+      </trkpt>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="37.7480" lon="23.4350">
+        <ele>0.0</ele>
+        <time>2026-09-23T10:24:51Z</time>
+      </trkpt>
+      <trkpt lat="37.7300" lon="23.4100">
+        <ele>0.0</ele>
+        <time>2026-09-23T10:38:37Z</time>
+      </trkpt>
+      <trkpt lat="37.7150" lon="23.3800">
+        <ele>0.0</ele>
+        <time>2026-09-23T10:53:04Z</time>
+      </trkpt>
+      <trkpt lat="37.7200" lon="23.3600">
+        <ele>0.0</ele>
+        <time>2026-09-23T11:01:36Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

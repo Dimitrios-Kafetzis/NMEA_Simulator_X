@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="NMEA Simulator X" xmlns="http://www.topografix.com/GPX/1/1">
+  <rte>
+    <name>Piraeus to Aegina</name>
+    <rtept lat="37.9350" lon="23.6280"><name>Piraeus</name></rtept>
+    <rtept lat="37.9230" lon="23.6100"><name>Off Psyttalia</name></rtept>
+    <rtept lat="37.9000" lon="23.5800"/>
+    <rtept lat="37.8700" lon="23.5500"/>
+    <rtept lat="37.8350" lon="23.5200"/>
+    <rtept lat="37.8000" lon="23.4900"/>
+    <rtept lat="37.7700" lon="23.4650"><name>Off Aegina</name></rtept>
+    <rtept lat="37.7480" lon="23.4350"><name>Aegina harbour</name></rtept>
+  </rte>
+</gpx>

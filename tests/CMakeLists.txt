@@ -13,8 +13,16 @@ add_executable(nmeasim_core_tests
     core/simulation/delta_source_test.cpp
     core/simulation/sentence_scheduler_test.cpp
     core/simulation/simulation_test.cpp
+    core/simulation/track_source_test.cpp
+    core/time/iso8601_test.cpp
+    core/track/gpx_test.cpp
+    core/track/kml_test.cpp
+    core/track/track_test.cpp
 )
 target_include_directories(nmeasim_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(nmeasim_core_tests PRIVATE
+    NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
 
 target_link_libraries(nmeasim_core_tests
     PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings nmeasim::sanitizers

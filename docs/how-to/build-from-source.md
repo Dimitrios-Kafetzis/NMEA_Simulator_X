@@ -7,7 +7,7 @@
 | C++ compiler | MSVC 2022 17.8+, GCC 13+, Clang 16+ or Apple Clang 15+ | C++20 including `<format>` |
 | CMake | 3.25 or newer | Presets are used throughout |
 | Ninja | any recent | Optional on Windows if you use the Visual Studio preset |
-| vcpkg | current `master` | Provides GeographicLib, CLI11 and Catch2 through `vcpkg.json` |
+| vcpkg | current `master` | Provides GeographicLib, pugixml, CLI11 and Catch2 through `vcpkg.json` |
 | Qt | 6.10.3 | Modules: Core, Gui, Widgets, Network, SerialPort, WebSockets |
 | Python | 3.10+ | Only for `clang-format` and the documentation site |
 

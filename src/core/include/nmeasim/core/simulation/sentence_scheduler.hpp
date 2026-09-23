@@ -2,6 +2,7 @@
 
 #include <nmeasim/core/model/vessel_state.hpp>
 #include <nmeasim/core/nmea0183/registry.hpp>
+#include <nmeasim/core/simulation/emitted_sentence.hpp>
 
 #include <chrono>
 #include <functional>
@@ -12,13 +13,6 @@
 
 /// Decides which sentences are due at a given simulation time and encodes them.
 namespace nmeasim::core::simulation {
-
-/// One encoded sentence together with the registry id that produced it, so that outputs can
-/// filter by id even when two ids share a formatter (MWV-R and MWV-T).
-struct EmittedSentence {
-    std::string id;
-    std::string text;
-};
 
 /// Per-sentence settings an operator can change.
 struct SentenceSetting {
