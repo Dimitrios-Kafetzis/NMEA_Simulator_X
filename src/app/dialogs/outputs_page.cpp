@@ -57,9 +57,6 @@ QSpinBox* make_port(QWidget* parent) {
 
 constexpr std::array<int, 8> kBaudRates{1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200};
 
-/// Prefixes offered in the Signal K context combo: vessel URN from the MMSI, aircraft, custom.
-constexpr std::array<const char*, 3> kContextChoices{"vessels", "aircraft", "custom"};
-
 }  // namespace
 
 OutputsPage::OutputsPage(QWidget* parent)
