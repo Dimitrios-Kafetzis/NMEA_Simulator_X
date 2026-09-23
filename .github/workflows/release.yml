@@ -1,0 +1,454 @@
+name: Release
+
+# Builds the packages of every platform with cpack, checks each one, and attaches them with a
+# SHA256SUMS.txt file to the GitHub release of a tag. ADR 0015 explains the layout.
+#
+# Triggers:
+#   workflow_call      From release-please.yml when Release Please has just created a release.
+#                      Tags and releases created with GITHUB_TOKEN start no other workflow, so
+#                      this call is the only way a Release Please release reaches this file.
+#   push of a v* tag   Release candidates tagged by hand (git tag v1.0.0-rc.1 && git push
+#                      origin v1.0.0-rc.1): the release is created as a pre-release.
+#   workflow_dispatch  Rebuilds and re-uploads the packages of an existing tag.
+#   push to a branch   Dry run when packaging files change: packages are built with a fake
+#                      version and kept as a workflow artifact; nothing is published.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag to build and publish, e.g. v1.0.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish, e.g. v1.0.0
+        required: true
+        type: string
+  push:
+    tags: ["v*"]
+    branches-ignore: [main, "release-please--**"]
+    paths:
+      - ".github/workflows/release.yml"
+      - "packaging/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "src/app/CMakeLists.txt"
+      - "src/cli/CMakeLists.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+
+env:
+  QT_VERSION: 6.10.3
+  LINUXDEPLOY_VERSION: 1-alpha-20251107-1
+  LINUXDEPLOY_QT_VERSION: 1-alpha-20250213-1
+  APP_ID: io.github.dimitrios_kafetzis.NMEASimulatorX
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    outputs:
+      ref: ${{ steps.meta.outputs.ref }}
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      publish: ${{ steps.meta.outputs.publish }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Work out the version and what to publish
+        id: meta
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          project_version=$(sed -n 's/^set(NMEASIM_VERSION "\([^"]*\)").*/\1/p' CMakeLists.txt)
+          if [[ -n "$INPUT_TAG" ]]; then
+            tag="$INPUT_TAG"
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag=""
+          fi
+          if [[ -n "$tag" ]]; then
+            if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$ ]]; then
+              echo "::error::Tag $tag is not of the form vX.Y.Z or vX.Y.Z-pre"; exit 1
+            fi
+            core="${BASH_REMATCH[1]}"
+            pre="${BASH_REMATCH[2]}"
+            if [[ -z "$pre" && "$core" != "$project_version" ]]; then
+              echo "::error::Tag $tag does not match version $project_version in CMakeLists.txt"
+              exit 1
+            fi
+            echo "ref=refs/tags/$tag" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=$([[ -n "$pre" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "version=${project_version}-dryrun.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  windows:
+    name: Windows x64
+    needs: prepare
+    runs-on: windows-2022
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: windows
+          arch: win64_msvc2022_64
+          modules: qtserialport qtwebsockets
+          cache: true
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Prepare vcpkg binary cache
+        shell: bash
+        run: |
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --preset release-windows -DNMEASIM_PACKAGE_VERSION="$VERSION"
+          cmake --build --preset release-windows
+
+      - name: Package
+        shell: bash
+        run: cpack --preset release-windows
+
+      - name: Check the portable ZIP
+        shell: bash
+        run: |
+          cd build/release-windows/packages
+          7z x -y -oportable-test "NMEASimulatorX-$VERSION-win64-portable.zip" > /dev/null
+          portable="portable-test/NMEASimulatorX-$VERSION-win64-portable"
+          ls "$portable"
+          "$portable/nmeasim.exe" --version
+          "$portable/nmeasim.exe" run --stdout --quiet --duration 1 | head -3
+          test -f "$portable/NMEASimulatorX.exe"
+          test -f "$portable/plugins/platforms/qwindows.dll"
+
+      - name: Check the installer
+        shell: pwsh
+        run: |
+          $installer = "build/release-windows/packages/NMEASimulatorX-$env:VERSION-win64.exe"
+          Start-Process -Wait -FilePath $installer -ArgumentList '/S', '/D=C:\nmeasim-test'
+          & 'C:\nmeasim-test\nmeasim.exe' --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path 'C:\nmeasim-test\NMEASimulatorX.exe')) { exit 1 }
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-windows
+          path: |
+            build/release-windows/packages/*.exe
+            build/release-windows/packages/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      # The oldest macOS the packages run on; libc++ needs 13.3 for std::format.
+      MACOSX_DEPLOYMENT_TARGET: "13.3"
+      VCPKG_KEEP_ENV_VARS: MACOSX_DEPLOYMENT_TARGET
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          arch: clang_64
+          modules: qtserialport qtwebsockets
+          cache: true
+
+      - name: Prepare vcpkg binary cache
+        run: |
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ env.MACOSX_DEPLOYMENT_TARGET }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ env.MACOSX_DEPLOYMENT_TARGET }}-
+
+      - name: Build
+        run: |
+          cmake --preset release -DNMEASIM_PACKAGE_VERSION="$VERSION"
+          cmake --build --preset release
+
+      - name: Package
+        run: cpack --preset release
+
+      - name: Check the disk image
+        run: |
+          dmg="build/release/packages/NMEASimulatorX-$VERSION-macos-${{ matrix.arch }}.dmg"
+          hdiutil attach -nobrowse -readonly -mountpoint /tmp/nmeasim "$dmg"
+          app=/tmp/nmeasim/NMEASimulatorX.app
+          ls /tmp/nmeasim
+          test -L /tmp/nmeasim/Applications
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E "Signature=adhoc|Identifier"
+          test "$(lipo -archs "$app/Contents/MacOS/NMEASimulatorX")" = "${{ matrix.arch }}"
+          otool -l "$app/Contents/MacOS/NMEASimulatorX" | grep -A3 LC_BUILD_VERSION | grep minos
+          "$app/Contents/MacOS/nmeasim" --version
+          "$app/Contents/MacOS/nmeasim" run --stdout --quiet --duration 1 | head -3
+          hdiutil detach /tmp/nmeasim
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-macos-${{ matrix.arch }}
+          path: build/release/packages/*.dmg
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            qt_host: linux
+            qt_arch: linux_gcc_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            qt_host: linux_arm64
+            qt_arch: linux_gcc_arm64
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Install build and AppImage dependencies
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends ninja-build pkg-config curl zip unzip tar \
+            libgl1-mesa-dev libegl1 libxkbcommon-dev libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1
+
+      - name: Install Qt ${{ env.QT_VERSION }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.qt_host }}
+          arch: ${{ matrix.qt_arch }}
+          modules: qtserialport qtwebsockets
+          cache: true
+
+      - name: Prepare vcpkg
+        run: |
+          if [[ -n "${VCPKG_INSTALLATION_ROOT:-}" && -x "$VCPKG_INSTALLATION_ROOT/vcpkg" ]]; then
+            echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          else
+            git clone --quiet https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+            VCPKG_FORCE_SYSTEM_BINARIES=1 "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+            echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          fi
+          if [[ "${{ matrix.arch }}" == "aarch64" ]]; then
+            echo "VCPKG_FORCE_SYSTEM_BINARIES=1" >> "$GITHUB_ENV"
+          fi
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Install linuxdeploy
+        run: |
+          mkdir -p "$RUNNER_TEMP/linuxdeploy"
+          cd "$RUNNER_TEMP/linuxdeploy"
+          curl -sSfLO "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY_VERSION/linuxdeploy-${{ matrix.arch }}.AppImage"
+          curl -sSfLO "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/$LINUXDEPLOY_QT_VERSION/linuxdeploy-plugin-qt-${{ matrix.arch }}.AppImage"
+          chmod +x ./*.AppImage
+          echo "$RUNNER_TEMP/linuxdeploy" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: |
+          cmake --preset release -DNMEASIM_PACKAGE_VERSION="$VERSION"
+          cmake --build --preset release
+
+      - name: Package
+        run: QMAKE="$QT_ROOT_DIR/bin/qmake" cpack --preset release
+
+      - name: Check the AppImage
+        run: |
+          appimage="$PWD/build/release/packages/NMEASimulatorX-$VERSION-${{ matrix.arch }}.AppImage"
+          cd "$RUNNER_TEMP"
+          env -u LD_LIBRARY_PATH "$appimage" nmeasim --version
+          env -u LD_LIBRARY_PATH "$appimage" nmeasim run --stdout --quiet --duration 1 | head -3
+          ln -sf "$appimage" nmeasim
+          env -u LD_LIBRARY_PATH ./nmeasim --version
+          status=0
+          QT_QPA_PLATFORM=offscreen timeout 5 env -u LD_LIBRARY_PATH "$appimage" || status=$?
+          test "$status" -eq 124
+
+      - name: Upload the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-linux-${{ matrix.arch }}
+          path: build/release/packages/*.AppImage
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak x86_64
+    needs: prepare
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
+      options: --privileged
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+
+      - name: Build the Flatpak from the manifest
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          # rofiles-fuse cannot run inside the container.
+          flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --force-clean --repo=repo \
+            build-flatpak "packaging/flatpak/$APP_ID.yml"
+          flatpak build-bundle repo "NMEASimulatorX-$VERSION-x86_64.flatpak" "$APP_ID" \
+            --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Check the bundle
+        run: |
+          flatpak install --user -y --noninteractive "NMEASimulatorX-$VERSION-x86_64.flatpak"
+          flatpak run --command=nmeasim "$APP_ID" --version
+          flatpak run --command=nmeasim "$APP_ID" run --stdout --quiet --duration 1 | head -3
+          flatpak info --show-metadata "$APP_ID" | head -20
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-flatpak-x86_64
+          path: NMEASimulatorX-*.flatpak
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [prepare, windows, macos, linux, flatpak]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download the packages
+        uses: actions/download-artifact@v8
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
+
+      - name: Compute checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat SHA256SUMS.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the dry-run packages
+        if: needs.prepare.outputs.publish != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-${{ env.VERSION }}
+          path: dist/
+
+      - name: Attach the packages to the release
+        if: needs.prepare.outputs.publish == 'true'
+        env:
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            flags=()
+            if [[ "$PRERELEASE" == "true" ]]; then flags+=(--prerelease); fi
+            gh release create "$TAG" dist/* --verify-tag --title "$TAG" "${flags[@]}" \
+              --notes "Packages built from $TAG by the release workflow."
+          fi
+          gh release view "$TAG" --json assets --jq '.assets[].name'

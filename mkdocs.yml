@@ -112,6 +112,8 @@ nav:
       - "0012 Log file format": adr/0012-log-file-format.md
       - "0013 AIS encoder": adr/0013-ais-encoder.md
       - "0014 Multi-encoding outputs": adr/0014-multi-encoding-outputs.md
+      - "0015 Release workflow": adr/0015-release-workflow.md
+      - "0016 Linux packages": adr/0016-linux-packages.md
   - Development:
       - development/index.md
       - Coding standards: development/coding-standards.md

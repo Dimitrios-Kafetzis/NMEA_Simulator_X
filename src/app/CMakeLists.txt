@@ -89,7 +89,9 @@ install(TARGETS nmeasim_app
 if(WIN32 OR APPLE)
     # Windows and macOS packages are self-contained: windeployqt or macdeployqt copies the Qt
     # libraries and plugins next to the executables at install time, for the desktop application
-    # and the command-line tool alike.
+    # and the command-line tool alike. The MSVC runtime DLLs come from
+    # InstallRequiredSystemLibraries (cmake/Packaging.cmake), so windeployqt does not add its
+    # redistributable installer.
     if(APPLE)
         set(NMEASIM_DEPLOY_EXECUTABLE "$<TARGET_FILE_NAME:nmeasim_app>.app")
         set(NMEASIM_DEPLOY_CLI
@@ -114,6 +116,7 @@ qt_deploy_runtime_dependencies(
     PLUGINS_DIR plugins
     GENERATE_QT_CONF
     NO_TRANSLATIONS
+    NO_COMPILER_RUNTIME
 )")
     install(SCRIPT "${NMEASIM_DEPLOY_SCRIPT}")
 endif()

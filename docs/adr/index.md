@@ -10,7 +10,7 @@ ADR supersedes it instead. Number the next record sequentially and add it to `mk
 | [0002](0002-layered-libraries.md) | Layered libraries with a Qt-free core | Accepted |
 | [0003](0003-cmake-vcpkg.md) | CMake presets and vcpkg manifest mode | Accepted |
 | [0004](0004-gpl-license.md) | GPL-3.0 license | Accepted |
-| [0005](0005-unsigned-distribution.md) | Unsigned distribution through free channels | Accepted |
+| [0005](0005-unsigned-distribution.md) | Unsigned distribution through free channels | Accepted; Linux formats amended by [0016](0016-linux-packages.md) |
 | [0006](0006-documentation-standard.md) | Documentation standard | Accepted |
 | [0007](0007-trunk-based-releases.md) | Trunk-based development, Conventional Commits and automated releases | Accepted |
 | [0008](0008-testing-strategy.md) | Testing strategy | Accepted |
@@ -20,6 +20,8 @@ ADR supersedes it instead. Number the next record sequentially and add it to `mk
 | [0012](0012-log-file-format.md) | Log file format: timestamped plain-text sentences | Accepted |
 | [0013](0013-ais-encoder.md) | AIS own-vessel messages encoded in core with an independent decoder in the tests | Accepted |
 | [0014](0014-multi-encoding-outputs.md) | Outputs choose an encoding; every encoder lives in core and framing options in io | Accepted |
+| [0015](0015-release-workflow.md) | Release workflow: one reusable workflow, CPack on every platform, called by Release Please | Accepted |
+| [0016](0016-linux-packages.md) | Linux packages: AppImage and Flatpak; deb and rpm deferred | Accepted |
 
 ## Template
 
