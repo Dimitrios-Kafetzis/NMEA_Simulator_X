@@ -17,9 +17,9 @@ namespace {
 
 using Type = io::OutputConfig::Type;
 
-constexpr std::array<Type, 7> kTypes{
+constexpr std::array<Type, 8> kTypes{
     Type::TcpServer, Type::TcpClient, Type::Udp,    Type::WebSocketServer,
-    Type::Serial,    Type::File,      Type::Stdout,
+    Type::Serial,    Type::File,      Type::Stdout, Type::Log,
 };
 
 QString type_label(Type type) {
@@ -38,6 +38,8 @@ QString type_label(Type type) {
             return OutputsPage::tr("File");
         case Type::Stdout:
             return OutputsPage::tr("Standard output");
+        case Type::Log:
+            return OutputsPage::tr("Log (timestamped)");
     }
     return {};
 }
@@ -236,7 +238,8 @@ QString OutputsPage::validate() const {
         if (output.type == Type::Serial && output.serial.port_name.trimmed().isEmpty()) {
             return tr("Output %1: the serial port name is missing.").arg(index + 1);
         }
-        if (output.type == Type::File && output.path.trimmed().isEmpty()) {
+        if ((output.type == Type::File || output.type == Type::Log) &&
+            output.path.trimmed().isEmpty()) {
             return tr("Output %1: the file path is missing.").arg(index + 1);
         }
         if (output.type == Type::TcpClient && output.host.trimmed().isEmpty()) {
@@ -297,6 +300,7 @@ int OutputsPage::page_of(Type type) {
         case Type::Serial:
             return 3;
         case Type::File:
+        case Type::Log:
             return 4;
         case Type::Stdout:
             return 5;
@@ -370,6 +374,7 @@ void OutputsPage::show_output(int index) {
             break;
         }
         case Type::File:
+        case Type::Log:
             file_path_edit->setText(output.path);
             append_check->setChecked(output.append);
             break;
@@ -429,6 +434,7 @@ void OutputsPage::commit_editor() {
             break;
         }
         case Type::File:
+        case Type::Log:
             output.path = file_path_edit->text().trimmed();
             output.append = append_check->isChecked();
             break;
@@ -464,6 +470,7 @@ QString OutputsPage::title_of(const io::OutputConfig& output) {
                 QStringLiteral("%1 @ %2").arg(output.serial.port_name).arg(output.serial.baud_rate);
             break;
         case Type::File:
+        case Type::Log:
             detail = output.path;
             break;
         case Type::Stdout:

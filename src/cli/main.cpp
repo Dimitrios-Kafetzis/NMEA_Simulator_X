@@ -68,6 +68,13 @@ int list_sentences() {
 
 struct RunOptions {
     std::string profile_path;
+    std::string track_path;
+    std::string replay_path;
+    std::string record_path;
+    double track_speed_kn{0.0};
+    bool ignore_timestamps{false};
+    bool loop{false};
+    int replay_interval_ms{0};
     double duration_s{0.0};
     int period_ms{0};
     bool quiet{false};
@@ -218,6 +225,37 @@ bool apply_sentence_overrides(const RunOptions& options, nmeasim::io::Profile& p
     return true;
 }
 
+/// Applies --track, --replay and their companions on top of the profile's simulation mode.
+void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profile) {
+    using nmeasim::io::SimulationMode;
+    if (!options.track_path.empty()) {
+        profile.mode = SimulationMode::Track;
+        profile.track.path = QString::fromStdString(options.track_path);
+        profile.track.loop = options.loop;
+        profile.track.use_timestamps = !options.ignore_timestamps;
+        if (options.track_speed_kn > 0.0) {
+            profile.track.speed_kn = options.track_speed_kn;
+        }
+    } else if (!options.replay_path.empty()) {
+        profile.mode = SimulationMode::Replay;
+        profile.replay.path = QString::fromStdString(options.replay_path);
+        profile.replay.loop = options.loop;
+        if (options.replay_interval_ms > 0) {
+            profile.replay.fixed_interval_ms = options.replay_interval_ms;
+        }
+    } else if (options.loop) {
+        profile.track.loop = true;
+        profile.replay.loop = true;
+    }
+    if (!options.record_path.empty()) {
+        nmeasim::io::OutputConfig output;
+        output.type = nmeasim::io::OutputConfig::Type::Log;
+        output.path = QString::fromStdString(options.record_path);
+        output.append = false;
+        profile.outputs.append(output);
+    }
+}
+
 int run_simulation(const RunOptions& options) {
     nmeasim::io::Profile profile = nmeasim::io::Profile::default_profile();
     if (!options.profile_path.empty()) {
@@ -236,6 +274,7 @@ int run_simulation(const RunOptions& options) {
         std::cerr << "error: " << error << '\n';
         return 2;
     }
+    apply_mode_overrides(options, profile);
     if (profile.outputs.isEmpty()) {
         std::cerr << "error: the profile defines no outputs\n";
         return 2;
@@ -268,9 +307,24 @@ int run_simulation(const RunOptions& options) {
         return 3;
     }
     if (!options.quiet) {
-        std::cerr << std::format("running profile '{}' with a {} ms tick; press Ctrl+C to stop\n",
-                                 profile.name.toStdString(), profile.tick_ms);
+        std::string source;
+        if (profile.mode == nmeasim::io::SimulationMode::Track) {
+            source = std::format(" following {}", profile.track.path.toStdString());
+        } else if (profile.mode == nmeasim::io::SimulationMode::Replay) {
+            source = std::format(" replaying {}", profile.replay.path.toStdString());
+        }
+        if (const auto duration = runner.duration()) {
+            source += std::format(" ({:.1f} s{})", std::chrono::duration<double>(*duration).count(),
+                                  options.loop ? ", looping" : "");
+        }
+        std::cerr << std::format("running profile '{}'{} with a {} ms tick; press Ctrl+C to stop\n",
+                                 profile.name.toStdString(), source, profile.tick_ms);
     }
+    QObject::connect(&runner, &nmeasim::io::SimulationRunner::finished, &runner, [&options] {
+        if (!options.quiet) {
+            std::cerr << "end of the track or log reached\n";
+        }
+    });
 
     std::signal(SIGINT, on_interrupt);
     std::signal(SIGTERM, on_interrupt);
@@ -351,6 +405,26 @@ int main(int argc, char** argv) {
                     "Stop after this many seconds (0 = run until Ctrl+C)");
     run->add_option("-r,--rate", options.period_ms,
                     "Send every sentence at this period in milliseconds");
+    auto* track = run->add_option("--track", options.track_path,
+                                  "Follow a GPX or KML track instead of the delta simulation")
+                      ->check(CLI::ExistingFile);
+    auto* replay = run->add_option("--replay", options.replay_path,
+                                   "Replay a recorded or plain NMEA log instead of simulating")
+                       ->check(CLI::ExistingFile)
+                       ->excludes(track);
+    run->add_option("--speed", options.track_speed_kn,
+                    "Speed in knots along track legs without timestamps (default: profile)")
+        ->needs(track);
+    run->add_flag("--ignore-timestamps", options.ignore_timestamps,
+                  "Sail a timed track at --speed instead of its own timing")
+        ->needs(track);
+    run->add_option("--replay-interval", options.replay_interval_ms,
+                    "Milliseconds between sentences of a log without any time information")
+        ->needs(replay)
+        ->check(CLI::Range(1, 60000));
+    run->add_flag("--loop", options.loop, "Start the track or log again at its end");
+    run->add_option("--record", options.record_path,
+                    "Also record every sentence with timestamps to this log file");
     run->add_flag("-q,--quiet", options.quiet, "Do not print status messages to stderr");
     run->add_flag("--stdout", options.use_stdout, "Write sentences to standard output");
     run->add_option("--tcp-server", options.tcp_ports,

@@ -1,6 +1,8 @@
 #include <nmeasim/io/profile/profile.hpp>
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
@@ -316,6 +318,7 @@ QJsonObject output_to_json(const OutputConfig& output) {
                           flow_control_to_string(output.serial.flow_control));
             break;
         case OutputConfig::Type::File:
+        case OutputConfig::Type::Log:
             object.insert(QStringLiteral("path"), output.path);
             object.insert(QStringLiteral("append"), output.append);
             break;
@@ -381,8 +384,11 @@ std::optional<OutputConfig> output_from_json(const QJsonObject& object, int inde
 
     output.path = text(object, "path");
     output.append = boolean(object, "append", true);
-    if (output.type == OutputConfig::Type::File && output.path.isEmpty()) {
-        *error = QStringLiteral("outputs[%1]: file output needs a path").arg(index);
+    if ((output.type == OutputConfig::Type::File || output.type == OutputConfig::Type::Log) &&
+        output.path.isEmpty()) {
+        *error = QStringLiteral("outputs[%1]: %2 output needs a path")
+                     .arg(index)
+                     .arg(to_string(output.type));
         return std::nullopt;
     }
     return output;
@@ -392,8 +398,16 @@ std::optional<OutputConfig> output_from_json(const QJsonObject& object, int inde
 // Migrations. Each function upgrades a document by exactly one schema version.
 
 QJsonObject migrate(QJsonObject document, int from_version) {
-    // Version 1 is the first schema; migrations are added here as `if (from_version < N)`.
-    Q_UNUSED(from_version);
+    if (from_version < 2) {
+        // Version 2 (milestone M3) added the "track" and "replay" simulation modes with their
+        // "simulation.track" and "simulation.replay" objects, and the "log" output type. A
+        // version 1 document is always in delta mode and needs no change beyond the marker.
+        auto simulation = document.value(QStringLiteral("simulation")).toObject();
+        if (!simulation.contains(QStringLiteral("mode"))) {
+            simulation.insert(QStringLiteral("mode"), QStringLiteral("delta"));
+        }
+        document.insert(QStringLiteral("simulation"), simulation);
+    }
     document.insert(QStringLiteral("schema_version"), Profile::kCurrentSchemaVersion);
     return document;
 }
@@ -416,6 +430,8 @@ QString to_string(OutputConfig::Type type) {
             return QStringLiteral("file");
         case OutputConfig::Type::Stdout:
             return QStringLiteral("stdout");
+        case OutputConfig::Type::Log:
+            return QStringLiteral("log");
     }
     return QStringLiteral("unknown");
 }
@@ -424,9 +440,30 @@ std::optional<OutputConfig::Type> output_type_from_string(const QString& value) 
     for (const auto type :
          {OutputConfig::Type::TcpServer, OutputConfig::Type::TcpClient, OutputConfig::Type::Udp,
           OutputConfig::Type::WebSocketServer, OutputConfig::Type::Serial, OutputConfig::Type::File,
-          OutputConfig::Type::Stdout}) {
+          OutputConfig::Type::Stdout, OutputConfig::Type::Log}) {
         if (to_string(type) == value) {
             return type;
+        }
+    }
+    return std::nullopt;
+}
+
+QString to_string(SimulationMode mode) {
+    switch (mode) {
+        case SimulationMode::Delta:
+            return QStringLiteral("delta");
+        case SimulationMode::Track:
+            return QStringLiteral("track");
+        case SimulationMode::Replay:
+            return QStringLiteral("replay");
+    }
+    return QStringLiteral("delta");
+}
+
+std::optional<SimulationMode> simulation_mode_from_string(const QString& value) {
+    for (const auto mode : {SimulationMode::Delta, SimulationMode::Track, SimulationMode::Replay}) {
+        if (to_string(mode) == value) {
+            return mode;
         }
     }
     return std::nullopt;
@@ -474,7 +511,7 @@ QJsonObject Profile::to_json() const {
         {QStringLiteral("name"), name},
         {QStringLiteral("simulation"),
          QJsonObject{
-             {QStringLiteral("mode"), QStringLiteral("delta")},
+             {QStringLiteral("mode"), to_string(mode)},
              {QStringLiteral("tick_ms"), tick_ms},
              {QStringLiteral("start_time"),
               start_time ? start_time->toUTC().toString(Qt::ISODateWithMs) : QStringLiteral("now")},
@@ -493,6 +530,15 @@ QJsonObject Profile::to_json() const {
               QJsonObject{
                   {QStringLiteral("turn_rate_per_rudder_deg"), delta.turn_rate_per_rudder_deg},
                   {QStringLiteral("max_rudder_angle_deg"), delta.max_rudder_angle_deg}}},
+             {QStringLiteral("track"),
+              QJsonObject{{QStringLiteral("path"), track.path},
+                          {QStringLiteral("speed_kn"), track.speed_kn},
+                          {QStringLiteral("use_timestamps"), track.use_timestamps},
+                          {QStringLiteral("loop"), track.loop}}},
+             {QStringLiteral("replay"),
+              QJsonObject{{QStringLiteral("path"), replay.path},
+                          {QStringLiteral("loop"), replay.loop},
+                          {QStringLiteral("fixed_interval_ms"), replay.fixed_interval_ms}}},
          }},
         {QStringLiteral("sentences"),
          QJsonObject{{QStringLiteral("position_decimals"), encoder.position_decimals},
@@ -523,11 +569,13 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
     profile.name = text(json, "name", profile.name);
 
     const auto simulation = json.value(QStringLiteral("simulation")).toObject();
-    const auto mode = text(simulation, "mode", QStringLiteral("delta"));
-    if (mode != QLatin1String("delta")) {
-        *err = QStringLiteral("Unsupported simulation mode '%1'").arg(mode);
+    const auto mode_text = text(simulation, "mode", QStringLiteral("delta"));
+    const auto mode = simulation_mode_from_string(mode_text);
+    if (!mode) {
+        *err = QStringLiteral("Unsupported simulation mode '%1'").arg(mode_text);
         return std::nullopt;
     }
+    profile.mode = *mode;
     profile.tick_ms = integer(simulation, "tick_ms", profile.tick_ms);
     if (profile.tick_ms < 10 || profile.tick_ms > 10'000) {
         *err = QStringLiteral("tick_ms must be between 10 and 10000");
@@ -566,6 +614,33 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         number(steering, "turn_rate_per_rudder_deg", profile.delta.turn_rate_per_rudder_deg);
     profile.delta.max_rudder_angle_deg =
         number(steering, "max_rudder_angle_deg", profile.delta.max_rudder_angle_deg);
+
+    const auto track = simulation.value(QStringLiteral("track")).toObject();
+    profile.track.path = text(track, "path");
+    profile.track.speed_kn = number(track, "speed_kn", profile.track.speed_kn);
+    profile.track.use_timestamps = boolean(track, "use_timestamps", true);
+    profile.track.loop = boolean(track, "loop", false);
+    if (profile.track.speed_kn <= 0.0) {
+        *err = QStringLiteral("simulation.track.speed_kn must be positive");
+        return std::nullopt;
+    }
+    if (profile.mode == SimulationMode::Track && profile.track.path.isEmpty()) {
+        *err = QStringLiteral("simulation.track.path is required in track mode");
+        return std::nullopt;
+    }
+    const auto replay = simulation.value(QStringLiteral("replay")).toObject();
+    profile.replay.path = text(replay, "path");
+    profile.replay.loop = boolean(replay, "loop", false);
+    profile.replay.fixed_interval_ms =
+        integer(replay, "fixed_interval_ms", profile.replay.fixed_interval_ms);
+    if (profile.replay.fixed_interval_ms < 1 || profile.replay.fixed_interval_ms > 60'000) {
+        *err = QStringLiteral("simulation.replay.fixed_interval_ms must be between 1 and 60000");
+        return std::nullopt;
+    }
+    if (profile.mode == SimulationMode::Replay && profile.replay.path.isEmpty()) {
+        *err = QStringLiteral("simulation.replay.path is required in replay mode");
+        return std::nullopt;
+    }
 
     const auto sentences = json.value(QStringLiteral("sentences")).toObject();
     profile.encoder.position_decimals = integer(sentences, "position_decimals", 4);
@@ -616,7 +691,16 @@ std::optional<Profile> Profile::load(const QString& path, QString* error) {
         *err = QStringLiteral("%1 is not a JSON object: %2").arg(path, parse_error.errorString());
         return std::nullopt;
     }
-    return from_json(document.object(), err);
+    auto profile = from_json(document.object(), err);
+    if (profile) {
+        const QDir directory = QFileInfo(path).absoluteDir();
+        for (QString* file_path : {&profile->track.path, &profile->replay.path}) {
+            if (!file_path->isEmpty() && QFileInfo(*file_path).isRelative()) {
+                *file_path = QDir::cleanPath(directory.absoluteFilePath(*file_path));
+            }
+        }
+    }
+    return profile;
 }
 
 bool Profile::save(const QString& path, QString* error) const {

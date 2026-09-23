@@ -10,7 +10,7 @@ optional except `schema_version`; missing keys take the defaults shown below.
 ## Versioning
 
 ```json
-{ "schema_version": 1 }
+{ "schema_version": 2 }
 ```
 
 `schema_version` is the version of the format the file was written with. The simulator reads
@@ -18,11 +18,16 @@ any older version and migrates it in memory; saving writes the current version. 
 newer version than the software understands is rejected with a clear message rather than
 misread.
 
+| Version | Introduced in | Change |
+| --- | --- | --- |
+| 1 | 0.2.0 | First format |
+| 2 | 0.4.0 | `simulation.mode` gains `track` and `replay`, with the `simulation.track` and `simulation.replay` objects; the `log` output type. Version 1 files are always in `delta` mode and load unchanged. |
+
 ## Top level
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `schema_version` | integer | required | Format version, currently `1` |
+| `schema_version` | integer | required | Format version, currently `2` |
 | `name` | string | `"Default"` | Display name of the profile |
 | `simulation` | object | see below | Vessel seed and behaviour |
 | `sentences` | object | see below | Sentence schedule |
@@ -32,13 +37,19 @@ misread.
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `mode` | string | `"delta"` | Simulation mode. Only `delta` exists yet; track following and log replay arrive in milestone M3. |
+| `mode` | string | `"delta"` | `delta` (seed values that drift), `track` (follow a file, see `track`) or `replay` (re-send a log, see `replay`) |
 | `tick_ms` | integer | `100` | Length of one simulation step, 10 to 10000 |
 | `start_time` | string | `"now"` | `"now"` or an ISO 8601 UTC date-time such as `"2026-09-22T12:34:56.780Z"` |
 | `random_seed` | integer | `2026` | Seed of the random generator; the same seed reproduces the same run |
 | `seed` | object | see below | Initial vessel values |
 | `variation` | object | see below | How far and how fast each value drifts |
 | `steering` | object | see below | Rudder behaviour |
+| `track` | object | see below | Track-following settings, used when `mode` is `track` |
+| `replay` | object | see below | Log replay settings, used when `mode` is `replay` |
+
+In `track` and `replay` mode the `seed` still supplies the values the file does not carry
+(depth, water temperature, wind, GNSS quality, engines) and `start_time` supplies the clock
+until the file provides one. The `variation` values are not used in those modes.
 
 ### `simulation.seed`
 
@@ -86,6 +97,30 @@ value. See the [simulation model](../explanation/simulation-model.md).
 | `turn_rate_per_rudder_deg` | `0.6` | degrees per minute of turn for each degree of rudder |
 | `max_rudder_angle_deg` | `35` | rudder limit |
 
+### `simulation.track`
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | `""` | GPX or KML [track file](track-files.md). Required in `track` mode. A relative path is resolved against the directory of the profile file when the profile is loaded from disk. |
+| `speed_kn` | number | `6` | Speed along legs whose points have neither timestamps nor a recorded speed; must be positive |
+| `use_timestamps` | boolean | `true` | `false` ignores the track's timestamps and sails every leg at `speed_kn` or the recorded point speed |
+| `loop` | boolean | `false` | Start again at the first point instead of stopping at the last |
+
+### `simulation.replay`
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `path` | string | `""` | [Log file](log-format.md) to replay. Required in `replay` mode; relative paths are resolved like `track.path`. |
+| `loop` | boolean | `false` | Start again at the first entry instead of stopping at the last |
+| `fixed_interval_ms` | integer | `100` | Spacing of the entries when the log has no time information at all, 1 to 60000 |
+
+```json
+"simulation": {
+  "mode": "track",
+  "track": { "path": "../tracks/saronic-gulf.gpx", "speed_kn": 7.5, "use_timestamps": true, "loop": false }
+}
+```
+
 ## `sentences`
 
 | Key | Type | Default | Meaning |
@@ -121,6 +156,7 @@ keys depend on the type.
 | `websocket-server` | `bind_address`, `port` |
 | `serial` | `port_name` (required), `baud_rate` (default `4800`), `data_bits` (5 to 8), `parity` (`none`, `even`, `odd`, `mark`, `space`), `stop_bits` (`1`, `1.5`, `2`), `flow_control` (`none`, `hardware`, `software`) |
 | `file` | `path` (required), `append` (default `true`) |
+| `log` | `path` (required), `append` (default `true`); a timestamped recording in the [log format](log-format.md) |
 | `stdout` | none |
 
 ```json

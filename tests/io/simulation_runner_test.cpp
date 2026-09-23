@@ -1,21 +1,31 @@
 #include "io/event_loop.hpp"
 
+#include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/nmea0183/checksum.hpp>
+#include <nmeasim/core/simulation/replay_source.hpp>
+#include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/io/simulation_runner.hpp>
+#include <nmeasim/io/transports/log_transport.hpp>
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
 
+#include <QFile>
 #include <QSignalSpy>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTimeZone>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 using namespace std::chrono_literals;
 using nmeasim::io::OutputConfig;
 using nmeasim::io::Profile;
+using nmeasim::io::SimulationMode;
 using nmeasim::io::SimulationRunner;
 using nmeasim::test::wait_until;
 
@@ -30,6 +40,22 @@ Profile fast_profile() {
         profile.sentences[std::string{descriptor.id}] = {descriptor.enabled_by_default, "", 100ms};
     }
     return profile;
+}
+
+QString fixture(const char* relative) {
+    return QStringLiteral(NMEASIM_FIXTURES_DIR "/") + QLatin1String(relative);
+}
+
+std::vector<std::string> read_sentences(const QString& path) {
+    QFile file(path);
+    REQUIRE(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    std::vector<std::string> lines;
+    for (const auto& line : file.readAll().split('\n')) {
+        if (!line.trimmed().isEmpty()) {
+            lines.push_back(line.trimmed().toStdString());
+        }
+    }
+    return lines;
 }
 
 }  // namespace
@@ -169,4 +195,201 @@ TEST_CASE("the simulated clock starts from the profile start time", "[io][runner
     const auto expected = std::chrono::system_clock::time_point{
         std::chrono::milliseconds{profile.start_time->toMSecsSinceEpoch()}};
     CHECK(runner.simulation()->state().time_utc == expected);
+}
+
+TEST_CASE("a track profile drives a track source and ends the run at the last point",
+          "[io][runner][track]") {
+    Profile profile = fast_profile();
+    profile.mode = SimulationMode::Track;
+    profile.track.path = fixture("tracks/timestamped.gpx");
+    profile.outputs.append([] {
+        OutputConfig out;
+        out.type = OutputConfig::Type::Stdout;
+        out.enabled = false;
+        return out;
+    }());
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    auto* source =
+        dynamic_cast<nmeasim::core::simulation::TrackSource*>(&runner.simulation()->source());
+    REQUIRE(source != nullptr);
+    CHECK(runner.duration() == 12min + 500ms);
+    CHECK(runner.position() == 0ms);
+    CHECK(runner.simulation()->state().navigation.position.latitude_deg == Catch::Approx(37.9));
+    // Environment values come from the profile seed.
+    CHECK(runner.simulation()->state().water.depth_below_transducer_m == Catch::Approx(12.4));
+
+    QSignalSpy ticks(&runner, &SimulationRunner::ticked);
+    runner.seek(3min);
+    CHECK(ticks.count() == 1);
+    CHECK(runner.position() == 3min);
+    CHECK(runner.simulation()->state().navigation.position.latitude_deg ==
+          Catch::Approx(37.91).margin(1e-9));
+
+    QSignalSpy finished(&runner, &SimulationRunner::finished);
+    QSignalSpy stopped(&runner, &SimulationRunner::stopped);
+    runner.seek(*runner.duration() - 100ms);
+    runner.start();
+    REQUIRE(wait_until([&] { return stopped.count() == 1; }, 5000));
+    CHECK(finished.count() == 1);
+    CHECK_FALSE(runner.is_running());
+    CHECK(runner.sentences_emitted() > 0);
+    CHECK(runner.simulation()->state().navigation.position.longitude_deg ==
+          Catch::Approx(23.62).margin(1e-9));
+
+    // A missing or unreadable track file is a profile error, not a crash.
+    profile.track.path = fixture("tracks/missing.gpx");
+    CHECK_FALSE(runner.apply_profile(profile, &error));
+    CHECK(error.contains(QStringLiteral("Cannot read")));
+    profile.track.path = fixture("tracks/malformed.gpx");
+    CHECK_FALSE(runner.apply_profile(profile, &error));
+    CHECK(error.contains(QStringLiteral("Invalid XML")));
+}
+
+TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and seeks",
+          "[io][runner][replay][integration]") {
+    Profile profile = fast_profile();
+    profile.mode = SimulationMode::Replay;
+    profile.replay.path = fixture("logs/plain.nmea");
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig file;
+    file.type = OutputConfig::Type::File;
+    file.path = directory.filePath(QStringLiteral("replayed.nmea"));
+    file.append = false;
+    profile.outputs.append(file);
+    OutputConfig depth_only = file;
+    depth_only.path = directory.filePath(QStringLiteral("depth.nmea"));
+    depth_only.filter = {QStringLiteral("DPT")};
+    profile.outputs.append(depth_only);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    REQUIRE(dynamic_cast<nmeasim::core::simulation::ReplaySource*>(
+                &runner.simulation()->source()) != nullptr);
+    CHECK(runner.duration() == 1500ms);
+
+    // Stepping before the run starts it paused and emits exactly one recorded sentence.
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    QSignalSpy paused(&runner, &SimulationRunner::paused_changed);
+    runner.step();
+    CHECK(runner.is_running());
+    CHECK(runner.is_paused());
+    CHECK(paused.count() == 1);
+    REQUIRE(emitted.count() == 1);
+    CHECK(emitted.first().at(0).toString() == QStringLiteral("RMC"));
+    CHECK(emitted.first().at(1).toString().startsWith(QStringLiteral("$GPRMC,100000.00")));
+    runner.step();
+    CHECK(emitted.count() == 2);
+    CHECK(emitted.last().at(0).toString() == QStringLiteral("GGA"));
+    CHECK(runner.simulation()->state().navigation.speed_over_ground_kn == Catch::Approx(6.5));
+
+    // Seeking skips the rest of the first round; resuming plays the remaining three rounds.
+    runner.seek(400ms);
+    CHECK(runner.position() == 400ms);
+    QSignalSpy finished(&runner, &SimulationRunner::finished);
+    QSignalSpy stopped(&runner, &SimulationRunner::stopped);
+    runner.resume();
+    REQUIRE(wait_until([&] { return stopped.count() == 1; }, 5000));
+    CHECK(finished.count() == 1);
+    CHECK(runner.sentences_emitted() == 2 + 24);
+
+    const auto original = read_sentences(fixture("logs/plain.nmea"));
+    const auto replayed = read_sentences(file.path);
+    REQUIRE(replayed.size() == 26);
+    CHECK(replayed[0] == original[0]);
+    CHECK(replayed[1] == original[1]);
+    CHECK(replayed[2] == original[8]);
+    CHECK(replayed.back() == original.back());
+    const auto depths = read_sentences(depth_only.path);
+    CHECK(depths.size() == 3);
+    for (const auto& line : depths) {
+        CHECK(line.starts_with("$SDDPT"));
+    }
+
+    profile.replay.path = fixture("logs/garbage.txt");
+    CHECK_FALSE(runner.apply_profile(profile, &error));
+    CHECK(error.contains(QStringLiteral("No valid NMEA sentence")));
+}
+
+TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored", "[io][runner]") {
+    Profile profile = fast_profile();
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    CHECK_FALSE(runner.duration().has_value());
+    const auto start = runner.simulation()->state().time_utc;
+    runner.step();
+    CHECK(runner.is_paused());
+    CHECK(runner.simulation()->state().time_utc - start == 20ms);
+    CHECK(runner.sentences_emitted() > 0);
+    runner.seek(5min);
+    CHECK(runner.position() == 0ms);
+    runner.step();
+    CHECK(runner.simulation()->state().time_utc - start == 40ms);
+    runner.stop();
+    CHECK_FALSE(runner.is_paused());
+}
+
+TEST_CASE("recording writes every emitted sentence to a log next to the outputs",
+          "[io][runner][integration]") {
+    Profile profile = fast_profile();
+    profile.name = QStringLiteral("Recorded run");
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("session.log"));
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    CHECK_FALSE(runner.is_recording());
+    QSignalSpy recording(&runner, &SimulationRunner::recording_changed);
+    REQUIRE(runner.set_recording(path));
+    CHECK(runner.is_recording());
+    CHECK(runner.recording_path() == path);
+    CHECK(recording.count() == 1);
+
+    runner.start();
+    REQUIRE(wait_until([&] { return runner.sentences_emitted() >= 40; }, 5000));
+    runner.stop();
+    const auto first_run = runner.sentences_emitted();
+    CHECK(runner.recorder()->lines_written() == first_run);
+    CHECK(runner.recorder()->state() == nmeasim::io::Transport::State::Closed);
+
+    // A second run continues the same file; the counter keeps counting across runs.
+    runner.start();
+    REQUIRE(wait_until([&] { return runner.sentences_emitted() >= first_run + 10; }, 5000));
+    runner.stop();
+    const auto total = runner.sentences_emitted();
+    CHECK(total > first_run);
+    CHECK(runner.recorder()->lines_written() == total);
+
+    QFile reader(path);
+    REQUIRE(reader.open(QIODevice::ReadOnly | QIODevice::Text));
+    std::string parse_error;
+    const auto log =
+        nmeasim::core::log::parse_log(reader.readAll().toStdString(), {}, &parse_error);
+    REQUIRE(log.has_value());
+    CHECK(log->header.at("profile") == "Recorded run");
+    CHECK(log->entries.size() == static_cast<std::size_t>(total));
+    CHECK(log->timing == nmeasim::core::log::TimingSource::Timestamps);
+    for (const auto& entry : log->entries) {
+        CHECK(nmeasim::core::nmea0183::verify_checksum(entry.sentence));
+    }
+
+    REQUIRE(runner.set_recording({}));
+    CHECK_FALSE(runner.is_recording());
+    CHECK(recording.count() == 2);
+    CHECK(recording.last().at(0).toString().isEmpty());
+
+    // An unwritable path is reported, and the run still works.
+    QSignalSpy errors(&runner, &SimulationRunner::output_error);
+    runner.start();
+    CHECK_FALSE(runner.set_recording(directory.filePath(QStringLiteral("no/such/dir/x.log"))));
+    CHECK(errors.count() == 1);
+    CHECK(runner.is_running());
+    runner.stop();
 }

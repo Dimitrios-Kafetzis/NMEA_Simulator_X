@@ -69,6 +69,7 @@ nav:
       - Install on Windows, macOS or Linux: how-to/install.md
       - Build from source: how-to/build-from-source.md
       - Run the simulator headless: how-to/run-headless.md
+      - Follow a track: how-to/follow-a-track.md
   - Reference:
       - reference/index.md
       - Desktop application: reference/desktop-app.md

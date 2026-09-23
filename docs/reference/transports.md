@@ -16,6 +16,7 @@ the payload.
 | WebSocket server | listens | bind address, port, greeting | Each line is one text frame. The greeting, when set, is sent to every client right after it connects; Signal K uses this for its `hello` message. |
 | Serial port | writes | port, baud rate, data bits, parity, stop bits, flow control | Any positive baud rate is accepted. The port is opened write-only; an unplugged device moves the transport to `failed`. |
 | File | writes | path, append or truncate | Flushed after every line so the file can be tailed while the simulator runs. |
+| Log | writes | path, append or truncate | A recording: a `#` header when the file is new, then every line prefixed with the wall-clock UTC time, see the [log file reference](log-format.md). Flushed after every line. |
 
 ## Network interfaces
 

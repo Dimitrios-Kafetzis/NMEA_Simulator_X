@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nmeasim/core/simulation/emitted_sentence.hpp>
 #include <nmeasim/core/simulation/simulation.hpp>
 #include <nmeasim/io/profile/profile.hpp>
 #include <nmeasim/io/transport.hpp>
@@ -10,7 +11,9 @@
 #include <QString>
 #include <QTimer>
 
+#include <chrono>
 #include <memory>
+#include <optional>
 #include <vector>
 
 /// Drives a simulation from real timers and fans its sentences out to transports.
@@ -18,6 +21,8 @@
 /// The runner lives on the Qt event loop thread. Hosts observe it through signals and read
 /// the vessel state through `simulation()` between ticks.
 namespace nmeasim::io {
+
+class LogTransport;
 
 /// A transport together with the sentence filter configured for it.
 struct OutputChannel {
@@ -41,7 +46,8 @@ public:
 
     /// Replaces the simulation and the outputs with those described by `profile`. Stops a
     /// running simulation first. Returns false and sets `error` when the profile cannot be
-    /// applied; transports that fail to open are reported through `output_error` instead.
+    /// applied, for example when its track or log file cannot be read; transports that fail
+    /// to open are reported through `output_error` instead.
     bool apply_profile(const Profile& profile, QString* error);
 
     /// Opens every enabled output and starts ticking. Outputs that fail to open are reported
@@ -51,6 +57,26 @@ public:
     void resume();
     /// Stops ticking and closes every output.
     void stop();
+
+    /// Takes the smallest step while paused: one recorded sentence during a replay, one
+    /// tick otherwise. Starts the run paused when it is not running, pauses it when it is.
+    void step();
+    /// Moves a finite source (a track or a log) to `position`; the state changes at once.
+    /// Endless sources ignore it.
+    void seek(std::chrono::milliseconds position);
+    /// Length of a finite source; nullopt for the delta simulation.
+    [[nodiscard]] std::optional<std::chrono::milliseconds> duration() const;
+    /// Elapsed position within a finite source.
+    [[nodiscard]] std::chrono::milliseconds position() const;
+
+    /// Records every emitted sentence, in addition to the profile outputs, to a log file
+    /// (ADR 0012). The file is truncated when the recording starts and continued across
+    /// stop and start until the recording is cleared with an empty path. Returns false and
+    /// reports through `output_error` when the file cannot be opened.
+    bool set_recording(const QString& path);
+    [[nodiscard]] QString recording_path() const;
+    [[nodiscard]] bool is_recording() const noexcept { return recorder_ != nullptr; }
+    [[nodiscard]] const LogTransport* recorder() const noexcept { return recorder_.get(); }
 
     [[nodiscard]] bool is_running() const noexcept { return tick_timer_.isActive(); }
     [[nodiscard]] bool is_paused() const noexcept { return paused_; }
@@ -67,19 +93,30 @@ signals:
     void started();
     void paused_changed(bool paused);
     void stopped();
-    /// Emitted after every tick; hosts refresh their view of `simulation()->state()`.
+    /// Emitted after every tick, step and seek; hosts refresh their view of
+    /// `simulation()->state()`.
     void ticked();
-    /// Every sentence produced, before filtering, with its registry id.
+    /// Every sentence produced, before filtering, with its registry id (or the formatter of
+    /// a replayed sentence).
     void sentence_emitted(const QString& id, const QString& text);
     void output_error(const QString& description, const QString& message);
+    /// The track or log reached its end; `stopped` follows.
+    void finished();
+    /// The recording was started (non-empty path) or cleared (empty path).
+    void recording_changed(const QString& path);
 
 private:
     void tick();
+    void emit_sentences(const std::vector<core::simulation::EmittedSentence>& sentences);
+    void finish_if_done();
     std::unique_ptr<Transport> make_transport(const OutputConfig& config) const;
+    std::unique_ptr<core::simulation::Source> make_source(const Profile& profile,
+                                                          QString* error) const;
 
     Profile profile_;
     std::unique_ptr<core::simulation::Simulation> simulation_;
     std::vector<OutputChannel> outputs_;
+    std::unique_ptr<LogTransport> recorder_;
     QTimer tick_timer_;
     QElapsedTimer wall_clock_;
     bool paused_{false};

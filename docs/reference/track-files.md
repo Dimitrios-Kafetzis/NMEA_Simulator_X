@@ -2,7 +2,8 @@
 
 The simulator can follow a track read from a GPX or KML file. This page lists exactly what
 is read from each format. How the vessel moves along the points is explained in the
-[simulation model](../explanation/simulation-model.md#track-mode).
+[simulation model](../explanation/simulation-model.md#track-mode); how to load a track is
+in the [how-to guide](../how-to/follow-a-track.md).
 
 ## Common rules
 

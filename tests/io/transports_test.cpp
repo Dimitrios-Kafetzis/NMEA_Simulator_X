@@ -1,7 +1,9 @@
 #include "io/event_loop.hpp"
 
+#include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/io/network_interfaces.hpp>
 #include <nmeasim/io/transports/file_transport.hpp>
+#include <nmeasim/io/transports/log_transport.hpp>
 #include <nmeasim/io/transports/serial_transport.hpp>
 #include <nmeasim/io/transports/tcp_client_transport.hpp>
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
@@ -242,4 +244,63 @@ TEST_CASE("transport states have names", "[io][transport]") {
     CHECK(nmeasim::io::to_string(Transport::State::Open) == QStringLiteral("open"));
     CHECK(nmeasim::io::to_string(nmeasim::io::UdpConfig::Mode::Multicast) ==
           QStringLiteral("multicast"));
+}
+
+TEST_CASE("log transport writes a header once and timestamps every line", "[io][transport]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("record.log"));
+    {
+        nmeasim::io::LogTransport log(path, false);
+        log.set_profile_name(QStringLiteral("Harbour"));
+        CHECK(log.description() == QStringLiteral("Log %1").arg(path));
+        REQUIRE(log.open());
+        log.write(kLine);
+        log.write(kLine);
+        CHECK(log.lines_written() == 2);
+        CHECK(log.bytes_written() > 2 * kLine.size());
+        log.close();
+        // Reopening within the same recording continues the file without a second header.
+        REQUIRE(log.open());
+        log.write(kLine);
+        CHECK(log.lines_written() == 3);
+    }
+    QFile reader(path);
+    REQUIRE(reader.open(QIODevice::ReadOnly | QIODevice::Text));
+    const auto text = reader.readAll().toStdString();
+    std::string error;
+    const auto parsed = nmeasim::core::log::parse_log(text, {}, &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->header.at("format") == "1");
+    CHECK(parsed->header.at("profile") == "Harbour");
+    CHECK(parsed->header.contains("recorded"));
+    CHECK(parsed->timing == nmeasim::core::log::TimingSource::Timestamps);
+    REQUIRE(parsed->entries.size() == 3);
+    CHECK(parsed->entries[0].sentence == kLine.trimmed().toStdString());
+    CHECK(parsed->entries[0].recorded_at.has_value());
+    CHECK(text.find("# NMEA Simulator X log 1") == 0);
+    CHECK(text.find("# NMEA Simulator X log 1", 1) == std::string::npos);
+
+    // Truncating starts a fresh file with a new header; appending to a file keeps it.
+    {
+        nmeasim::io::LogTransport fresh(path, false);
+        REQUIRE(fresh.open());
+        fresh.write(kLine);
+    }
+    {
+        nmeasim::io::LogTransport more(path, true);
+        REQUIRE(more.open());
+        more.write(kLine);
+    }
+    REQUIRE(reader.seek(0));
+    const auto again = nmeasim::core::log::parse_log(reader.readAll().toStdString(), {}, &error);
+    REQUIRE(again.has_value());
+    CHECK(again->entries.size() == 2);
+    CHECK_FALSE(again->header.contains("profile"));
+
+    nmeasim::io::LogTransport bad(directory.filePath(QStringLiteral("missing/dir/record.log")));
+    QSignalSpy errors(&bad, &Transport::error_occurred);
+    CHECK_FALSE(bad.open());
+    CHECK(bad.state() == Transport::State::Failed);
+    CHECK(errors.count() == 1);
 }

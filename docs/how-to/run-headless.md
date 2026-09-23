@@ -36,6 +36,39 @@ nmeasim run --profile harbour.json
 Command-line output options replace the profile's outputs for that run, so the same profile
 can go to TCP in one run and to a serial port in the next.
 
+## Follow a recorded track
+
+```bash
+nmeasim run --track samples/saronic-gulf.gpx --tcp-server 10110
+```
+
+The vessel sails the GPX or KML file on its own timestamps and the run ends at the last
+point. Add `--loop` to sail it again and again, `--speed 8 --ignore-timestamps` to sail it
+at a set speed, or use a route file without timestamps, which is always sailed at `--speed`.
+See [Follow a track](follow-a-track.md) for the details and the profile keys.
+
+## Record a session
+
+```bash
+nmeasim run --record monday.log --tcp-server 10110 --duration 3600
+```
+
+`--record` writes every sentence with a timestamp to the file, in addition to the outputs;
+the file is truncated at the start. To record only some sentences, use a profile with a
+`log` output and a `filter` instead.
+
+## Replay a log
+
+```bash
+nmeasim run --replay monday.log --tcp-server 10110
+```
+
+The sentences are sent again, unchanged, on their original cadence, and the run ends when
+the log does. A log captured by another program works the same way: lines that carry a
+timestamp use it, lines that do not are timed from the RMC, GGA, GLL or ZDA time fields, and
+a log without any time information is played at a fixed interval (`--replay-interval`).
+The [log file reference](../reference/log-format.md) lists the accepted line shapes.
+
 ## Generate a fixture for automated tests
 
 ```bash
