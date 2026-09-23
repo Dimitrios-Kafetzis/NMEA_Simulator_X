@@ -105,6 +105,8 @@ if(WIN32 OR APPLE)
         TARGET nmeasim_app
         OUTPUT_SCRIPT NMEASIM_DEPLOY_SCRIPT
         CONTENT "
+# qt.conf is written to QT_DEPLOY_BIN_DIR, which must match where the executables are.
+set(QT_DEPLOY_BIN_DIR \"${NMEASIM_INSTALL_BINDIR}\")
 qt_deploy_runtime_dependencies(
     EXECUTABLE \"${NMEASIM_DEPLOY_EXECUTABLE}\"
     ADDITIONAL_EXECUTABLES \"${NMEASIM_DEPLOY_CLI}\"

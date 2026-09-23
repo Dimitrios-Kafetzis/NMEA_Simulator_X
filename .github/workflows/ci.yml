@@ -105,7 +105,7 @@ jobs:
       - name: Install into a staging directory
         shell: bash
         run: |
-          cmake --install build/${{ matrix.preset }} --prefix staging
+          cmake --install build/${{ matrix.preset }} --prefix "$PWD/staging"
           case "${{ runner.os }}" in
             Windows) ./staging/nmeasim.exe --version; ls staging/Qt6Core*.dll ;;
             macOS)
