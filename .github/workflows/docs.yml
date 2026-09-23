@@ -10,8 +10,15 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "src/core/include/**"
+      - "src/io/include/**"
+      - "tools/doxygen/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
+
+env:
+  DOXYGEN_VERSION: 1.18.0
+  DOXYGEN_SHA256: 14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90
 
 permissions:
   contents: read
@@ -40,10 +47,20 @@ jobs:
           cache: pip
           cache-dependency-path: docs/requirements.txt
 
+      - name: Install Doxygen
+        run: |
+          curl -sSfL -o doxygen.tar.gz \
+            "https://github.com/doxygen/doxygen/releases/download/Release_${DOXYGEN_VERSION//./_}/doxygen-${DOXYGEN_VERSION}.linux.bin.tar.gz"
+          echo "${DOXYGEN_SHA256}  doxygen.tar.gz" | sha256sum --check
+          tar -xzf doxygen.tar.gz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/doxygen-${DOXYGEN_VERSION}/bin" >> "$GITHUB_PATH"
+
       - name: Install MkDocs
         run: pip install -r docs/requirements.txt
 
-      - name: Build site
+      - name: Build site and API reference
+        env:
+          NMEASIM_REQUIRE_DOXYGEN: "1"
         run: mkdocs build --strict
 
       - name: Configure Pages

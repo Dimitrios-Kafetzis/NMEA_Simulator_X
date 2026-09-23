@@ -1,0 +1,69 @@
+# Doxygen configuration of the C++ API reference. Run from the repository root:
+#   NMEASIM_VERSION=1.0.0 doxygen tools/doxygen/Doxyfile
+# The MkDocs hook docs/hooks/doxygen.py runs it during `mkdocs build` and publishes the HTML
+# under api/ in the documentation site. Warnings are errors.
+
+PROJECT_NAME           = "NMEA Simulator X"
+PROJECT_NUMBER         = $(NMEASIM_VERSION)
+PROJECT_BRIEF          = "C++ API of the core and io libraries"
+OUTPUT_DIRECTORY       = build/doxygen
+CREATE_SUBDIRS         = NO
+
+INPUT                  = tools/doxygen/mainpage.md \
+                         src/core/include \
+                         src/io/include
+FILE_PATTERNS          = *.hpp
+RECURSIVE              = YES
+USE_MDFILE_AS_MAINPAGE = tools/doxygen/mainpage.md
+STRIP_FROM_PATH        = src/core/include \
+                         src/io/include
+STRIP_FROM_INC_PATH    = src/core/include \
+                         src/io/include
+FULL_PATH_NAMES        = YES
+
+JAVADOC_AUTOBRIEF      = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_FRIEND_COMPOUNDS  = YES
+SORT_MEMBER_DOCS       = NO
+SHOW_USED_FILES        = NO
+SHOW_FILES             = YES
+SHOW_NAMESPACES        = YES
+
+# Qt macros in the io headers.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = Q_OBJECT= \
+                         Q_SIGNALS=signals \
+                         Q_SLOTS=slots
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_IF_INCOMPLETE_DOC = YES
+WARN_NO_PARAMDOC       = NO
+WARN_IF_UNDOC_ENUM_VAL = NO
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+WARN_FORMAT            = "$file:$line: $text"
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = api
+HTML_COLORSTYLE        = TOGGLE
+GENERATE_TREEVIEW      = YES
+FULL_SIDEBAR           = NO
+SEARCHENGINE           = YES
+SERVER_BASED_SEARCH    = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+HAVE_DOT               = NO
+SOURCE_BROWSER         = NO
+ALPHABETICAL_INDEX     = YES

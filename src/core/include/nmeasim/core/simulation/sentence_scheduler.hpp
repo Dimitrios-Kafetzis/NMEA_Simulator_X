@@ -17,40 +17,51 @@ namespace nmeasim::core::simulation {
 
 /// Per-sentence settings an operator can change.
 struct SentenceSetting {
+    /// Whether the sentence is emitted at all.
     bool enabled{true};
     /// Two-character talker; empty means the registry default.
     std::string talker;
+    /// Interval between emissions; `configure` replaces zero or negative with the registry
+    /// default.
     std::chrono::milliseconds period{1000};
 };
 
+/// Per-sentence enable flags, talkers and periods, plus the operator's custom sentences, with
+/// the time each one is next due.
 class SentenceScheduler {
 public:
     /// Builds a schedule with every sentence at its registry defaults.
     explicit SentenceScheduler(
         const nmea0183::SentenceRegistry& registry = nmea0183::SentenceRegistry::standard());
 
+    /// The registry the schedule was built from.
     [[nodiscard]] const nmea0183::SentenceRegistry& registry() const noexcept { return *registry_; }
 
     /// Returns the setting for a sentence id. Unknown ids yield a disabled default.
     [[nodiscard]] SentenceSetting setting(std::string_view id) const;
     /// Replaces the setting for a sentence id. Unknown ids are ignored.
     void configure(std::string_view id, SentenceSetting setting);
+    /// Enables or disables one sentence. Unknown ids are ignored.
     void set_enabled(std::string_view id, bool enabled);
+    /// Enables or disables every registry sentence of a group.
     void set_group_enabled(nmea0183::SentenceGroup group, bool enabled);
-    /// Sets every sentence to the same period.
+    /// Sets every sentence to the same period. Zero or negative periods are ignored.
     void set_period_for_all(std::chrono::milliseconds period);
 
     /// The talker that will be used for a sentence after overrides.
     [[nodiscard]] std::string_view effective_talker(
         const nmea0183::SentenceDescriptor& descriptor) const;
 
+    /// Options passed to every encoder.
     [[nodiscard]] nmea0183::EncoderOptions encoder_options() const noexcept { return options_; }
+    /// Replaces the options passed to every encoder.
     void set_encoder_options(nmea0183::EncoderOptions options) noexcept { options_ = options; }
 
     /// Replaces the operator's custom sentences. Bodies that cannot be framed and ids that
     /// clash with a registry id are dropped; empty ids become `CUSTOM-n`, numbered from 1 in
     /// list order. Custom sentences are emitted after the registry ones.
     void set_custom_sentences(const std::vector<CustomSentence>& sentences);
+    /// The custom sentences accepted by the last `set_custom_sentences`, with ids filled in.
     [[nodiscard]] const std::vector<CustomSentence>& custom_sentences() const noexcept {
         return custom_;
     }

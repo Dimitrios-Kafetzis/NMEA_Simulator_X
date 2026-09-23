@@ -14,11 +14,14 @@
 /// The replay mode: a recorded log is sent again with its original timing.
 namespace nmeasim::core::simulation {
 
+/// Configuration of a `ReplaySource`.
 struct ReplayConfig {
+    /// The parsed log to replay.
     log::Log log;
     /// Values not carried by the log (for example depth in a GNSS-only log) and the clock
     /// until the first sentence with a time.
     model::VesselState seed;
+    /// Whether to stop after the last entry or start again from the first.
     EndBehaviour end{EndBehaviour::Stop};
 };
 
@@ -31,6 +34,7 @@ struct ReplayConfig {
 /// entries before the new position.
 class ReplaySource final : public Source {
 public:
+    /// Starts at the first entry with the state set to `config.seed`.
     explicit ReplaySource(ReplayConfig config);
 
     const model::VesselState& advance(std::chrono::milliseconds dt) override;
@@ -47,7 +51,9 @@ public:
 
     /// Index of the next entry to emit; equal to `entry_count()` at the end.
     [[nodiscard]] std::size_t entry_index() const noexcept { return cursor_; }
+    /// Number of entries in the log.
     [[nodiscard]] std::size_t entry_count() const noexcept { return config_.log.entries.size(); }
+    /// The configuration the source was built with.
     [[nodiscard]] const ReplayConfig& config() const noexcept { return config_; }
 
 private:

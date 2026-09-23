@@ -11,7 +11,7 @@
 /// byte strictly between the start delimiter and the `*`, written as two upper-case hex digits.
 namespace nmeasim::core::nmea0183 {
 
-/// Maximum length of a sentence in bytes, including `$`/`!` and the terminating <CR><LF>.
+/// Maximum length of a sentence in bytes, including `$`/`!` and the terminating CR LF.
 inline constexpr std::size_t kMaxSentenceLength{82};
 
 /// Sentence start delimiter for parametric sentences.
@@ -32,12 +32,12 @@ inline constexpr char kChecksumDelimiter{'*'};
 
 /// Appends `*hh` to a sentence that starts with `$` or `!` and has no checksum yet.
 ///
-/// The result has no line terminator; callers add <CR><LF> when transmitting.
+/// The result has no line terminator; callers add CR LF when transmitting.
 /// The behaviour is undefined if `sentence` is empty or already contains a `*`.
 [[nodiscard]] std::string append_checksum(std::string_view sentence);
 
 /// Returns true when `sentence` starts with `$` or `!`, ends with `*hh` (optionally followed
-/// by <CR>, <LF> or <CR><LF>) and `hh` matches the computed checksum.
+/// by CR, LF or CR LF) and `hh` matches the computed checksum.
 [[nodiscard]] bool verify_checksum(std::string_view sentence) noexcept;
 
 }  // namespace nmeasim::core::nmea0183

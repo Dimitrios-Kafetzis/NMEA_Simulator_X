@@ -8,7 +8,9 @@ namespace nmeasim::core::geo {
 
 /// A geographic position. Latitude is positive north, longitude positive east.
 struct Position {
+    /// Latitude in [-90, 90], positive north.
     double latitude_deg{0.0};
+    /// Longitude in [-180, 180], positive east.
     double longitude_deg{0.0};
 };
 

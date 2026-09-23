@@ -59,6 +59,9 @@ markdown_extensions:
 plugins:
   - search
 
+hooks:
+  - tools/doxygen/mkdocs_hook.py
+
 nav:
   - Home: index.md
   - Tutorials:
@@ -87,6 +90,7 @@ nav:
       - Transports: reference/transports.md
       - Track files: reference/track-files.md
       - Log files: reference/log-format.md
+      - C++ API: reference/api.md
   - Explanation:
       - explanation/index.md
       - Architecture: explanation/architecture.md

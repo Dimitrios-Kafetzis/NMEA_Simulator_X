@@ -9,11 +9,13 @@
 /// follows the simulated vessel.
 namespace nmeasim::core::viewsync {
 
+/// Camera settings for the packets.
 struct ViewSyncOptions {
     /// Height of the camera above the vessel's altitude, metres.
     double camera_altitude_m{500.0};
     /// Camera tilt, degrees from straight down; 0 looks down, 90 looks at the horizon.
     double tilt_deg{60.0};
+    /// Camera roll, degrees.
     double roll_deg{0.0};
     /// Planet name; empty for Earth, otherwise `sky`, `mars` or `moon`.
     std::string planet;

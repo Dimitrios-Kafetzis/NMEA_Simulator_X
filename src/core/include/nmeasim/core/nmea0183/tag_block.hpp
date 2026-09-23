@@ -8,6 +8,7 @@
 /// sentence that names the source and the time of the sentence.
 namespace nmeasim::core::nmea0183 {
 
+/// What the TAG block in front of each sentence of an output contains.
 struct TagBlockOptions {
     /// Source identifier sent as `s:`; usually a talker plus four digits such as `GP0001`.
     /// Restricted to printable characters without `,`, `*`, `\` or `!` when formatted.

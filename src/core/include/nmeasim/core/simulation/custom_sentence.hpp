@@ -9,6 +9,7 @@
 /// computed by the simulator.
 namespace nmeasim::core::simulation {
 
+/// One operator-defined sentence and its schedule.
 struct CustomSentence {
     /// Identifier used by output filters and the console; must not clash with a registry
     /// id. Empty ids are given `CUSTOM-n` by the scheduler.
@@ -16,7 +17,9 @@ struct CustomSentence {
     /// The sentence body: an optional `$` or `!`, the address, the fields, and optionally
     /// an old `*hh` and line terminator, both ignored. Example: `$PXYZ,1,2,3` or `PXYZ,1,2,3`.
     std::string body;
+    /// Interval between emissions; zero or negative is replaced by one second.
     std::chrono::milliseconds period{1000};
+    /// When false the sentence is kept but not sent.
     bool enabled{true};
 };
 

@@ -6,6 +6,8 @@
 /// the cross-track error the autopilot sentences report.
 namespace nmeasim::core::geo {
 
+/// Bearings and distances of a leg and of the vessel relative to it, as solve_leg() returns
+/// them. They feed the autopilot sentences APB, RMB and XTE.
 struct LegSolution {
     /// Initial true bearing of the leg, from its origin to its destination.
     double leg_bearing_deg{0.0};

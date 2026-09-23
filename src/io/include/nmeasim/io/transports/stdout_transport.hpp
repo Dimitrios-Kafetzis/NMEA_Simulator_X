@@ -9,6 +9,7 @@ class StdoutTransport final : public Transport {
     Q_OBJECT
 
 public:
+    /// Creates a transport that writes to the process's standard output.
     explicit StdoutTransport(QObject* parent = nullptr);
 
     [[nodiscard]] QString description() const override;

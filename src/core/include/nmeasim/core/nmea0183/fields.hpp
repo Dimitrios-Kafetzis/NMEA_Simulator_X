@@ -16,7 +16,9 @@ namespace nmeasim::core::nmea0183 {
 /// A coordinate formatted as `ddmm.mmmm` (latitude) or `dddmm.mmmm` (longitude), with the
 /// hemisphere letter to send in the following field.
 struct CoordinateField {
+    /// Degrees and decimal minutes, zero-padded, without sign.
     std::string value;
+    /// 'N' or 'S' for a latitude, 'E' or 'W' for a longitude.
     char hemisphere;
 };
 
@@ -34,11 +36,15 @@ struct CoordinateField {
 
 /// The UTC calendar date split into its components.
 struct DateParts {
+    /// Four-digit year.
     int year;
+    /// Month of the year, 1-12.
     int month;
+    /// Day of the month, 1-31.
     int day;
 };
 
+/// Splits the UTC date of `time_utc` into year, month and day, as sent in ZDA.
 [[nodiscard]] DateParts date_parts(std::chrono::system_clock::time_point time_utc);
 
 /// The letter for a signed east/west quantity such as variation or deviation.

@@ -17,6 +17,8 @@ class WebSocketServerTransport final : public Transport {
     Q_OBJECT
 
 public:
+    /// Listens on `bind_address`:`port` when opened; `port` 0 asks the operating system for a
+    /// free port.
     explicit WebSocketServerTransport(quint16 port, QHostAddress bind_address = QHostAddress::Any,
                                       QObject* parent = nullptr);
     ~WebSocketServerTransport() override;
@@ -27,10 +29,12 @@ public:
     void write(const QByteArray& line) override;
     [[nodiscard]] int client_count() const override;
 
+    /// The port actually listened on while open, otherwise the requested one.
     [[nodiscard]] quint16 port() const;
 
     /// Text sent to every client immediately after it connects. Empty disables it.
     void set_greeting(QString greeting) { greeting_ = std::move(greeting); }
+    /// The current greeting; empty when none is set.
     [[nodiscard]] QString greeting() const { return greeting_; }
 
 private:

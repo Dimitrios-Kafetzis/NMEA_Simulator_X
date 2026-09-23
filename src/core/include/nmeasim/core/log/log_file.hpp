@@ -50,12 +50,16 @@ enum class TimingSource {
     FixedInterval,
 };
 
+/// Lower-case display name of a timing source, such as `sentence times`.
 [[nodiscard]] const char* to_string(TimingSource source) noexcept;
 
+/// A parsed log: its sentences in file order with their offsets, and the header metadata.
 struct Log {
+    /// The readable sentences in file order; the first has offset zero.
     std::vector<LogEntry> entries;
     /// `# key: value` header lines, keyed by `key`.
     std::map<std::string, std::string> header;
+    /// Where the entry offsets came from.
     TimingSource timing{TimingSource::FixedInterval};
     /// Lines that carried no usable sentence.
     std::size_t skipped_lines{0};
@@ -64,6 +68,7 @@ struct Log {
     [[nodiscard]] std::chrono::milliseconds duration() const noexcept;
 };
 
+/// Options for `parse_log` and `load_log`.
 struct LogParseOptions {
     /// Spacing used when the log carries no time information at all.
     std::chrono::milliseconds fixed_interval{100};

@@ -12,6 +12,8 @@ class TcpClientTransport final : public Transport {
     Q_OBJECT
 
 public:
+    /// Connects to `host`:`port` when opened, retrying `reconnect_interval_ms` milliseconds
+    /// after a failed attempt or a dropped connection.
     TcpClientTransport(QString host, quint16 port, int reconnect_interval_ms = 2000,
                        QObject* parent = nullptr);
     ~TcpClientTransport() override;

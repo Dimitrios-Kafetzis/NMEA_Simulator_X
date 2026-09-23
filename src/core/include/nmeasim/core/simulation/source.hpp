@@ -10,6 +10,7 @@
 /// A source produces the vessel state for each simulation tick.
 namespace nmeasim::core::simulation {
 
+/// Base class of the simulation modes: delta, track following and log replay.
 class Source {
 public:
     virtual ~Source() = default;
@@ -58,9 +59,13 @@ public:
 
 protected:
     Source() = default;
+    /// Copies are for derived classes only, which prevents slicing.
     Source(const Source&) = default;
+    /// Copy assignment, for derived classes only.
     Source& operator=(const Source&) = default;
+    /// Moves are for derived classes only, which prevents slicing.
     Source(Source&&) = default;
+    /// Move assignment, for derived classes only.
     Source& operator=(Source&&) = default;
 };
 
