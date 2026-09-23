@@ -129,10 +129,14 @@ Each sentence has its own **period** and **enabled** flag, seeded from the regis
 defaults. The scheduler runs on the simulated clock:
 
 - Everything enabled is due on the first tick.
-- A sentence is due again once its period has elapsed since it was last emitted.
-- The next emission is scheduled relative to the actual emission time, not the missed slot,
-  so a host that stalls for ten seconds emits one round of sentences afterwards rather than
-  ten.
+- A sentence is due again one period after the slot it was due at, not after the tick that
+  sent it, so a 1000 ms sentence keeps a 1 Hz cadence (0 s, 1 s, 2 s, ...) even though each
+  tick that sends it arrives up to one tick late.
+- A sentence that is more than a period behind, because the host stalled for ten seconds for
+  example, is scheduled one period after the tick that sends it: the host emits one round of
+  sentences afterwards rather than ten.
+- The runner hands the simulation the wall-clock time since the previous tick in whole
+  milliseconds and carries the remainder, so the simulated clock keeps pace with the real one.
 - Sentences are returned in registry order, so a client always sees RMC before GGA within a
   round.
 

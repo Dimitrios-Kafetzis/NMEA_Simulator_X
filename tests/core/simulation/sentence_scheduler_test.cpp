@@ -6,7 +6,10 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <string>
+#include <string_view>
+#include <vector>
 
 using namespace std::chrono_literals;
 namespace sim = nmeasim::core::simulation;
@@ -114,4 +117,33 @@ TEST_CASE("reset makes every sentence due again", "[simulation][scheduler]") {
     CHECK(scheduler.due(100ms, state).empty());
     scheduler.reset();
     CHECK_FALSE(scheduler.due(100ms, state).empty());
+}
+
+TEST_CASE("the next due time follows the slot, not the late step", "[simulation][scheduler]") {
+    CHECK(sim::next_due_after(1000ms, 1000ms, 1000ms) == 2000ms);
+    CHECK(sim::next_due_after(1000ms, 1089ms, 1000ms) == 2000ms);
+    CHECK(sim::next_due_after(1000ms, 1999ms, 1000ms) == 2000ms);
+    // More than a period behind: restart from now instead of catching up with a burst.
+    CHECK(sim::next_due_after(1000ms, 2000ms, 1000ms) == 3000ms);
+    CHECK(sim::next_due_after(0ms, 50000ms, 1000ms) == 51000ms);
+}
+
+TEST_CASE("steps shorter than a tenth of the period keep a one second sentence at 1 Hz",
+          "[simulation][scheduler]") {
+    sim::SentenceScheduler scheduler;
+    const auto state = nmeasim::test::fixture_state();
+
+    // 99 ms steps: every emission is late by up to one step, which must not accumulate.
+    std::vector<std::chrono::milliseconds> fixes;
+    for (auto now = 0ms; now < 20000ms; now += 99ms) {
+        if (count_formatter(scheduler.due(now, state), "RMC") == 1) {
+            fixes.push_back(now);
+        }
+    }
+    REQUIRE(fixes.size() == 20);
+    for (std::size_t i = 0; i < fixes.size(); ++i) {
+        const auto slot = std::chrono::milliseconds{1000 * static_cast<long long>(i)};
+        CHECK(fixes[i] >= slot);
+        CHECK(fixes[i] < slot + 99ms);
+    }
 }

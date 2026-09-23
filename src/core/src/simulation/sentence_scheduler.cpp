@@ -1,9 +1,17 @@
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <string>
 
 namespace nmeasim::core::simulation {
+
+std::chrono::milliseconds next_due_after(std::chrono::milliseconds due,
+                                         std::chrono::milliseconds now,
+                                         std::chrono::milliseconds period) noexcept {
+    const auto next = due + period;
+    return next > now ? next : now + period;
+}
 
 SentenceScheduler::SentenceScheduler(const nmea0183::SentenceRegistry& registry)
     : registry_(&registry) {
@@ -108,9 +116,7 @@ std::vector<EmittedSentence> SentenceScheduler::due(std::chrono::milliseconds no
         if (!entry.setting.enabled || now < entry.next_due) {
             continue;
         }
-        // Schedule relative to now rather than to the missed slot, so a stalled host does not
-        // burst-catch-up.
-        entry.next_due = now + entry.setting.period;
+        entry.next_due = next_due_after(entry.next_due, now, entry.setting.period);
         append_encoded(sentences, descriptor.id,
                        nmea0183::encode_within_limit(descriptor, state,
                                                      effective_talker(descriptor), options_));
@@ -119,7 +125,7 @@ std::vector<EmittedSentence> SentenceScheduler::due(std::chrono::milliseconds no
         if (!entry.sentence.enabled || now < entry.next_due) {
             continue;
         }
-        entry.next_due = now + entry.sentence.period;
+        entry.next_due = next_due_after(entry.next_due, now, entry.sentence.period);
         sentences.push_back({entry.sentence.id, entry.framed});
     }
     return sentences;
