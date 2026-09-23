@@ -22,18 +22,22 @@ add_library(nmeasim_core STATIC
     src/nmea0183/fields.cpp
     src/nmea0183/registry.cpp
     src/nmea0183/sentence_builder.cpp
+    src/nmea0183/tag_block.cpp
     src/physics/wind.cpp
+    src/simulation/custom_sentence.cpp
     src/simulation/delta_source.cpp
     src/simulation/replay_source.cpp
     src/simulation/sentence_scheduler.cpp
     src/simulation/simulation.cpp
     src/simulation/track_source.cpp
+    src/signalk/delta.cpp
     src/time/iso8601.cpp
     src/track/gpx.cpp
     src/track/kml.cpp
     src/track/track.cpp
     src/track/track_file.cpp
     src/track/xml_helpers.cpp
+    src/viewsync/viewsync.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
 

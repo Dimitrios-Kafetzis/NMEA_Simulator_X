@@ -21,8 +21,8 @@ a change to the output.
 - Numbers never carry a leading `+`, never render negative zero and use a fixed number of
   decimals per field. Positions use four decimal minutes by default (0.19 m resolution).
 - Talker IDs are configurable per sentence; the tables show the defaults.
-- When the IEC 61162-450 option is enabled (milestone M4) each sentence is preceded by a TAG
-  block of the form `\s:<source>,c:<unix time>*hh\`.
+- When an output enables [TAG blocks](#tag-blocks) each sentence on that output is preceded
+  by a TAG block of the form `\s:<source>,c:<unix time>*hh\`.
 
 ## Sentences that depend on optional state
 
@@ -469,3 +469,35 @@ Two transducers per engine, each four fields:
 | 6 | Revolutions per minute |
 | 7 | Unit `R` |
 | 8 | Transducer id `ENGINE#n` |
+
+## TAG blocks
+
+An IEC 61162-450 TAG block is a prefix in front of a sentence, enabled per output:
+
+```text
+\s:GP0001,c:1790080496*26\$HEHDT,45.0,T*1E
+```
+
+| Part | Meaning |
+| --- | --- |
+| `\` ... `\` | Delimits the block |
+| `s:GP0001` | Source identifier, configured per output (`SIM0001` by default); printable characters except `,`, `*`, `\`, `!` and `$`, at most 15 |
+| `c:1790080496` | Time of the sentence as Unix seconds of the simulated clock, or milliseconds when the output asks for them; can be left out |
+| `*26` | Checksum of the text between the backslashes, computed like a sentence checksum |
+
+The sentence after the block is unchanged. Recordings never carry TAG blocks; the replay
+reader accepts them from other sources (see the [log format](log-format.md)).
+
+## Custom sentences
+
+The operator can add sentences of their own to the schedule, each with an id, a body and a
+period. The body is written as it should appear on the wire without the checksum, for
+example `$PXYZ,1,2,3` or `!AIVDM,1,1,,A,13aEOK?P00PD2wVMdLDRhgvL289?,0`; the leading `$` may
+be left out, an old `*hh` and line terminator are ignored, and the checksum is computed
+when the sentence is sent. A body is refused when it is empty, carries characters outside
+printable ASCII or one of `$ ! \ ^ ~` inside, has no address of at least three letters or
+digits, or would exceed 82 characters.
+
+Custom sentences are emitted after the registry sentences of the same round, filtered by
+their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given) and
+recorded like them. An id equal to a registry id is refused.

@@ -13,16 +13,20 @@ add_executable(nmeasim_core_tests
     core/nmea0183/fields_test.cpp
     core/nmea0183/registry_test.cpp
     core/nmea0183/sentence_builder_test.cpp
+    core/nmea0183/tag_block_test.cpp
     core/physics/wind_test.cpp
+    core/simulation/custom_sentence_test.cpp
     core/simulation/delta_source_test.cpp
     core/simulation/replay_source_test.cpp
     core/simulation/sentence_scheduler_test.cpp
     core/simulation/simulation_test.cpp
     core/simulation/track_source_test.cpp
+    core/signalk/delta_test.cpp
     core/time/iso8601_test.cpp
     core/track/gpx_test.cpp
     core/track/kml_test.cpp
     core/track/track_test.cpp
+    core/viewsync/viewsync_test.cpp
 )
 target_include_directories(nmeasim_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(nmeasim_core_tests PRIVATE
