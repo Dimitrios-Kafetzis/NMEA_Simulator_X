@@ -17,6 +17,8 @@ checks the packages and attaches them to the GitHub release; see
 | `linux/appimage.cmake` | CPack External generator script that runs `linuxdeploy` on the staged install tree |
 | `linux/AppRun` | AppImage entry point: starts the desktop application, or `nmeasim` when called through a link of that name or with `nmeasim` as first argument |
 | `flatpak/*.yml` | Flatpak manifest on the KDE 6.10 runtime; builds the working tree (instructions in the file) |
+| `manifests/winget/`, `manifests/scoop/`, `manifests/homebrew/` | Templates of the winget manifests (NSIS installer), the Scoop manifest (portable ZIP) and the Homebrew cask for the `dimitrios-kafetzis/tap` tap (disk images) |
+| `manifests/update_manifests.py` | Fills the templates and derives the Flathub manifest (release tag and commit instead of the working tree) for a release; run by the release workflow |
 
 | Platform | Package | Tooling |
 | --- | --- | --- |
@@ -24,5 +26,8 @@ checks the packages and attaches them to the GitHub release; see
 | macOS | `NMEASimulatorX-<version>-macos-<arch>.dmg`, ad-hoc signed | `macdeployqt`, `codesign --sign -`, CPack DragNDrop |
 | Linux | `NMEASimulatorX-<version>-<arch>.AppImage` (x86_64, aarch64) | `linuxdeploy` with the Qt plugin, CPack External |
 | Linux | `NMEASimulatorX-<version>-x86_64.flatpak` bundle | `flatpak-builder` with `flatpak/*.yml` |
+
+How the generated manifests are submitted is described in
+[Submit the package-manager manifests](../docs/how-to/submit-package-manifests.md).
 
 Linux formats are explained in [ADR 0016](../docs/adr/0016-linux-packages.md).

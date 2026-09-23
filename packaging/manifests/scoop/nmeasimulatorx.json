@@ -1,0 +1,34 @@
+{
+    "version": "@VERSION@",
+    "description": "NMEA 0183, AIS and Signal K data stream simulator",
+    "homepage": "https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/",
+    "license": "GPL-3.0-only",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/releases/download/@TAG@/NMEASimulatorX-@VERSION@-win64-portable.zip",
+            "hash": "@SHA256_WIN64_ZIP@",
+            "extract_dir": "NMEASimulatorX-@VERSION@-win64-portable"
+        }
+    },
+    "bin": "nmeasim.exe",
+    "shortcuts": [
+        [
+            "NMEASimulatorX.exe",
+            "NMEA Simulator X"
+        ]
+    ],
+    "checkver": {
+        "github": "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/releases/download/v$version/NMEASimulatorX-$version-win64-portable.zip",
+                "extract_dir": "NMEASimulatorX-$version-win64-portable"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}

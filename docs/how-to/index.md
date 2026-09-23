@@ -12,3 +12,5 @@ Task-oriented instructions for people who already know what they want to achieve
 - [Set a destination](set-a-destination.md) so that the autopilot sentences describe a leg.
 - [Connect a Signal K server](signal-k.md) or any Signal K client to the delta stream.
 - [Follow the vessel in Google Earth](google-earth.md) with ViewSync packets.
+- [Submit the package-manager manifests](submit-package-manifests.md) to winget, Scoop,
+  Homebrew and Flathub after a release (maintainers).
