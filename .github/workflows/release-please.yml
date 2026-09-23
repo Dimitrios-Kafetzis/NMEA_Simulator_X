@@ -1,7 +1,8 @@
 name: Release Please
 
 # Opens and maintains a release pull request from Conventional Commits on main. Merging that
-# pull request tags a release and updates CHANGELOG.md and the project version.
+# pull request tags a release and updates CHANGELOG.md and the project version; the packages
+# job then builds and attaches the installers (release.yml, ADR 0015).
 # Requires "Allow GitHub Actions to create and approve pull requests" in the repository's
 # Actions settings.
 
@@ -16,8 +17,23 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      - uses: googleapis/release-please-action@v5
+      - id: release
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # A tag created with GITHUB_TOKEN does not start other workflows, so the release workflow is
+  # called from here instead of listening for the tag.
+  packages:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

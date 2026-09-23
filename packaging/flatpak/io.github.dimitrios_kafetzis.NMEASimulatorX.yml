@@ -1,0 +1,89 @@
+# Flatpak manifest. Builds the working tree, so it can be tested locally:
+#
+#   flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+#   flatpak-builder --user --install-deps-from=flathub --force-clean --install \
+#       build-flatpak packaging/flatpak/io.github.dimitrios_kafetzis.NMEASimulatorX.yml
+#   flatpak run io.github.dimitrios_kafetzis.NMEASimulatorX
+#   flatpak run --command=nmeasim io.github.dimitrios_kafetzis.NMEASimulatorX --version
+#
+# The Flathub copy is generated from this file by packaging/manifests/update_manifests.py, which
+# replaces the directory source with the release tag and commit.
+id: io.github.dimitrios_kafetzis.NMEASimulatorX
+runtime: org.kde.Platform
+runtime-version: "6.10"
+sdk: org.kde.Sdk
+command: NMEASimulatorX
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # TCP, UDP and WebSocket outputs, and map tiles.
+  - --share=network
+  # Serial outputs (/dev/ttyUSB*, /dev/ttyACM*, /dev/ttyS*).
+  - --device=all
+  # Profiles, tracks and logs are opened by path, also from the command line.
+  - --filesystem=home
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/cmake
+  - "*.a"
+modules:
+  - name: geographiclib
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DBUILD_DOCUMENTATION=OFF
+      - -DBUILD_MANPAGES=OFF
+      - -DCONVERT_WARNINGS_TO_ERRORS=OFF
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/geographiclib/geographiclib/archive/refs/tags/v2.7.tar.gz
+        sha256: 78d77cc8216843b78d14b41970ed9de3dedc34b9cd50ad84af2849c63a41eff8
+
+  - name: pugixml
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DPUGIXML_BUILD_TESTS=OFF
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/zeux/pugixml/archive/refs/tags/v1.16.tar.gz
+        sha256: 357bcab8877dc9943f355d3a72daba1b053238ba955f50fa81586afb65090219
+
+  - name: cli11
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCLI11_BUILD_TESTS=OFF
+      - -DCLI11_BUILD_EXAMPLES=OFF
+      - -DCLI11_BUILD_DOCS=OFF
+      - -DCLI11_PRECOMPILED=OFF
+    cleanup:
+      - "*"
+    sources:
+      - type: archive
+        url: https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.7.2.tar.gz
+        sha256: 46eef3101da70852ec7af026e09d485ccee81813331c8c6052d39344443b83da
+
+  - name: nmeasimulatorx
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DNMEASIM_BUILD_TESTS=OFF
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .flatpak-builder
+          - build
+          - build-flatpak
+          - repo
+          - site
