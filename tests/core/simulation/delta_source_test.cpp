@@ -148,6 +148,70 @@ TEST_CASE("overrides pin a value and nudges move it", "[simulation][delta]") {
     CHECK_FALSE(source.override_value(sim::Parameter::SpeedOverGround).has_value());
 }
 
+TEST_CASE("every parameter can be overridden and nudged within its range", "[simulation][delta]") {
+    sim::DeltaSource source(frozen_config());
+    const auto& state = source.current();
+
+    source.set_override(sim::Parameter::HeadingTrue, -30.0);
+    CHECK(state.navigation.heading_true_deg == Approx(330.0));
+    source.nudge(sim::Parameter::HeadingTrue, 45.0);
+    CHECK(state.navigation.heading_true_deg == Approx(15.0));
+
+    source.set_override(sim::Parameter::SpeedOverGround, -2.0);
+    CHECK(state.navigation.speed_over_ground_kn == Approx(0.0));
+    source.set_override(sim::Parameter::SpeedThroughWater, -1.0);
+    CHECK(state.navigation.speed_through_water_kn == Approx(0.0));
+    source.nudge(sim::Parameter::SpeedThroughWater, 4.5);
+    CHECK(state.navigation.speed_through_water_kn == Approx(4.5));
+
+    source.set_override(sim::Parameter::Altitude, 150.5);
+    source.nudge(sim::Parameter::Altitude, 10.0);
+    CHECK(state.navigation.altitude_m == Approx(160.5));
+
+    source.set_override(sim::Parameter::Depth, -5.0);
+    CHECK(state.water.depth_below_transducer_m == Approx(0.0));
+    source.nudge(sim::Parameter::Depth, 3.2);
+    CHECK(state.water.depth_below_transducer_m == Approx(3.2));
+
+    source.set_override(sim::Parameter::WaterTemperature, 4.0);
+    source.nudge(sim::Parameter::WaterTemperature, -1.5);
+    CHECK(state.water.temperature_c == Approx(2.5));
+
+    source.set_override(sim::Parameter::WindDirectionTrue, 725.0);
+    CHECK(state.wind.true_direction_deg == Approx(5.0));
+    source.nudge(sim::Parameter::WindDirectionTrue, -10.0);
+    CHECK(state.wind.true_direction_deg == Approx(355.0));
+
+    source.set_override(sim::Parameter::WindSpeedTrue, -1.0);
+    CHECK(state.wind.true_speed_kn == Approx(0.0));
+    source.nudge(sim::Parameter::WindSpeedTrue, 7.0);
+    CHECK(state.wind.true_speed_kn == Approx(7.0));
+
+    source.set_override(sim::Parameter::RudderAngle, 50.0);
+    CHECK(state.steering.rudder_angle_deg == Approx(35.0));
+    source.nudge(sim::Parameter::RudderAngle, -80.0);
+    CHECK(state.steering.rudder_angle_deg == Approx(-35.0));
+    CHECK(source.override_value(sim::Parameter::RudderAngle) == Approx(-45.0));
+
+    // Overridden values stay put while the simulation advances.
+    source.advance(1000ms);
+    CHECK(state.navigation.altitude_m == Approx(160.5));
+    CHECK(state.water.temperature_c == Approx(2.5));
+    CHECK(state.wind.true_direction_deg == Approx(355.0));
+}
+
+TEST_CASE("the delta source ignores the transport controls of replay sources",
+          "[simulation][delta]") {
+    sim::DeltaSource source(frozen_config());
+    const auto before = source.current().navigation.position;
+    CHECK_FALSE(source.provides_sentences());
+    source.seek(60s);
+    source.step_once();
+    CHECK(source.take_sentences().empty());
+    CHECK(source.current().navigation.position.latitude_deg == Approx(before.latitude_deg));
+    CHECK(source.current().navigation.position.longitude_deg == Approx(before.longitude_deg));
+}
+
 TEST_CASE("heading override normalises and stops rate of turn", "[simulation][delta]") {
     auto config = frozen_config();
     config.heading = {5.0, 2.0};
