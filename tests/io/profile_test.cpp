@@ -1,5 +1,6 @@
 #include <nmeasim/io/profile/profile.hpp>
 
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -14,6 +15,7 @@ using Catch::Approx;
 using namespace std::chrono_literals;
 using nmeasim::io::OutputConfig;
 using nmeasim::io::Profile;
+using nmeasim::io::SimulationMode;
 
 TEST_CASE("the default profile is valid and round-trips through JSON", "[io][profile]") {
     const auto original = Profile::default_profile();
@@ -222,8 +224,134 @@ TEST_CASE("output types have stable names", "[io][profile]") {
     for (const auto type :
          {OutputConfig::Type::TcpServer, OutputConfig::Type::TcpClient, OutputConfig::Type::Udp,
           OutputConfig::Type::WebSocketServer, OutputConfig::Type::Serial, OutputConfig::Type::File,
-          OutputConfig::Type::Stdout}) {
+          OutputConfig::Type::Stdout, OutputConfig::Type::Log}) {
         CHECK(nmeasim::io::output_type_from_string(nmeasim::io::to_string(type)) == type);
     }
     CHECK_FALSE(nmeasim::io::output_type_from_string(QStringLiteral("smoke-signals")).has_value());
+    for (const auto mode : {SimulationMode::Delta, SimulationMode::Track, SimulationMode::Replay}) {
+        CHECK(nmeasim::io::simulation_mode_from_string(nmeasim::io::to_string(mode)) == mode);
+    }
+    CHECK_FALSE(nmeasim::io::simulation_mode_from_string(QStringLiteral("warp")).has_value());
+}
+
+TEST_CASE("track and replay modes round-trip with their settings", "[io][profile]") {
+    Profile profile = Profile::default_profile();
+    profile.mode = SimulationMode::Track;
+    profile.track.path = QStringLiteral("/tracks/harbour.gpx");
+    profile.track.speed_kn = 4.5;
+    profile.track.use_timestamps = false;
+    profile.track.loop = true;
+    profile.replay.path = QStringLiteral("/logs/yesterday.log");
+    profile.replay.loop = true;
+    profile.replay.fixed_interval_ms = 250;
+    OutputConfig log;
+    log.type = OutputConfig::Type::Log;
+    log.path = QStringLiteral("record.log");
+    log.append = false;
+    profile.outputs.append(log);
+
+    const auto json = profile.to_json();
+    CHECK(json.value(QStringLiteral("schema_version")).toInt() == 2);
+    CHECK(json.value(QStringLiteral("simulation")).toObject().value(QStringLiteral("mode")) ==
+          QStringLiteral("track"));
+    QString error;
+    const auto parsed = Profile::from_json(json, &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->mode == SimulationMode::Track);
+    CHECK(parsed->track.path == QStringLiteral("/tracks/harbour.gpx"));
+    CHECK(parsed->track.speed_kn == Approx(4.5));
+    CHECK_FALSE(parsed->track.use_timestamps);
+    CHECK(parsed->track.loop);
+    CHECK(parsed->replay.path == QStringLiteral("/logs/yesterday.log"));
+    CHECK(parsed->replay.loop);
+    CHECK(parsed->replay.fixed_interval_ms == 250);
+    REQUIRE(parsed->outputs.size() == 2);
+    CHECK(parsed->outputs[1].type == OutputConfig::Type::Log);
+    CHECK(parsed->outputs[1].path == QStringLiteral("record.log"));
+    CHECK_FALSE(parsed->outputs[1].append);
+    CHECK(parsed->to_json() == json);
+
+    profile.mode = SimulationMode::Replay;
+    const auto replay = Profile::from_json(profile.to_json(), &error);
+    REQUIRE(replay.has_value());
+    CHECK(replay->mode == SimulationMode::Replay);
+}
+
+TEST_CASE("schema version 1 profiles are migrated to version 2", "[io][profile]") {
+    QJsonObject v1{{QStringLiteral("schema_version"), 1},
+                   {QStringLiteral("name"), QStringLiteral("Old")},
+                   {QStringLiteral("simulation"), QJsonObject{{QStringLiteral("tick_ms"), 200}}}};
+    QString error;
+    const auto parsed = Profile::from_json(v1, &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->name == QStringLiteral("Old"));
+    CHECK(parsed->tick_ms == 200);
+    CHECK(parsed->mode == SimulationMode::Delta);
+    CHECK(parsed->track.speed_kn == Approx(6.0));
+    CHECK(parsed->track.use_timestamps);
+    CHECK(parsed->replay.fixed_interval_ms == 100);
+    CHECK(parsed->to_json().value(QStringLiteral("schema_version")).toInt() == 2);
+}
+
+TEST_CASE("mode settings are validated", "[io][profile]") {
+    QString error;
+    QJsonObject track_without_path{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("simulation"),
+         QJsonObject{{QStringLiteral("mode"), QStringLiteral("track")}}}};
+    CHECK_FALSE(Profile::from_json(track_without_path, &error).has_value());
+    CHECK(error.contains(QStringLiteral("track.path")));
+
+    QJsonObject replay_without_path{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("simulation"),
+         QJsonObject{{QStringLiteral("mode"), QStringLiteral("replay")}}}};
+    CHECK_FALSE(Profile::from_json(replay_without_path, &error).has_value());
+    CHECK(error.contains(QStringLiteral("replay.path")));
+
+    QJsonObject bad_speed{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("simulation"),
+         QJsonObject{{QStringLiteral("track"), QJsonObject{{QStringLiteral("speed_kn"), 0.0}}}}}};
+    CHECK_FALSE(Profile::from_json(bad_speed, &error).has_value());
+    CHECK(error.contains(QStringLiteral("speed_kn")));
+
+    QJsonObject bad_interval{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("simulation"),
+         QJsonObject{
+             {QStringLiteral("replay"), QJsonObject{{QStringLiteral("fixed_interval_ms"), 0}}}}}};
+    CHECK_FALSE(Profile::from_json(bad_interval, &error).has_value());
+    CHECK(error.contains(QStringLiteral("fixed_interval_ms")));
+
+    QJsonObject log_without_path{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("outputs"),
+         QJsonArray{QJsonObject{{QStringLiteral("type"), QStringLiteral("log")}}}}};
+    CHECK_FALSE(Profile::from_json(log_without_path, &error).has_value());
+    CHECK(error.contains(QStringLiteral("log output needs a path")));
+}
+
+TEST_CASE("relative track and log paths are resolved against the profile file", "[io][profile]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    REQUIRE(QDir(directory.path()).mkpath(QStringLiteral("profiles")));
+    const QString path = directory.filePath(QStringLiteral("profiles/track.json"));
+    Profile profile = Profile::default_profile();
+    profile.mode = SimulationMode::Track;
+    profile.track.path = QStringLiteral("../tracks/harbour.gpx");
+    profile.replay.path = QStringLiteral("logs/yesterday.log");
+    QString error;
+    REQUIRE(profile.save(path, &error));
+
+    const auto loaded = Profile::load(path, &error);
+    REQUIRE(loaded.has_value());
+    CHECK(loaded->track.path ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("tracks/harbour.gpx"))));
+    CHECK(loaded->replay.path ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles/logs/yesterday.log"))));
+    // Absolute paths are left alone.
+    profile.track.path = QDir::cleanPath(directory.filePath(QStringLiteral("abs.gpx")));
+    REQUIRE(profile.save(path, &error));
+    CHECK(Profile::load(path, &error)->track.path == profile.track.path);
 }

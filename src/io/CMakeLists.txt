@@ -12,6 +12,7 @@ add_library(nmeasim_io STATIC
     include/nmeasim/io/simulation_runner.hpp
     include/nmeasim/io/transport.hpp
     include/nmeasim/io/transports/file_transport.hpp
+    include/nmeasim/io/transports/log_transport.hpp
     include/nmeasim/io/transports/serial_transport.hpp
     include/nmeasim/io/transports/stdout_transport.hpp
     include/nmeasim/io/transports/tcp_client_transport.hpp
@@ -24,6 +25,7 @@ add_library(nmeasim_io STATIC
     src/simulation_runner.cpp
     src/transport.cpp
     src/transports/file_transport.cpp
+    src/transports/log_transport.cpp
     src/transports/serial_transport.cpp
     src/transports/stdout_transport.cpp
     src/transports/tcp_client_transport.cpp

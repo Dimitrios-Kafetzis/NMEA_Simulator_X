@@ -1,6 +1,11 @@
+#include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
+#include <nmeasim/core/simulation/replay_source.hpp>
+#include <nmeasim/core/simulation/track_source.hpp>
+#include <nmeasim/core/track/track_file.hpp>
 #include <nmeasim/io/simulation_runner.hpp>
 #include <nmeasim/io/transports/file_transport.hpp>
+#include <nmeasim/io/transports/log_transport.hpp>
 #include <nmeasim/io/transports/serial_transport.hpp>
 #include <nmeasim/io/transports/stdout_transport.hpp>
 #include <nmeasim/io/transports/tcp_client_transport.hpp>
@@ -13,6 +18,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <string>
 
 namespace nmeasim::io {
 
@@ -24,6 +30,10 @@ constexpr std::chrono::milliseconds kMaxStep{1000};
 std::chrono::system_clock::time_point to_time_point(const QDateTime& time) {
     return std::chrono::system_clock::time_point{
         std::chrono::milliseconds{time.toMSecsSinceEpoch()}};
+}
+
+core::simulation::EndBehaviour end_behaviour(bool loop) {
+    return loop ? core::simulation::EndBehaviour::Loop : core::simulation::EndBehaviour::Stop;
 }
 
 }  // namespace
@@ -56,6 +66,60 @@ std::unique_ptr<Transport> SimulationRunner::make_transport(const OutputConfig& 
             return std::make_unique<FileTransport>(config.path, config.append);
         case OutputConfig::Type::Stdout:
             return std::make_unique<StdoutTransport>();
+        case OutputConfig::Type::Log: {
+            auto log = std::make_unique<LogTransport>(config.path, config.append);
+            log->set_profile_name(profile_.name);
+            return log;
+        }
+    }
+    return nullptr;
+}
+
+std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Profile& profile,
+                                                                        QString* error) const {
+    auto seed = profile.delta.seed;
+    seed.time_utc = profile.start_time ? to_time_point(*profile.start_time)
+                                       : to_time_point(QDateTime::currentDateTimeUtc());
+    switch (profile.mode) {
+        case SimulationMode::Delta: {
+            auto config = profile.delta;
+            config.seed = seed;
+            return std::make_unique<core::simulation::DeltaSource>(std::move(config));
+        }
+        case SimulationMode::Track: {
+            std::string reason;
+            auto track = core::track::load_track(profile.track.path.toStdString(), &reason);
+            if (!track) {
+                if (error) {
+                    *error = QString::fromStdString(reason);
+                }
+                return nullptr;
+            }
+            core::simulation::TrackConfig config;
+            config.track = std::move(*track);
+            config.seed = seed;
+            config.speed_kn = profile.track.speed_kn;
+            config.use_timestamps = profile.track.use_timestamps;
+            config.end = end_behaviour(profile.track.loop);
+            return std::make_unique<core::simulation::TrackSource>(std::move(config));
+        }
+        case SimulationMode::Replay: {
+            std::string reason;
+            core::log::LogParseOptions options;
+            options.fixed_interval = std::chrono::milliseconds{profile.replay.fixed_interval_ms};
+            auto log = core::log::load_log(profile.replay.path.toStdString(), options, &reason);
+            if (!log) {
+                if (error) {
+                    *error = QString::fromStdString(reason);
+                }
+                return nullptr;
+            }
+            core::simulation::ReplayConfig config;
+            config.log = std::move(*log);
+            config.seed = seed;
+            config.end = end_behaviour(profile.replay.loop);
+            return std::make_unique<core::simulation::ReplaySource>(std::move(config));
+        }
     }
     return nullptr;
 }
@@ -70,14 +134,14 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
             return false;
         }
     }
+    auto source = make_source(profile, error);
+    if (!source) {
+        return false;
+    }
 
     profile_ = profile;
-    auto config = profile.delta;
-    config.seed.time_utc = profile.start_time ? to_time_point(*profile.start_time)
-                                              : to_time_point(QDateTime::currentDateTimeUtc());
-    simulation_ = std::make_unique<core::simulation::Simulation>(
-        std::make_unique<core::simulation::DeltaSource>(std::move(config)),
-        profile.make_scheduler());
+    simulation_ =
+        std::make_unique<core::simulation::Simulation>(std::move(source), profile.make_scheduler());
 
     outputs_.clear();
     for (const auto& output : profile.outputs) {
@@ -95,6 +159,9 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
                 });
         outputs_.push_back(std::move(channel));
     }
+    if (recorder_) {
+        recorder_->set_profile_name(profile_.name);
+    }
     sentences_emitted_ = 0;
     return true;
 }
@@ -107,6 +174,9 @@ void SimulationRunner::start() {
         if (!channel.transport->is_open()) {
             (void)channel.transport->open();
         }
+    }
+    if (recorder_ && !recorder_->is_open()) {
+        (void)recorder_->open();
     }
     paused_ = false;
     wall_clock_.start();
@@ -138,19 +208,74 @@ void SimulationRunner::stop() {
     for (auto& channel : outputs_) {
         channel.transport->close();
     }
+    if (recorder_) {
+        recorder_->close();
+    }
     if (was_running) {
         emit stopped();
     }
 }
 
-void SimulationRunner::tick() {
-    if (paused_ || !simulation_) {
+void SimulationRunner::step() {
+    if (!simulation_) {
         return;
     }
-    const auto elapsed = std::chrono::milliseconds{wall_clock_.restart()};
-    const auto dt = std::clamp(elapsed, std::chrono::milliseconds{1}, kMaxStep);
+    if (!is_running()) {
+        start();
+    }
+    pause();
+    const auto sentences = simulation_->step_once(std::chrono::milliseconds{profile_.tick_ms});
+    emit_sentences(sentences);
+    emit ticked();
+    finish_if_done();
+}
 
-    const auto sentences = simulation_->step(dt);
+void SimulationRunner::seek(std::chrono::milliseconds position) {
+    if (!simulation_) {
+        return;
+    }
+    simulation_->seek(position);
+    wall_clock_.restart();
+    emit ticked();
+}
+
+std::optional<std::chrono::milliseconds> SimulationRunner::duration() const {
+    return simulation_ ? simulation_->source().duration() : std::nullopt;
+}
+
+std::chrono::milliseconds SimulationRunner::position() const {
+    return simulation_ ? simulation_->source().position() : std::chrono::milliseconds{0};
+}
+
+bool SimulationRunner::set_recording(const QString& path) {
+    if (recorder_) {
+        recorder_->close();
+        recorder_.reset();
+    }
+    if (path.isEmpty()) {
+        emit recording_changed({});
+        return true;
+    }
+    recorder_ = std::make_unique<LogTransport>(path, false);
+    recorder_->set_profile_name(profile_.name);
+    auto* transport = recorder_.get();
+    connect(transport, &Transport::error_occurred, this, [this, transport](const QString& message) {
+        emit output_error(transport->description(), message);
+    });
+    bool ok = true;
+    if (is_running()) {
+        ok = recorder_->open();
+    }
+    emit recording_changed(path);
+    return ok;
+}
+
+QString SimulationRunner::recording_path() const {
+    return recorder_ ? recorder_->path() : QString{};
+}
+
+void SimulationRunner::emit_sentences(
+    const std::vector<core::simulation::EmittedSentence>& sentences) {
     for (const auto& sentence : sentences) {
         const QString id = QString::fromStdString(sentence.id);
         const QByteArray line = QByteArray::fromStdString(sentence.text + "\r\n");
@@ -161,12 +286,30 @@ void SimulationRunner::tick() {
                 ++channel.sentences_sent;
             }
         }
+        if (recorder_ && recorder_->is_open()) {
+            recorder_->write(line);
+        }
         emit sentence_emitted(id, QString::fromStdString(sentence.text));
     }
-    emit ticked();
-    if (simulation_->finished()) {
+}
+
+void SimulationRunner::finish_if_done() {
+    if (simulation_ && simulation_->finished()) {
+        emit finished();
         stop();
     }
+}
+
+void SimulationRunner::tick() {
+    if (paused_ || !simulation_) {
+        return;
+    }
+    const auto elapsed = std::chrono::milliseconds{wall_clock_.restart()};
+    const auto dt = std::clamp(elapsed, std::chrono::milliseconds{1}, kMaxStep);
+
+    emit_sentences(simulation_->step(dt));
+    emit ticked();
+    finish_if_done();
 }
 
 }  // namespace nmeasim::io

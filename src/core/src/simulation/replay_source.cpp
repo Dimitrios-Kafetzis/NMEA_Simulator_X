@@ -9,7 +9,7 @@ namespace nmeasim::core::simulation {
 ReplaySource::ReplaySource(ReplayConfig config)
     : config_(std::move(config)), state_(config_.seed) {}
 
-void ReplaySource::emit(std::size_t index) {
+void ReplaySource::emit_entry(std::size_t index) {
     const auto& entry = config_.log.entries[index];
     if (const auto parsed = nmea0183::parse_sentence(entry.sentence)) {
         nmea0183::apply_sentence(*parsed, state_);
@@ -33,7 +33,7 @@ const model::VesselState& ReplaySource::advance(std::chrono::milliseconds dt) {
     bool wrapped = false;
     while (true) {
         while (cursor_ < entries.size() && entries[cursor_].offset <= clock_) {
-            emit(cursor_);
+            emit_entry(cursor_);
             ++cursor_;
         }
         if (cursor_ < entries.size()) {
@@ -73,7 +73,7 @@ void ReplaySource::step_once() {
     }
     finished_ = false;
     clock_ = entries[cursor_].offset;
-    emit(cursor_);
+    emit_entry(cursor_);
     ++cursor_;
     if (cursor_ >= entries.size() && config_.end == EndBehaviour::Stop) {
         finished_ = true;

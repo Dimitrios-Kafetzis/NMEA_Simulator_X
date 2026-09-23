@@ -44,6 +44,9 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
         io/transports_test.cpp
     )
     target_include_directories(nmeasim_io_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(nmeasim_io_tests PRIVATE
+        NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+        NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
     target_link_libraries(nmeasim_io_tests
         PRIVATE nmeasim::io Catch2::Catch2 Qt6::Core Qt6::Network Qt6::Test Qt6::WebSockets
                 nmeasim::warnings nmeasim::sanitizers

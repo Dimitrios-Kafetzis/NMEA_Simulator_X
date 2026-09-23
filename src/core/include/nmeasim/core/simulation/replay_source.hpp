@@ -51,7 +51,7 @@ public:
     [[nodiscard]] const ReplayConfig& config() const noexcept { return config_; }
 
 private:
-    void emit(std::size_t index);
+    void emit_entry(std::size_t index);
     void rewind();
 
     ReplayConfig config_;
