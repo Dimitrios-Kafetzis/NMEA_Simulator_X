@@ -19,6 +19,7 @@ namespace nmeasim::app {
 class ConsoleWidget;
 class DashboardWidget;
 class OutputsWidget;
+class StatusLed;
 namespace map {
 class MapWidget;
 class TileCache;
@@ -61,6 +62,12 @@ public:
     [[nodiscard]] QAction* record_action() const noexcept { return record_action_; }
     [[nodiscard]] QSlider* seek_slider() const noexcept { return seek_slider_; }
     [[nodiscard]] QLabel* position_label() const noexcept { return position_label_; }
+    /// Status bar lights: run state, recording and outputs.
+    [[nodiscard]] StatusLed* run_led() const noexcept { return run_led_; }
+    [[nodiscard]] StatusLed* recording_led() const noexcept { return recording_led_; }
+    [[nodiscard]] StatusLed* outputs_led() const noexcept { return outputs_led_; }
+    /// The *View → Theme* entries: follow the system, night bridge, daylight.
+    [[nodiscard]] QList<QAction*> theme_actions() const { return theme_actions_; }
 
     /// Rich text of the About dialog, naming the version and, for development builds, the
     /// `git describe` string of the commit.
@@ -92,6 +99,8 @@ protected:
 private:
     void build_actions();
     void build_docks();
+    /// Paints the action icons in the colours of the current theme.
+    void apply_icons();
     void report_error(const QString& title, const QString& message);
     void update_title();
     void update_actions();
@@ -130,6 +139,10 @@ private:
     QLabel* counter_label_;
     QSlider* seek_slider_;
     QLabel* position_label_;
+    StatusLed* run_led_{nullptr};
+    StatusLed* recording_led_{nullptr};
+    StatusLed* outputs_led_{nullptr};
+    QList<QAction*> theme_actions_;
     bool updating_slider_{false};
 
     QAction* new_action_{nullptr};

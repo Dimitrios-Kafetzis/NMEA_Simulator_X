@@ -80,4 +80,6 @@ code with it.
 ## License
 
 NMEA Simulator X is licensed under the [GNU General Public License v3.0](LICENSE).
-Qt is used under the LGPL v3 and is linked dynamically.
+Qt is used under the LGPL v3 and is linked dynamically. The Share Tech Mono typeface of the
+instrument readouts is © Carrois Type Design and used under the
+[SIL Open Font License 1.1](src/app/resources/fonts/OFL.txt).

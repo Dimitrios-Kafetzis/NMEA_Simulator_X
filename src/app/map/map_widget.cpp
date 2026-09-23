@@ -1,5 +1,6 @@
 #include "map_widget.hpp"
 
+#include "theme/theme.hpp"
 #include "tile_cache.hpp"
 
 #include <QContextMenuEvent>
@@ -32,6 +33,7 @@ MapWidget::MapWidget(TileCache* cache, QWidget* parent) : QWidget(parent), cache
     setMouseTracking(false);
     setAutoFillBackground(false);
     connect(cache_, &TileCache::tile_ready, this, [this](const TileKey&) { update(); });
+    connect(&theme::Theme::instance(), &theme::Theme::changed, this, qOverload<>(&QWidget::update));
 }
 
 void MapWidget::set_center(core::geo::Position center) {
@@ -183,8 +185,15 @@ void MapWidget::pan_by(QPointF delta_px) {
 
 void MapWidget::paintEvent(QPaintEvent* /*event*/) {
     QPainter painter(this);
-    painter.fillRect(rect(), QColor(0xe8, 0xe8, 0xe8));
+    const auto& colors = theme::Theme::instance().colors();
+    painter.fillRect(rect(), colors.dark ? colors.inset : QColor(0xe8, 0xe8, 0xe8));
     draw_tiles(painter);
+    if (colors.map_dimming > 0.0) {
+        // Darken the chart at night so that it does not dazzle next to the dark panels.
+        QColor shade = colors.window;
+        shade.setAlphaF(static_cast<float>(colors.map_dimming));
+        painter.fillRect(rect(), shade);
+    }
     painter.setRenderHint(QPainter::Antialiasing);
     draw_route(painter);
     draw_track(painter);
@@ -250,12 +259,15 @@ void MapWidget::draw_route(QPainter& painter) {
     for (qsizetype index = 1; index < route_.size(); ++index) {
         path.lineTo(point_of(route_.at(index)));
     }
-    painter.setPen(QPen(QColor(0x20, 0x90, 0x40, 0xc0), 2.5));
+    const auto& colors = theme::Theme::instance().colors();
+    QColor line = colors.map_route;
+    line.setAlpha(0xd0);
+    painter.setPen(QPen(line, 2.5));
     painter.setBrush(Qt::NoBrush);
     painter.drawPath(path);
     if (route_.size() <= kMaxRouteMarkers) {
-        painter.setPen(QPen(QColor(0x10, 0x60, 0x30), 1.0));
-        painter.setBrush(QColor(0xff, 0xff, 0xff));
+        painter.setPen(QPen(colors.map_route.darker(140), 1.0));
+        painter.setBrush(colors.panel);
         for (const auto& position : route_) {
             painter.drawEllipse(point_of(position), 3.0, 3.0);
         }
@@ -276,7 +288,9 @@ void MapWidget::draw_track(QPainter& painter) {
     if (path.isEmpty()) {
         return;
     }
-    painter.setPen(QPen(QColor(0xd0, 0x30, 0x30, 0xa0), 2.0));
+    QColor track = theme::Theme::instance().colors().map_track;
+    track.setAlpha(0xc0);
+    painter.setPen(QPen(track, 2.0));
     painter.setBrush(Qt::NoBrush);
     painter.drawPath(path);
 }
@@ -286,9 +300,12 @@ void MapWidget::draw_destination(QPainter& painter) {
         return;
     }
     const QPointF at = point_of(*destination_);
-    const QColor magenta(0xc0, 0x20, 0xa0);
+    const auto& colors = theme::Theme::instance().colors();
+    const QColor magenta = colors.map_destination;
     if (leg_origin_) {
-        painter.setPen(QPen(QColor(0xc0, 0x20, 0xa0, 0x80), 1.0, Qt::DotLine));
+        QColor leg = magenta;
+        leg.setAlpha(0x90);
+        painter.setPen(QPen(leg, 1.0, Qt::DotLine));
         painter.drawLine(point_of(*leg_origin_), at);
     }
     if (vessel_) {
@@ -298,7 +315,7 @@ void MapWidget::draw_destination(QPainter& painter) {
     QPolygonF diamond;
     diamond << at + QPointF(0, -8) << at + QPointF(8, 0) << at + QPointF(0, 8)
             << at + QPointF(-8, 0);
-    painter.setPen(QPen(Qt::black, 1.0));
+    painter.setPen(QPen(colors.map_vessel_outline, 1.0));
     painter.setBrush(magenta);
     painter.drawPolygon(diamond);
 }
@@ -312,24 +329,28 @@ void MapWidget::draw_vessel(QPainter& painter) {
     painter.translate(at);
     // Course over ground as a thin line ahead of the vessel.
     painter.rotate(vessel_->course_over_ground_deg);
-    painter.setPen(QPen(QColor(0x20, 0x60, 0xd0), 1.5, Qt::DashLine));
+    const auto& colors = theme::Theme::instance().colors();
+    painter.setPen(QPen(colors.accent, 1.5, Qt::DashLine));
     painter.drawLine(QPointF(0, 0), QPointF(0, -40));
     painter.rotate(vessel_->heading_true_deg - vessel_->course_over_ground_deg);
     QPolygonF hull;
     hull << QPointF(0, -14) << QPointF(8, 10) << QPointF(0, 5) << QPointF(-8, 10);
-    painter.setPen(QPen(Qt::black, 1.0));
-    painter.setBrush(QColor(0xf0, 0xc0, 0x20));
+    painter.setPen(QPen(colors.map_vessel_outline, 1.0));
+    painter.setBrush(colors.map_vessel);
     painter.drawPolygon(hull);
     painter.restore();
 }
 
 void MapWidget::draw_overlay(QPainter& painter) {
-    painter.setPen(Qt::black);
+    const auto& colors = theme::Theme::instance().colors();
+    QColor box = colors.panel;
+    box.setAlpha(0xd8);
+    painter.setPen(colors.text);
     const QString attribution = QStringLiteral("© OpenStreetMap contributors");
     const QRect text_rect = painter.fontMetrics().boundingRect(attribution).adjusted(-4, -2, 4, 2);
     const QRect at(width() - text_rect.width() - 4, height() - text_rect.height() - 4,
                    text_rect.width(), text_rect.height());
-    painter.fillRect(at, QColor(255, 255, 255, 200));
+    painter.fillRect(at, box);
     painter.drawText(at, Qt::AlignCenter, attribution);
 
     QStringList status;
@@ -346,7 +367,7 @@ void MapWidget::draw_overlay(QPainter& painter) {
     const QString text = status.join(QStringLiteral("  "));
     const QRect status_rect = painter.fontMetrics().boundingRect(text).adjusted(-4, -2, 4, 2);
     const QRect status_at(4, 4, status_rect.width(), status_rect.height());
-    painter.fillRect(status_at, QColor(255, 255, 255, 200));
+    painter.fillRect(status_at, box);
     painter.drawText(status_at, Qt::AlignCenter, text);
 }
 

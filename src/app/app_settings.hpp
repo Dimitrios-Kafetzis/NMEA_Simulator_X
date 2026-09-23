@@ -27,6 +27,10 @@ public:
     [[nodiscard]] int map_zoom() const;
     void set_map_zoom(int zoom);
 
+    /// Look chosen under *View → Theme*: `system`, `night` (the default) or `day`.
+    [[nodiscard]] QString theme() const;
+    void set_theme(const QString& theme);
+
     /// Directory where profiles are stored by default.
     [[nodiscard]] static QString profiles_directory();
     /// Directory where downloaded map tiles are kept.

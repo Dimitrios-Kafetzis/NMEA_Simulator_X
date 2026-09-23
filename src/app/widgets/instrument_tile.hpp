@@ -7,8 +7,9 @@
 
 namespace nmeasim::app {
 
-/// One instrument on the dashboard: a title, a large value and, for controllable values, an
-/// override checkbox with a spin box.
+/// One instrument on the dashboard: a caption, a large digital readout with its unit and,
+/// for controllable values, an override checkbox with a spin box. An active override draws
+/// the tile with a warning-coloured border.
 class InstrumentTile : public QFrame {
     Q_OBJECT
 
@@ -20,6 +21,8 @@ public:
     /// Shows arbitrary text, for values such as positions or times.
     void set_text(const QString& text);
     [[nodiscard]] QString text() const { return value_label_->text(); }
+    /// True while the override is active, which the style sheet shows as an amber border.
+    [[nodiscard]] bool overridden() const { return property("overridden").toBool(); }
 
     /// Adds the override control. Until this is called the tile is display-only.
     void enable_override(double minimum, double maximum, double step, int decimals);
@@ -34,11 +37,16 @@ signals:
     void override_changed(bool active, double value);
 
 private:
+    void set_readout_scale(double scale);
+    void mark_overridden(bool overridden);
+
     QLabel* value_label_;
     QLabel* unit_label_;
     QCheckBox* override_check_{nullptr};
     QDoubleSpinBox* override_spin_{nullptr};
     bool suppress_signals_{false};
+    double base_point_size_{10.0};
+    double readout_scale_{0.0};
 };
 
 }  // namespace nmeasim::app

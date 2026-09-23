@@ -1,6 +1,8 @@
 #include "console_widget.hpp"
 
-#include <QFontDatabase>
+#include "sentence_highlighter.hpp"
+#include "theme/theme.hpp"
+
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QScrollBar>
@@ -20,10 +22,12 @@ ConsoleWidget::ConsoleWidget(QWidget* parent)
       view_(new QPlainTextEdit(this)),
       pause_check_(new QCheckBox(tr("Pause"), this)),
       filter_edit_(new QLineEdit(this)) {
+    view_->setObjectName(QStringLiteral("console_view"));
     view_->setReadOnly(true);
     view_->setMaximumBlockCount(kMaxLines);
-    view_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    view_->setFont(theme::Theme::mono_font());
     view_->setLineWrapMode(QPlainTextEdit::NoWrap);
+    highlighter_ = new SentenceHighlighter(view_->document());
 
     filter_edit_->setPlaceholderText(tr("Filter, e.g. RMC or $HC"));
     filter_edit_->setClearButtonEnabled(true);

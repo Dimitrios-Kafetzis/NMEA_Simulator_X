@@ -1,6 +1,10 @@
 #include "outputs_widget.hpp"
 
+#include "theme/theme.hpp"
+
 #include <QHeaderView>
+#include <QPainter>
+#include <QPixmap>
 #include <QVBoxLayout>
 
 namespace nmeasim::app {
@@ -11,7 +15,33 @@ constexpr int kRefreshIntervalMs{500};
 
 enum Column { Description = 0, Status, Clients, Sentences, Bytes, LastError, ColumnCount };
 
+QIcon dot_icon(const QColor& color) {
+    QPixmap pixmap(12, 12);
+    pixmap.fill(Qt::transparent);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(color.darker(150), 1.0));
+    painter.setBrush(color);
+    painter.drawEllipse(QPointF(6, 6), 4.0, 4.0);
+    return QIcon(pixmap);
+}
+
 }  // namespace
+
+QColor state_color(io::Transport::State state) {
+    const auto& colors = theme::Theme::instance().colors();
+    switch (state) {
+        case io::Transport::State::Open:
+            return colors.ok;
+        case io::Transport::State::Opening:
+            return colors.warning;
+        case io::Transport::State::Failed:
+            return colors.danger;
+        case io::Transport::State::Closed:
+            break;
+    }
+    return colors.inactive;
+}
 
 OutputsWidget::OutputsWidget(QWidget* parent) : QWidget(parent), table_(new QTableWidget(this)) {
     table_->setColumnCount(ColumnCount);
@@ -22,6 +52,10 @@ OutputsWidget::OutputsWidget(QWidget* parent) : QWidget(parent), table_(new QTab
     table_->verticalHeader()->setVisible(false);
     table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     table_->setSelectionMode(QAbstractItemView::NoSelection);
+    table_->setAlternatingRowColors(true);
+    table_->setShowGrid(false);
+    table_->horizontalHeader()->setHighlightSections(false);
+    connect(&theme::Theme::instance(), &theme::Theme::changed, this, &OutputsWidget::refresh);
 
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
@@ -73,12 +107,22 @@ void OutputsWidget::refresh() {
             }
             item->setText(cells.at(column));
         }
+        // The state column is a coloured badge: green open, amber opening, red failed.
+        const QColor color = state_color(transport->state());
+        auto* status = table_->item(row, Status);
+        status->setIcon(dot_icon(color));
+        status->setForeground(color);
         ++row;
     }
 }
 
 int OutputsWidget::row_count() const {
     return table_->rowCount();
+}
+
+QColor OutputsWidget::status_color(int row) const {
+    const auto* item = table_->item(row, Status);
+    return item != nullptr ? item->foreground().color() : QColor{};
 }
 
 QString OutputsWidget::status_text(int row) const {

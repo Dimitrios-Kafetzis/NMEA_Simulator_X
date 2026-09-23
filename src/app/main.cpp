@@ -1,5 +1,6 @@
 #include "app_settings.hpp"
 #include "main_window.hpp"
+#include "theme/theme.hpp"
 
 #include <nmeasim/core/version.hpp>
 
@@ -21,10 +22,13 @@ int main(int argc, char** argv) {
     QGuiApplication::setDesktopFileName(QStringLiteral(NMEASIM_APP_ID));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/nmeasimulatorx.png")));
 
+    nmeasim::app::AppSettings settings;
+    nmeasim::app::theme::Theme::instance().apply(
+        nmeasim::app::theme::mode_from_string(settings.theme()));
+
     nmeasim::app::MainWindow window;
     window.show();
 
-    nmeasim::app::AppSettings settings;
     const QStringList arguments = QApplication::arguments();
     if (arguments.size() > 1 && QFile::exists(arguments.at(1))) {
         window.load_profile(arguments.at(1));

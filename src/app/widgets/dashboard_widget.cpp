@@ -47,10 +47,13 @@ EngineTile::EngineTile(const QString& text, QWidget* parent)
       running_check(new QCheckBox(tr("Running"), this)),
       rpm_spin(new QDoubleSpinBox(this)),
       temperature_spin(new QDoubleSpinBox(this)) {
-    setFrameShape(QFrame::StyledPanel);
-    setFrameShadow(QFrame::Raised);
+    setObjectName(QStringLiteral("engine_tile"));
+    label->setObjectName(QStringLiteral("tile_title"));
     QFont title_font = label->font();
     title_font.setBold(true);
+    title_font.setPointSizeF(title_font.pointSizeF() * 0.82);
+    title_font.setLetterSpacing(QFont::PercentageSpacing, 110);
+    title_font.setCapitalization(QFont::AllUppercase);
     label->setFont(title_font);
     rpm_spin->setRange(0.0, 99999.9);
     rpm_spin->setDecimals(0);
@@ -62,7 +65,7 @@ EngineTile::EngineTile(const QString& text, QWidget* parent)
     temperature_spin->setSuffix(tr(" °C"));
     temperature_spin->setKeyboardTracking(false);
     auto* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(8, 6, 8, 6);
+    layout->setContentsMargins(12, 8, 12, 8);
     layout->addWidget(label);
     layout->addWidget(running_check);
     layout->addWidget(rpm_spin);
