@@ -3,6 +3,7 @@
 #include "map/map_widget.hpp"
 #include "map/tile_cache.hpp"
 #include "map/tile_math.hpp"
+#include "theme/theme.hpp"
 #include "widgets/dashboard_widget.hpp"
 
 #include <nmeasim/core/simulation/delta_source.hpp>
@@ -184,6 +185,8 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
 }
 
 TEST_CASE("the map widget paints cached tiles and placeholders", "[app][map]") {
+    // The daylight theme shows tiles in their own colours.
+    nmeasim::app::theme::Theme::instance().apply(nmeasim::app::theme::Mode::Day);
     QTemporaryDir directory;
     map::TileCache cache(directory.path());
     cache.set_online(false);
@@ -210,6 +213,13 @@ TEST_CASE("the map widget paints cached tiles and placeholders", "[app][map]") {
     const QColor north_east = image.pixelColor(200, 100);
     CHECK(north_east.red() == north_east.green());
     CHECK(north_east.red() > 150);
+
+    // The night theme darkens the chart.
+    nmeasim::app::theme::Theme::instance().apply(nmeasim::app::theme::Mode::Night);
+    widget.render(&image);
+    const QColor dimmed = image.pixelColor(200, 200);
+    CHECK(dimmed.red() < south_east.red() - 60);
+    CHECK(dimmed.red() > dimmed.green());
 }
 
 TEST_CASE("the main window moves the vessel when the map picks a position",
@@ -281,6 +291,7 @@ TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][m
 }
 
 TEST_CASE("the map widget picks a destination with Shift+click and draws it", "[app][map]") {
+    nmeasim::app::theme::Theme::instance().apply(nmeasim::app::theme::Mode::Day);
     QTemporaryDir directory;
     map::TileCache cache(directory.path());
     cache.set_online(false);

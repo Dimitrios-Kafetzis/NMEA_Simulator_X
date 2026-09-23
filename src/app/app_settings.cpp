@@ -14,6 +14,7 @@ const auto kAutostart = QStringLiteral("simulation/autostart");
 const auto kMapOnline = QStringLiteral("map/online");
 const auto kMapTileUrl = QStringLiteral("map/tile_url");
 const auto kMapZoom = QStringLiteral("map/zoom");
+const auto kTheme = QStringLiteral("appearance/theme");
 
 }  // namespace
 
@@ -68,6 +69,14 @@ int AppSettings::map_zoom() const {
 
 void AppSettings::set_map_zoom(int zoom) {
     settings_.setValue(kMapZoom, zoom);
+}
+
+QString AppSettings::theme() const {
+    return settings_.value(kTheme, QStringLiteral("night")).toString();
+}
+
+void AppSettings::set_theme(const QString& theme) {
+    settings_.setValue(kTheme, theme);
 }
 
 QString AppSettings::tile_cache_directory() {

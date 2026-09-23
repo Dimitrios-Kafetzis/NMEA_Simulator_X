@@ -3,13 +3,17 @@
 #include "dialogs/settings_dialog.hpp"
 #include "map/map_widget.hpp"
 #include "map/tile_cache.hpp"
+#include "theme/icons.hpp"
+#include "theme/theme.hpp"
 #include "widgets/console_widget.hpp"
 #include "widgets/dashboard_widget.hpp"
 #include "widgets/outputs_widget.hpp"
+#include "widgets/status_led.hpp"
 
 #include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/core/version.hpp>
 
+#include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDateTime>
@@ -32,6 +36,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace nmeasim::app {
 
@@ -71,8 +76,25 @@ MainWindow::MainWindow(QWidget* parent)
     build_actions();
     build_docks();
 
+    run_led_ = new StatusLed(this);
+    run_led_->setObjectName(QStringLiteral("run_led"));
+    recording_led_ = new StatusLed(this);
+    recording_led_->setObjectName(QStringLiteral("recording_led"));
+    recording_led_->setVisible(false);
+    outputs_led_ = new StatusLed(this);
+    outputs_led_->setObjectName(QStringLiteral("outputs_led"));
+    statusBar()->addWidget(run_led_);
+    statusBar()->addWidget(recording_led_);
     statusBar()->addWidget(status_label_, 1);
+    statusBar()->addPermanentWidget(outputs_led_);
     statusBar()->addPermanentWidget(counter_label_);
+    counter_label_->setFont(theme::Theme::mono_font());
+    apply_icons();
+    connect(&theme::Theme::instance(), &theme::Theme::changed, this, [this] {
+        apply_icons();
+        refresh_status();
+        map_->update();
+    });
 
     connect(&runner_, &io::SimulationRunner::ticked, this, [this] {
         refresh_view();
@@ -92,6 +114,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&runner_, &io::SimulationRunner::recording_changed, this, [this](const QString& path) {
         const QSignalBlocker blocker(record_action_);
         record_action_->setChecked(!path.isEmpty());
+        refresh_status();
         record_action_->setToolTip(path.isEmpty() ? tr("Record every sentence to a log file")
                                                   : tr("Recording to %1").arg(path));
         statusBar()->showMessage(
@@ -148,6 +171,8 @@ void MainWindow::build_actions() {
     auto* toolbar = addToolBar(tr("Main"));
     toolbar->setObjectName(QStringLiteral("main_toolbar"));
     toolbar->setMovable(false);
+    toolbar->setIconSize(QSize(18, 18));
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
     new_action_ = new QAction(tr("&New profile"), this);
     new_action_->setShortcut(QKeySequence::New);
@@ -491,6 +516,27 @@ void MainWindow::build_docks() {
     view_menu->addAction(follow_action_);
     view_menu->addAction(online_tiles_action_);
     view_menu->addAction(clear_tiles_action);
+    view_menu->addSeparator();
+
+    auto* theme_menu = view_menu->addMenu(tr("&Theme"));
+    auto* theme_group = new QActionGroup(this);
+    const std::pair<theme::Mode, QString> looks[]{
+        {theme::Mode::System, tr("Follow the system")},
+        {theme::Mode::Night, tr("Night bridge (dark)")},
+        {theme::Mode::Day, tr("Daylight (light)")},
+    };
+    for (const auto& [mode, text] : looks) {
+        auto* action = theme_menu->addAction(text);
+        action->setCheckable(true);
+        action->setData(theme::to_string(mode));
+        action->setChecked(theme::Theme::instance().mode() == mode);
+        theme_group->addAction(action);
+        theme_actions_.append(action);
+        connect(action, &QAction::triggered, this, [this, chosen = mode] {
+            theme::Theme::instance().apply(chosen);
+            settings_.set_theme(theme::to_string(chosen));
+        });
+    }
 }
 
 core::simulation::DeltaSource* MainWindow::delta_source() {
@@ -702,9 +748,28 @@ void MainWindow::update_title() {
     setWindowTitle(QStringLiteral("%1 - NMEA Simulator X").arg(name));
 }
 
+void MainWindow::apply_icons() {
+    using theme::Icon;
+    using theme::themed_icon;
+    new_action_->setIcon(themed_icon(Icon::NewProfile));
+    open_action_->setIcon(themed_icon(Icon::Open));
+    save_action_->setIcon(themed_icon(Icon::Save));
+    settings_action_->setIcon(themed_icon(Icon::Settings));
+    open_track_action_->setIcon(themed_icon(Icon::Track));
+    open_log_action_->setIcon(themed_icon(Icon::Log));
+    record_action_->setIcon(themed_icon(Icon::Record));
+    run_action_->setIcon(themed_icon(is_running() ? Icon::Stop : Icon::Start));
+    pause_action_->setIcon(themed_icon(Icon::Pause));
+    step_action_->setIcon(themed_icon(Icon::Step));
+    steering_action_->setIcon(themed_icon(Icon::Steering));
+    follow_action_->setIcon(themed_icon(Icon::Follow));
+    clear_destination_action_->setIcon(themed_icon(Icon::Destination));
+}
+
 void MainWindow::update_actions() {
     const bool running = is_running();
     run_action_->setText(running ? tr("Stop") : tr("Start"));
+    run_action_->setIcon(theme::themed_icon(running ? theme::Icon::Stop : theme::Icon::Start));
     pause_action_->setEnabled(running);
     if (!running) {
         pause_action_->setChecked(false);
@@ -714,10 +779,35 @@ void MainWindow::update_actions() {
 }
 
 void MainWindow::refresh_status() {
+    const auto& colors = theme::Theme::instance().colors();
     QString state = tr("Stopped");
+    QColor state_color = colors.inactive;
     if (is_running()) {
-        state = runner_.is_paused() ? tr("Paused") : tr("Running");
+        const bool paused = runner_.is_paused();
+        state = paused ? tr("Paused") : tr("Running");
+        state_color = paused ? colors.warning : colors.ok;
     }
+    run_led_->set_state(is_running() ? state_color : QColor{}, state.toUpper());
+    const bool recording = !runner_.recording_path().isEmpty();
+    recording_led_->setVisible(recording);
+    recording_led_->set_state(colors.danger, tr("REC"));
+    recording_led_->set_blinking(recording && is_running() && !runner_.is_paused());
+
+    int open = 0;
+    bool failed = false;
+    const auto& outputs = runner_.outputs();
+    for (const auto& channel : outputs) {
+        const auto output_state = channel.transport->state();
+        open += output_state == io::Transport::State::Open ? 1 : 0;
+        failed = failed || output_state == io::Transport::State::Failed;
+    }
+    QColor outputs_color;
+    if (is_running() && !outputs.empty()) {
+        outputs_color =
+            failed ? colors.danger
+                   : (open == static_cast<int>(outputs.size()) ? colors.ok : colors.warning);
+    }
+    outputs_led_->set_state(outputs_color, tr("%1/%2 OUTPUTS").arg(open).arg(outputs.size()));
     QString mode;
     switch (profile_.mode) {
         case io::SimulationMode::Delta:
@@ -729,7 +819,7 @@ void MainWindow::refresh_status() {
             mode = tr(" (replay %1)").arg(QFileInfo(profile_.replay.path).fileName());
             break;
     }
-    status_label_->setText(tr("%1 - %2%3").arg(state, profile_.name, mode));
+    status_label_->setText(tr("%1%2").arg(profile_.name, mode));
     counter_label_->setText(tr("%1 sentences").arg(runner_.sentences_emitted()));
 }
 

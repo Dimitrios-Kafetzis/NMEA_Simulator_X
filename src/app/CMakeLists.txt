@@ -25,6 +25,10 @@ add_library(nmeasim_app_lib STATIC
     map/tile_cache.hpp
     map/tile_math.cpp
     map/tile_math.hpp
+    theme/icons.cpp
+    theme/icons.hpp
+    theme/theme.cpp
+    theme/theme.hpp
     widgets/console_widget.cpp
     widgets/console_widget.hpp
     widgets/dashboard_widget.cpp
@@ -33,9 +37,21 @@ add_library(nmeasim_app_lib STATIC
     widgets/instrument_tile.hpp
     widgets/outputs_widget.cpp
     widgets/outputs_widget.hpp
+    widgets/sentence_highlighter.cpp
+    widgets/sentence_highlighter.hpp
+    widgets/status_led.cpp
+    widgets/status_led.hpp
 )
 add_library(nmeasim::app_lib ALIAS nmeasim_app_lib)
 target_include_directories(nmeasim_app_lib PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+# Share Tech Mono (SIL Open Font License 1.1, see resources/fonts/OFL.txt) for the digital
+# instrument readouts.
+qt_add_resources(nmeasim_app_lib "fonts"
+    PREFIX "/fonts"
+    BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts"
+    FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/fonts/ShareTechMono-Regular.ttf"
+)
+
 target_link_libraries(nmeasim_app_lib
     PUBLIC nmeasim::core nmeasim::io Qt6::Network Qt6::Widgets
     PRIVATE nmeasim::warnings nmeasim::sanitizers

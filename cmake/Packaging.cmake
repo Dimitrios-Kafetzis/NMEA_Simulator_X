@@ -33,6 +33,12 @@ else()
 endif()
 install(FILES "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/README.md"
         DESTINATION "${NMEASIM_INSTALL_DOCDIR}")
+if(NMEASIM_BUILD_APP)
+    # The instrument font is embedded in the application; its licence travels with it.
+    install(FILES "${PROJECT_SOURCE_DIR}/src/app/resources/fonts/OFL.txt"
+            DESTINATION "${NMEASIM_INSTALL_DOCDIR}"
+            RENAME "ShareTechMono-OFL.txt")
+endif()
 
 if(WIN32)
     # The Microsoft C++ runtime DLLs go next to the executables so that the portable ZIP runs on

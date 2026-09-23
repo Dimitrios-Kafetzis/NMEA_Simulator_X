@@ -21,7 +21,7 @@ profile used is reopened, and if there is none the built-in default profile is u
 | Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
 | Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
-| Status bar | Run state and profile name on the left, sentence counter on the right; errors appear here for ten seconds | No |
+| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the sentence counter. Errors appear here for ten seconds | No |
 
 Docks can be moved to any edge, stacked, floated or closed. Geometry and dock layout are
 saved on exit and restored at the next start.
@@ -49,6 +49,7 @@ saved on exit and restored at the next start.
 | View | Follow vessel on the map | ++home++ | Keeps the map centred on the vessel; dragging the map switches it off |
 | View | Download map tiles | | Fetches missing tiles from the tile server; off uses the disk cache only |
 | View | Clear map tile cache | | Deletes every cached tile from disk and memory |
+| View | Theme | | *Follow the system*, *Night bridge (dark)* (the default) or *Daylight (light)*; see [Appearance](#appearance) |
 | Help | About | | Version and project link; development builds add the `git describe` string of their commit, as `nmeasim --version` does |
 
 On macOS the ++ctrl++ shortcuts use ++cmd++.
@@ -126,8 +127,9 @@ is cleared from the tile.
 | Destination | Waypoint id, bearing and distance to it, cross-track error and the side to steer; *None* without a destination | No, set it on the map |
 | Engines | One tile per configured engine with its label, a *Running* switch, revolutions and coolant temperature | Yes, every field; changes apply at once to RPM, XDR, the AIS and Signal K output |
 
-An active override stops the random drift of that parameter. Clearing it lets the value drift
-again from where it is. In track and replay mode every override control is disabled, because
+An active override stops the random drift of that parameter, and the tile gets an amber
+border so that overridden values stand out. Clearing it lets the value drift again from where
+it is. In track and replay mode every override control is disabled, because
 the file drives the vessel.
 
 ## Map
@@ -187,12 +189,32 @@ do not slow the interface. It keeps the last 2000 lines. The filter matches the 
 and applies to new sentences only. *Pause* stops new sentences from being added without
 affecting the simulation.
 
+Lines are coloured like a protocol analyser: the talker (`$GP`, `!AI`), the sentence
+formatter (`RMC`, in bold), the field separators, the checksum and an IEC 61162-450 TAG block
+each have their own colour, and Signal K and other JSON messages are shown in one colour.
+
 ## Outputs
 
 The table refreshes twice a second and whenever an output changes state. The state column
-uses the names listed in the [transport reference](transports.md). An output that fails to
+uses the names listed in the [transport reference](transports.md), with a coloured light:
+green *open*, amber *opening*, red *failed*, grey *closed*. An output that fails to
 open is reported in the status bar and in the *Last error* column while the run continues on
 the other outputs.
+
+## Appearance
+
+*View → Theme* switches between two looks at once, and the choice is kept:
+
+| Theme | Look |
+| --- | --- |
+| Night bridge (dark), the default | Charcoal and navy panels with cyan accents, as on a ship's bridge at night; map tiles are darkened so that they do not dazzle |
+| Daylight (light) | White and light grey panels with teal accents and normal map colours, for bright rooms |
+| Follow the system | Night or daylight after the desktop's dark or light setting, switching when the desktop does |
+
+Instrument readouts use the Share Tech Mono typeface by Carrois Type Design, bundled with the
+application under the SIL Open Font License 1.1 (installed as `ShareTechMono-OFL.txt` next to
+the licence of the application). Toolbar icons are drawn by the application and follow the
+theme.
 
 ## Settings dialog
 
@@ -280,6 +302,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/zoom` | Last map zoom level |
+| `appearance/theme` | `night` (default), `day` or `system` |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the
 application's configuration directory.

@@ -69,6 +69,7 @@ if(NMEASIM_BUILD_APP)
         app/map_test.cpp
         app/screenshot_test.cpp
         app/settings_dialog_test.cpp
+        app/theme_test.cpp
     )
     target_include_directories(nmeasim_app_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(nmeasim_app_tests PRIVATE
