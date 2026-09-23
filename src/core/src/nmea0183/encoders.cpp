@@ -1,3 +1,4 @@
+#include <nmeasim/core/ais/messages.hpp>
 #include <nmeasim/core/geo/route.hpp>
 #include <nmeasim/core/nmea0183/encoders.hpp>
 #include <nmeasim/core/nmea0183/fields.hpp>
@@ -6,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <numbers>
 #include <string>
@@ -78,6 +80,22 @@ AutopilotView autopilot_view(const model::VesselState& state) {
 
 char valid(bool flag) noexcept {
     return flag ? 'A' : 'V';
+}
+
+/// Sequential message id of a multi-sentence AIS message, derived from the clock so that the
+/// fragments of one message share it and consecutive messages differ.
+int ais_sequence(const model::VesselState& state) {
+    const auto seconds =
+        std::chrono::duration_cast<std::chrono::seconds>(state.time_utc.time_since_epoch()).count();
+    return static_cast<int>(((seconds % 10) + 10) % 10);
+}
+
+std::vector<std::string> encode_ais(const EncoderContext& context, std::string_view formatter,
+                                    bool static_data) {
+    const auto packer = static_data ? ais::pack_static_data(context.state)
+                                    : ais::pack_position_report(context.state);
+    return ais::frame_payload(context.talker, formatter, ais::armor(packer.bits()),
+                              ais_sequence(context.state));
 }
 
 /// The engine number sent in RPM: engines are numbered from 1 in profile order.
@@ -517,6 +535,25 @@ std::vector<std::string> encode_xdr(const EncoderContext& context) {
         sentences.push_back(builder.build());
     }
     return sentences;
+}
+
+// ---------------------------------------------------------------------------------------------
+// AIS
+
+std::vector<std::string> encode_vdo_position(const EncoderContext& context) {
+    return encode_ais(context, "VDO", false);
+}
+
+std::vector<std::string> encode_vdo_static(const EncoderContext& context) {
+    return encode_ais(context, "VDO", true);
+}
+
+std::vector<std::string> encode_vdm_position(const EncoderContext& context) {
+    return encode_ais(context, "VDM", false);
+}
+
+std::vector<std::string> encode_vdm_static(const EncoderContext& context) {
+    return encode_ais(context, "VDM", true);
 }
 
 }  // namespace nmeasim::core::nmea0183

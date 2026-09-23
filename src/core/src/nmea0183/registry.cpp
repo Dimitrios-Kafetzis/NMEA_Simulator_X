@@ -27,6 +27,8 @@ std::string_view to_string(SentenceGroup group) noexcept {
             return "Autopilot";
         case SentenceGroup::Propulsion:
             return "Propulsion";
+        case SentenceGroup::Ais:
+            return "AIS";
     }
     return "Unknown";
 }
@@ -80,6 +82,14 @@ const SentenceRegistry& SentenceRegistry::standard() {
         {"XDR", "XDR", "ER", SentenceGroup::Propulsion, 1000ms, true,
          "Transducer measurements: engine coolant temperature and tachometer per engine",
          &encode_xdr},
+        {"VDO-POS", "VDO", "AI", SentenceGroup::Ais, 2000ms, true,
+         "AIS own-vessel position report (message type 1, 2 or 3)", &encode_vdo_position},
+        {"VDO-STATIC", "VDO", "AI", SentenceGroup::Ais, 30000ms, true,
+         "AIS own-vessel static and voyage data (message type 5)", &encode_vdo_static},
+        {"VDM-POS", "VDM", "AI", SentenceGroup::Ais, 2000ms, false,
+         "The own-vessel position report framed as a received message", &encode_vdm_position},
+        {"VDM-STATIC", "VDM", "AI", SentenceGroup::Ais, 30000ms, false,
+         "The own-vessel static data framed as a received message", &encode_vdm_static},
     }};
     return registry;
 }

@@ -22,6 +22,7 @@ enum class SentenceGroup {
     Steering,
     Autopilot,
     Propulsion,
+    Ais,
 };
 
 [[nodiscard]] std::string_view to_string(SentenceGroup group) noexcept;

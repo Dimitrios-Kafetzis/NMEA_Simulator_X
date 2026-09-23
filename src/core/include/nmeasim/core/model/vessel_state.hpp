@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -104,6 +105,33 @@ struct Destination {
 /// Longest waypoint identifier the encoders send.
 inline constexpr std::size_t kMaxWaypointNameLength{16};
 
+/// Static data of the own vessel for the AIS messages, plus the message options.
+struct AisStatic {
+    /// Maritime Mobile Service Identity, nine digits.
+    std::uint32_t mmsi{239000001};
+    /// IMO number, 0 when the vessel has none.
+    std::uint32_t imo_number{0};
+    /// Vessel name, at most 20 characters of the AIS six-bit alphabet.
+    std::string name{"NMEA SIMULATOR X"};
+    /// Call sign, at most 7 characters.
+    std::string call_sign{"SIMX"};
+    /// Type of ship and cargo code (ITU-R M.1371 table), 37 is a pleasure craft.
+    int ship_type{37};
+    /// Distance from the reference position (the GNSS antenna) to the hull extremes.
+    double dimension_to_bow_m{12.0};
+    double dimension_to_stern_m{4.0};
+    double dimension_to_port_m{3.0};
+    double dimension_to_starboard_m{3.0};
+    double draught_m{1.8};
+    /// Voyage destination, at most 20 characters; empty for none.
+    std::string destination;
+    /// Navigational status code, 0 is "under way using engine", 8 "under way sailing".
+    int navigation_status{0};
+    /// Message type of the position report: 1 scheduled, 2 assigned, 3 in response to an
+    /// interrogation.
+    int position_report_type{1};
+};
+
 struct VesselState {
     std::chrono::system_clock::time_point time_utc{};
     Navigation navigation;
@@ -114,6 +142,7 @@ struct VesselState {
     std::vector<Engine> engines;
     /// The active waypoint, when one is set. Without it no autopilot sentence is sent.
     std::optional<Destination> destination;
+    AisStatic ais;
 };
 
 }  // namespace nmeasim::core::model

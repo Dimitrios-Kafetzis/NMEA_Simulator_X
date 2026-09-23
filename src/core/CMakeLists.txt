@@ -10,6 +10,8 @@ configure_file(
     @ONLY)
 
 add_library(nmeasim_core STATIC
+    src/ais/messages.cpp
+    src/ais/sixbit.cpp
     src/geo/geodesic.cpp
     src/geo/route.cpp
     src/log/log_file.cpp

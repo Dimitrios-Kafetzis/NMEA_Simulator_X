@@ -17,6 +17,18 @@ import pynmea2
 MAX_LENGTH = 82  # including the leading '$' and the trailing CR LF
 
 
+def checksum_ok(sentence: str) -> bool:
+    """True when the two hex digits after '*' are the XOR of the bytes between the start
+    delimiter and '*'."""
+    body, star, given = sentence[1:].partition("*")
+    if star != "*" or len(given) != 2:
+        return False
+    computed = 0
+    for byte in body.encode("ascii", errors="replace"):
+        computed ^= byte
+    return f"{computed:02X}" == given.upper()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expect", type=int, default=0,
@@ -34,6 +46,15 @@ def main() -> int:
         if len(line.rstrip("\r\n")) + 2 > MAX_LENGTH:
             print(f"too long ({len(line)} bytes): {line.strip()}")
             failures += 1
+            continue
+        if line.startswith("!"):
+            # Encapsulated sentences (AIS) are outside pynmea2's scope; their framing is
+            # checked here and their payload by check_ais_stream.py.
+            if not checksum_ok(line.strip()):
+                print(f"bad checksum: {line.strip()}")
+                failures += 1
+                continue
+            formatters.add(line[3:6])
             continue
         try:
             message = pynmea2.parse(line.strip(), check=True)

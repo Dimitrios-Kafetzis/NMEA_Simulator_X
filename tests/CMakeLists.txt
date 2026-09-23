@@ -2,6 +2,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
 
 add_executable(nmeasim_core_tests
+    core/ais/ais_test.cpp
     core/geo/geodesic_test.cpp
     core/geo/route_test.cpp
     core/log/log_file_test.cpp

@@ -86,6 +86,7 @@ the state as it is.
 | APB, XTE | Recognised, nothing applied (they repeat what RMB carries) |
 | RPM | Revolutions of engine `n` (`E` source, status `A`), creating engines up to `n`; running when above zero |
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |
+| VDO, VDM | Passed through unchanged; the AIS payload is not decoded |
 
 Replayed sentences are identified by their formatter (`MWV`, not `MWV-R`) for output
 filters and the console filter.
