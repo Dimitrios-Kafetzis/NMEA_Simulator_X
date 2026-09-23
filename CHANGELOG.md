@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [0.5.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.4.0...v0.5.0) (2026-09-23)
+
+
+### Features
+
+* **app:** set a destination on the map, edit engines, AIS, custom sentences and output encodings ([#25](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/25)) ([e0ddb82](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/e0ddb82264ffb54d5a41372d2d63d0f66aedda66))
+* **core:** add AIS own-vessel VDO and VDM messages ([#22](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/22)) ([37e4942](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/37e494223a5b8c93dcaf23d3fca6b99f10041300))
+* **core:** add autopilot, cross-track and propulsion sentences ([#20](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/20)) ([c5d4711](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/c5d4711356014004afe13110b069dbae3b384b0d))
+* **core:** add Signal K, ViewSync, TAG block and custom sentence encoders ([#23](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/23)) ([b475c84](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/b475c844f9b22f2135105bf1363e96b3718831e3))
+* **io:** add per-output encodings, TAG blocks, custom sentences, destination and AIS to the profile and CLI ([#24](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/24)) ([e4999fa](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/e4999fa3cb0d148902c8e02922dcf0ca171d2eca))
+
 ## [0.4.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v0.3.0...v0.4.0) (2026-09-23)
 
 
