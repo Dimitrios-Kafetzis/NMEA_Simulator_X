@@ -141,7 +141,7 @@ appear in the top-left corner; the OpenStreetMap attribution is always drawn.
 | Input | Effect |
 | --- | --- |
 | Drag with the left button | Pans the map and switches *Follow vessel* off |
-| Mouse wheel | Zooms in or out around the pointer |
+| Mouse wheel or two-finger touchpad scroll | Zooms in or out around the pointer, or around the vessel while *Follow vessel* is on; small touchpad movements add up to a zoom level |
 | ++plus++ / ++minus++ | Zooms in or out around the centre |
 | ++home++ | Switches *Follow vessel* on and recentres |
 | Double-click, or ++ctrl++ and click | Moves the vessel to that point |
@@ -149,7 +149,9 @@ appear in the top-left corner; the OpenStreetMap attribution is always drawn.
 | Right click | Menu with *Move vessel here*, *Set destination here* and *Clear destination* |
 
 Moving the vessel changes the running simulation immediately and also the start position of
-the current profile, so saving the profile keeps the new place. The destination is drawn as a
+the current profile, so saving the profile keeps the new place. The sailed track starts a new
+segment at the new place instead of drawing a line from the old one, and a destination's leg
+restarts there as well. Seeking in a track or log also starts a new segment. The destination is drawn as a
 magenta diamond with a dashed bearing line from the vessel and a dotted line for the leg from
 its origin; the words *destination set* appear in the corner. Setting or clearing it changes
 the running simulation and the profile seed at once; the waypoint id is `WPT` until it is

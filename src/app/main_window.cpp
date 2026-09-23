@@ -257,8 +257,17 @@ void MainWindow::build_actions() {
 
 void MainWindow::move_vessel(core::geo::Position position) {
     profile_.delta.seed.navigation.position = position;
+    // The vessel jumps: no track line and no leg from where it was.
+    map_->break_track();
+    if (profile_.delta.seed.destination) {
+        profile_.delta.seed.destination->origin = position;
+    }
     if (auto* source = delta_source()) {
         source->set_position(position);
+        if (auto destination = source->current().destination) {
+            destination->origin = position;
+            source->set_destination(destination);
+        }
         refresh_view();
     }
     map_->set_center(position);
@@ -365,6 +374,7 @@ void MainWindow::seek_from_slider(int value) {
     if (updating_slider_ || !seek_slider_->isEnabled()) {
         return;
     }
+    map_->break_track();
     runner_.seek(std::chrono::milliseconds{value});
 }
 
