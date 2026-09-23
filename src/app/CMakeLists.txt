@@ -31,6 +31,8 @@ add_library(nmeasim_app_lib STATIC
     theme/theme.hpp
     widgets/console_widget.cpp
     widgets/console_widget.hpp
+    widgets/dials.cpp
+    widgets/dials.hpp
     widgets/dashboard_widget.cpp
     widgets/dashboard_widget.hpp
     widgets/instrument_tile.cpp

@@ -153,6 +153,8 @@ QScrollBar::handle:hover { background: {text_dim}; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: none; }
 QSplitter::handle { background: {border}; }
+QScrollArea#dashboard_scroll { background: transparent; border: none; }
+QWidget#dashboard_content { background: {window}; }
 QMainWindow::separator { background: {border}; width: 1px; height: 1px; }
 )css";
 
