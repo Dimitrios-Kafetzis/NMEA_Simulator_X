@@ -11,8 +11,9 @@ namespace nmeasim::app {
 class OutputsPage;
 class SentencesPage;
 class SimulationPage;
+class VesselPage;
 
-/// Edits a copy of a profile in three tabs. `profile()` holds the result after `accept()`.
+/// Edits a copy of a profile in four tabs. `profile()` holds the result after `accept()`.
 class SettingsDialog : public QDialog {
     Q_OBJECT
 
@@ -22,6 +23,7 @@ public:
     [[nodiscard]] const io::Profile& profile() const noexcept { return profile_; }
 
     [[nodiscard]] SimulationPage* simulation_page() const noexcept { return simulation_; }
+    [[nodiscard]] VesselPage* vessel_page() const noexcept { return vessel_; }
     [[nodiscard]] SentencesPage* sentences_page() const noexcept { return sentences_; }
     [[nodiscard]] OutputsPage* outputs_page() const noexcept { return outputs_; }
     [[nodiscard]] QTabWidget* tabs() const noexcept { return tabs_; }
@@ -35,6 +37,7 @@ private:
     io::Profile profile_;
     QTabWidget* tabs_;
     SimulationPage* simulation_;
+    VesselPage* vessel_;
     SentencesPage* sentences_;
     OutputsPage* outputs_;
     QLabel* error_label_;

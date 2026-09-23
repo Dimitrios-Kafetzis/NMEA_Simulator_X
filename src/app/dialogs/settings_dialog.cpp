@@ -3,6 +3,7 @@
 #include "outputs_page.hpp"
 #include "sentences_page.hpp"
 #include "simulation_page.hpp"
+#include "vessel_page.hpp"
 
 #include <QDialogButtonBox>
 #include <QVBoxLayout>
@@ -14,6 +15,7 @@ SettingsDialog::SettingsDialog(const io::Profile& profile, QWidget* parent)
       profile_(profile),
       tabs_(new QTabWidget(this)),
       simulation_(new SimulationPage(this)),
+      vessel_(new VesselPage(this)),
       sentences_(new SentencesPage(this)),
       outputs_(new OutputsPage(this)),
       error_label_(new QLabel(this)) {
@@ -22,6 +24,7 @@ SettingsDialog::SettingsDialog(const io::Profile& profile, QWidget* parent)
     resize(900, 640);
 
     tabs_->addTab(simulation_, tr("Simulation"));
+    tabs_->addTab(vessel_, tr("Vessel"));
     tabs_->addTab(sentences_, tr("Sentences"));
     tabs_->addTab(outputs_, tr("Outputs"));
 
@@ -39,6 +42,7 @@ SettingsDialog::SettingsDialog(const io::Profile& profile, QWidget* parent)
     layout_->addWidget(buttons);
 
     simulation_->load(profile_);
+    vessel_->load(profile_);
     sentences_->load(profile_);
     outputs_->load(profile_);
 }
@@ -55,6 +59,20 @@ void SettingsDialog::accept() {
         tabs_->setCurrentWidget(simulation_);
         return;
     }
+    const QString vessel_problem = vessel_->validate();
+    if (!vessel_problem.isEmpty()) {
+        error_label_->setText(vessel_problem);
+        error_label_->show();
+        tabs_->setCurrentWidget(vessel_);
+        return;
+    }
+    const QString sentence_problem = sentences_->validate();
+    if (!sentence_problem.isEmpty()) {
+        error_label_->setText(sentence_problem);
+        error_label_->show();
+        tabs_->setCurrentWidget(sentences_);
+        return;
+    }
     const QString problem = outputs_->validate();
     if (!problem.isEmpty()) {
         error_label_->setText(problem);
@@ -64,6 +82,7 @@ void SettingsDialog::accept() {
     }
     error_label_->hide();
     simulation_->store(profile_);
+    vessel_->store(profile_);
     sentences_->store(profile_);
     outputs_->store(profile_);
     QDialog::accept();

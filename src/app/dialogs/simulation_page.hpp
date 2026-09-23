@@ -79,6 +79,12 @@ public:
     QDoubleSpinBox* turn_rate_spin;
     QDoubleSpinBox* max_rudder_spin;
 
+    QCheckBox* destination_check;
+    QLineEdit* destination_name_edit;
+    QDoubleSpinBox* destination_latitude_spin;
+    QDoubleSpinBox* destination_longitude_spin;
+    QDoubleSpinBox* arrival_radius_spin;
+
 private:
     void update_mode_widgets();
     void browse_track();

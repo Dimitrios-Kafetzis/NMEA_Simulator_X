@@ -3,12 +3,15 @@
 #include "dialogs/outputs_page.hpp"
 #include "dialogs/sentences_page.hpp"
 #include "dialogs/simulation_page.hpp"
+#include "dialogs/vessel_page.hpp"
 #include "main_window.hpp"
 
 #include <QSignalSpy>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+
+#include <chrono>
 
 using Catch::Approx;
 using nmeasim::io::OutputConfig;
@@ -213,4 +216,188 @@ TEST_CASE("the simulation tab selects the mode and validates its files", "[app][
     replay_dialog.accept();
     CHECK(replay_dialog.profile().replay.path == QStringLiteral("/logs/tuesday.log"));
     CHECK(replay_dialog.profile().mode == nmeasim::io::SimulationMode::Replay);
+}
+
+TEST_CASE("the simulation tab edits the destination", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.simulation_page();
+    CHECK_FALSE(page->destination_check->isChecked());
+    CHECK_FALSE(page->destination_name_edit->isEnabled());
+    page->destination_check->setChecked(true);
+    CHECK(page->destination_name_edit->isEnabled());
+    page->destination_name_edit->setText(QStringLiteral("AEGINA"));
+    page->destination_latitude_spin->setValue(37.7466);
+    page->destination_longitude_spin->setValue(23.4275);
+    page->arrival_radius_spin->setValue(250.0);
+    dialog.accept();
+    const auto& result = dialog.profile();
+    REQUIRE(result.delta.seed.destination.has_value());
+    CHECK(result.delta.seed.destination->name == "AEGINA");
+    CHECK(result.delta.seed.destination->position.latitude_deg == Approx(37.7466));
+    CHECK(result.delta.seed.destination->origin.latitude_deg == Approx(37.9838));
+    CHECK(result.delta.seed.destination->arrival_radius_m == Approx(250.0));
+
+    // Reopening keeps the leg origin; unticking clears the destination.
+    nmeasim::app::SettingsDialog again(result);
+    CHECK(again.simulation_page()->destination_check->isChecked());
+    CHECK(again.simulation_page()->destination_name_edit->text() == QStringLiteral("AEGINA"));
+    again.simulation_page()->arrival_radius_spin->setValue(50.0);
+    again.accept();
+    CHECK(again.profile().delta.seed.destination->origin.latitude_deg == Approx(37.9838));
+    CHECK(again.profile().delta.seed.destination->arrival_radius_m == Approx(50.0));
+    nmeasim::app::SettingsDialog cleared(result);
+    cleared.simulation_page()->destination_check->setChecked(false);
+    cleared.accept();
+    CHECK_FALSE(cleared.profile().delta.seed.destination.has_value());
+}
+
+TEST_CASE("the vessel tab edits the engines and the AIS static data", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.vessel_page();
+    REQUIRE(page->engine_count() == 2);
+    CHECK(page->engine_at(0).label == "Port engine");
+    CHECK(page->mmsi_spin->value() == 239000001);
+    CHECK(page->name_edit->text() == QStringLiteral("NMEA SIMULATOR X"));
+
+    page->set_engine(1, {"Starboard engine", false, 0.0, 40.0});
+    page->add_engine();
+    REQUIRE(page->engine_count() == 3);
+    CHECK(page->engine_at(2).label == "Engine 3");
+    page->engines_table->selectRow(0);
+    page->remove_current_engine();
+    REQUIRE(page->engine_count() == 2);
+    page->mmsi_spin->setValue(211000123);
+    page->name_edit->setText(QStringLiteral("test vessel"));
+    page->call_sign_edit->setText(QStringLiteral("da1234"));
+    page->ship_type_spin->setValue(70);
+    page->to_bow_spin->setValue(40.0);
+    page->draught_spin->setValue(4.5);
+    page->ais_destination_edit->setText(QStringLiteral("Piraeus"));
+    page->navigation_status_spin->setValue(8);
+    page->report_type_combo->setCurrentIndex(2);
+    dialog.accept();
+    CHECK(dialog.error_text().isEmpty());
+
+    const auto& seed = dialog.profile().delta.seed;
+    REQUIRE(seed.engines.size() == 2);
+    CHECK(seed.engines[0].label == "Starboard engine");
+    CHECK_FALSE(seed.engines[0].running);
+    CHECK(seed.engines[0].coolant_temperature_c == Approx(40.0));
+    CHECK(seed.engines[1].label == "Engine 3");
+    CHECK(seed.ais.mmsi == 211000123);
+    CHECK(seed.ais.name == "TEST VESSEL");
+    CHECK(seed.ais.call_sign == "DA1234");
+    CHECK(seed.ais.ship_type == 70);
+    CHECK(seed.ais.dimension_to_bow_m == Approx(40.0));
+    CHECK(seed.ais.draught_m == Approx(4.5));
+    CHECK(seed.ais.destination == "PIRAEUS");
+    CHECK(seed.ais.navigation_status == 8);
+    CHECK(seed.ais.position_report_type == 3);
+
+    // An MMSI of zero is refused on the vessel tab.
+    nmeasim::app::SettingsDialog invalid(profile);
+    invalid.vessel_page()->mmsi_spin->setValue(0);
+    invalid.accept();
+    CHECK(invalid.error_text().contains(QStringLiteral("MMSI")));
+    CHECK(invalid.tabs()->currentWidget() == invalid.vessel_page());
+}
+
+TEST_CASE("the sentences tab edits custom sentences and validates them", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    profile.custom_sentences = {
+        {"BARO", "$IIXDR,P,1.013,B,BARO", std::chrono::milliseconds{5000}, false}};
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.sentences_page();
+    REQUIRE(page->custom_count() == 1);
+    CHECK(page->custom_at(0).id == "BARO");
+    CHECK_FALSE(page->custom_at(0).enabled);
+    CHECK(page->custom_at(0).period == std::chrono::milliseconds{5000});
+
+    page->add_custom(QStringLiteral("not a sentence!"));
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("Custom sentence 2")));
+    CHECK(dialog.tabs()->currentWidget() == page);
+
+    static_cast<QLineEdit*>(
+        page->custom_table->cellWidget(1, nmeasim::app::SentencesPage::CustomBody))
+        ->setText(QStringLiteral("PXYZ,1,2,3"));
+    static_cast<QLineEdit*>(
+        page->custom_table->cellWidget(1, nmeasim::app::SentencesPage::CustomId))
+        ->setText(QStringLiteral("rmc"));
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("registry")));
+    static_cast<QLineEdit*>(
+        page->custom_table->cellWidget(1, nmeasim::app::SentencesPage::CustomId))
+        ->clear();
+    dialog.accept();
+    CHECK(dialog.error_text().isEmpty());
+    REQUIRE(dialog.profile().custom_sentences.size() == 2);
+    CHECK(dialog.profile().custom_sentences[1].id.empty());
+    CHECK(dialog.profile().custom_sentences[1].body == "PXYZ,1,2,3");
+    CHECK(dialog.profile().custom_sentences[1].enabled);
+
+    page->custom_table->selectRow(0);
+    page->remove_current_custom();
+    CHECK(page->custom_count() == 1);
+}
+
+TEST_CASE("the outputs tab selects the encoding and its options", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.outputs_page();
+    CHECK(page->encoding_combo->currentIndex() == 0);
+    CHECK(page->tag_block_box->isVisibleTo(page));
+    CHECK_FALSE(page->signalk_box->isVisibleTo(page));
+    page->tag_block_check->setChecked(true);
+    page->tag_source_edit->setText(QStringLiteral("GP0001"));
+    page->tag_milliseconds_check->setChecked(true);
+
+    page->add_output(OutputConfig::Type::WebSocketServer);
+    page->encoding_combo->setCurrentIndex(1);
+    CHECK(page->signalk_box->isVisibleTo(page));
+    CHECK_FALSE(page->tag_block_box->isVisibleTo(page));
+    CHECK(page->period_spin->isEnabled());
+    page->period_spin->setValue(500);
+    page->filter_edit->setText(QStringLiteral("navigation, environment.wind"));
+    page->signalk_context_combo->setCurrentIndex(2);
+    page->signalk_context_edit->setText(QStringLiteral("aircraft.urn:mrn:signalk:uuid:1"));
+    page->signalk_source_edit->setText(QStringLiteral("sim"));
+
+    page->add_output(OutputConfig::Type::Udp);
+    page->encoding_combo->setCurrentIndex(2);
+    CHECK(page->viewsync_box->isVisibleTo(page));
+    page->camera_altitude_spin->setValue(1500.0);
+    page->tilt_spin->setValue(45.0);
+    page->planet_combo->setCurrentIndex(2);
+    dialog.accept();
+    CHECK(dialog.error_text().isEmpty());
+
+    const auto& outputs = dialog.profile().outputs;
+    REQUIRE(outputs.size() == 3);
+    CHECK(outputs[0].encoding == OutputConfig::Encoding::Nmea0183);
+    CHECK(outputs[0].tag_block.enabled);
+    CHECK(outputs[0].tag_block.options.source == "GP0001");
+    CHECK(outputs[0].tag_block.options.milliseconds);
+    CHECK(outputs[1].encoding == OutputConfig::Encoding::SignalK);
+    CHECK(outputs[1].period_ms == 500);
+    CHECK(outputs[1].filter ==
+          QStringList{QStringLiteral("navigation"), QStringLiteral("environment.wind")});
+    CHECK(outputs[1].signalk.context == "aircraft.urn:mrn:signalk:uuid:1");
+    CHECK(outputs[1].signalk.source_label == "sim");
+    CHECK(outputs[2].encoding == OutputConfig::Encoding::ViewSync);
+    CHECK(outputs[2].viewsync.camera_altitude_m == Approx(1500.0));
+    CHECK(outputs[2].viewsync.tilt_deg == Approx(45.0));
+    CHECK(outputs[2].viewsync.planet == "mars");
+
+    // The options load back into the widgets.
+    nmeasim::app::SettingsDialog again(dialog.profile());
+    again.outputs_page()->select(1);
+    CHECK(again.outputs_page()->encoding_combo->currentIndex() == 1);
+    CHECK(again.outputs_page()->signalk_context_combo->currentIndex() == 2);
+    CHECK(again.outputs_page()->signalk_context_edit->text() ==
+          QStringLiteral("aircraft.urn:mrn:signalk:uuid:1"));
+    again.outputs_page()->select(2);
+    CHECK(again.outputs_page()->planet_combo->currentText() == QStringLiteral("mars"));
 }

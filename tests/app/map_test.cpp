@@ -3,6 +3,7 @@
 #include "map/map_widget.hpp"
 #include "map/tile_cache.hpp"
 #include "map/tile_math.hpp"
+#include "widgets/dashboard_widget.hpp"
 
 #include <nmeasim/core/simulation/delta_source.hpp>
 
@@ -228,4 +229,76 @@ TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][m
 
     widget.clear_route();
     CHECK(widget.route_length() == 0);
+}
+
+TEST_CASE("the map widget picks a destination with Shift+click and draws it", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(300, 300);
+    widget.set_follow_vessel(false);
+    widget.set_zoom(10);
+    widget.set_center({37.95, 23.65});
+    CHECK_FALSE(widget.destination().has_value());
+
+    QSignalSpy picked(&widget, &map::MapWidget::destination_picked);
+    QSignalSpy moved(&widget, &map::MapWidget::position_picked);
+    QMouseEvent shift_click(QEvent::MouseButtonPress, QPointF(150, 150), QPointF(150, 150),
+                            Qt::LeftButton, Qt::LeftButton, Qt::ShiftModifier);
+    QApplication::sendEvent(&widget, &shift_click);
+    REQUIRE(picked.count() == 1);
+    CHECK(moved.count() == 0);
+    const auto chosen = picked.first().first().value<Position>();
+    CHECK(chosen.latitude_deg == Approx(37.95).margin(1e-6));
+    CHECK(chosen.longitude_deg == Approx(23.65).margin(1e-6));
+
+    widget.set_vessel({37.90, 23.60}, 45.0, 45.0);
+    widget.set_destination(chosen, Position{37.90, 23.60});
+    REQUIRE(widget.destination().has_value());
+    QImage image(widget.size(), QImage::Format_ARGB32);
+    widget.render(&image);
+    // The magenta diamond sits at the centre.
+    const QColor centre = image.pixelColor(150, 150);
+    CHECK(centre.red() > 150);
+    CHECK(centre.blue() > 120);
+    CHECK(centre.green() < 80);
+
+    widget.set_destination(std::nullopt, std::nullopt);
+    CHECK_FALSE(widget.destination().has_value());
+}
+
+TEST_CASE("the main window steers for a destination picked on the map", "[app][map][integration]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    CHECK_FALSE(window.clear_destination_action()->isEnabled());
+    emit window.map_view()->destination_picked(Position{37.7466, 23.4275});
+    REQUIRE(window.profile().delta.seed.destination.has_value());
+    CHECK(window.profile().delta.seed.destination->name == "WPT");
+    CHECK(window.profile().delta.seed.destination->origin.latitude_deg == Approx(37.9838));
+    const auto& state = window.runner().simulation()->state();
+    REQUIRE(state.destination.has_value());
+    CHECK(state.destination->position.longitude_deg == Approx(23.4275));
+    REQUIRE(window.map_view()->destination().has_value());
+    CHECK(window.clear_destination_action()->isEnabled());
+    CHECK(window.dashboard()->destination_text().startsWith(QStringLiteral("WPT: bearing 225.")));
+
+    // The autopilot sentences appear in the stream once running.
+    window.set_profile(window.profile());
+    window.runner().step();
+    bool apb_seen = false;
+    for (const auto& sentence : window.runner().simulation()->scheduler().encode_all(
+             window.runner().simulation()->state())) {
+        apb_seen = apb_seen || sentence.id == "APB";
+    }
+    CHECK(apb_seen);
+    window.stop();
+
+    window.set_destination({38.0, 23.8}, QStringLiteral("HOME"));
+    CHECK(window.profile().delta.seed.destination->name == "HOME");
+    window.clear_destination_action()->trigger();
+    CHECK_FALSE(window.profile().delta.seed.destination.has_value());
+    CHECK_FALSE(window.runner().simulation()->state().destination.has_value());
+    CHECK_FALSE(window.map_view()->destination().has_value());
+    CHECK(window.dashboard()->destination_text() == QStringLiteral("None"));
 }

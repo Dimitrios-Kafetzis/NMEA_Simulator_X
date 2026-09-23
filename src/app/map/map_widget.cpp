@@ -2,7 +2,9 @@
 
 #include "tile_cache.hpp"
 
+#include <QContextMenuEvent>
 #include <QKeyEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -122,6 +124,13 @@ void MapWidget::clear_route() {
     update();
 }
 
+void MapWidget::set_destination(std::optional<core::geo::Position> destination,
+                                std::optional<core::geo::Position> origin) {
+    destination_ = destination;
+    leg_origin_ = destination ? origin : std::nullopt;
+    update();
+}
+
 QPointF MapWidget::center_pixel() const {
     return pixel_coordinates(center_, zoom_);
 }
@@ -156,6 +165,7 @@ void MapWidget::paintEvent(QPaintEvent* /*event*/) {
     painter.setRenderHint(QPainter::Antialiasing);
     draw_route(painter);
     draw_track(painter);
+    draw_destination(painter);
     draw_vessel(painter);
     draw_overlay(painter);
 }
@@ -243,6 +253,28 @@ void MapWidget::draw_track(QPainter& painter) {
     painter.drawPath(path);
 }
 
+void MapWidget::draw_destination(QPainter& painter) {
+    if (!destination_) {
+        return;
+    }
+    const QPointF at = point_of(*destination_);
+    const QColor magenta(0xc0, 0x20, 0xa0);
+    if (leg_origin_) {
+        painter.setPen(QPen(QColor(0xc0, 0x20, 0xa0, 0x80), 1.0, Qt::DotLine));
+        painter.drawLine(point_of(*leg_origin_), at);
+    }
+    if (vessel_) {
+        painter.setPen(QPen(magenta, 1.5, Qt::DashLine));
+        painter.drawLine(point_of(vessel_->position), at);
+    }
+    QPolygonF diamond;
+    diamond << at + QPointF(0, -8) << at + QPointF(8, 0) << at + QPointF(0, 8)
+            << at + QPointF(-8, 0);
+    painter.setPen(QPen(Qt::black, 1.0));
+    painter.setBrush(magenta);
+    painter.drawPolygon(diamond);
+}
+
 void MapWidget::draw_vessel(QPainter& painter) {
     if (!vessel_) {
         return;
@@ -280,6 +312,9 @@ void MapWidget::draw_overlay(QPainter& painter) {
     if (!follow_) {
         status << tr("free view");
     }
+    if (destination_) {
+        status << tr("destination set");
+    }
     const QString text = status.join(QStringLiteral("  "));
     const QRect status_rect = painter.fontMetrics().boundingRect(text).adjusted(-4, -2, 4, 2);
     const QRect status_at(4, 4, status_rect.width(), status_rect.height());
@@ -291,6 +326,10 @@ void MapWidget::draw_overlay(QPainter& painter) {
 
 void MapWidget::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
+        if (event->modifiers().testFlag(Qt::ShiftModifier)) {
+            emit destination_picked(position_at(event->position()));
+            return;
+        }
         if (event->modifiers().testFlag(Qt::ControlModifier)) {
             emit position_picked(position_at(event->position()));
             return;
@@ -330,6 +369,19 @@ void MapWidget::mouseDoubleClickEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
         emit position_picked(position_at(event->position()));
     }
+}
+
+void MapWidget::contextMenuEvent(QContextMenuEvent* event) {
+    const auto position = position_at(event->pos());
+    QMenu menu(this);
+    menu.addAction(tr("Move vessel here"), this,
+                   [this, position] { emit position_picked(position); });
+    menu.addAction(tr("Set destination here"), this,
+                   [this, position] { emit destination_picked(position); });
+    auto* clear =
+        menu.addAction(tr("Clear destination"), this, [this] { emit destination_cleared(); });
+    clear->setEnabled(destination_.has_value());
+    menu.exec(event->globalPos());
 }
 
 void MapWidget::wheelEvent(QWheelEvent* event) {

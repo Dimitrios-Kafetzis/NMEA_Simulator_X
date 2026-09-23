@@ -11,6 +11,10 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
+#include <array>
+#include <string>
+
 namespace nmeasim::app {
 
 namespace {
@@ -53,6 +57,9 @@ QSpinBox* make_port(QWidget* parent) {
 
 constexpr std::array<int, 8> kBaudRates{1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200};
 
+/// Prefixes offered in the Signal K context combo: vessel URN from the MMSI, aircraft, custom.
+constexpr std::array<const char*, 3> kContextChoices{"vessels", "aircraft", "custom"};
+
 }  // namespace
 
 OutputsPage::OutputsPage(QWidget* parent)
@@ -60,6 +67,8 @@ OutputsPage::OutputsPage(QWidget* parent)
       list(new QListWidget(this)),
       enabled_check(new QCheckBox(tr("Enabled"), this)),
       filter_edit(new QLineEdit(this)),
+      encoding_combo(new QComboBox(this)),
+      period_spin(new QSpinBox(this)),
       editor_stack(new QStackedWidget(this)) {
     // Left: the list with add and remove buttons.
     auto* add_button = new QToolButton(this);
@@ -89,6 +98,69 @@ OutputsPage::OutputsPage(QWidget* parent)
         tr("Comma-separated sentence ids to send on this output, for "
            "example RMC, GGA, VTG. Empty sends everything."));
     common->addRow(tr("Sentence filter"), filter_edit);
+    encoding_combo->addItems(
+        {tr("NMEA 0183 sentences"), tr("Signal K deltas"), tr("ViewSync packets")});
+    encoding_combo->setToolTip(tr("What this output carries"));
+    common->addRow(tr("Encoding"), encoding_combo);
+    period_spin->setRange(50, 3600000);
+    period_spin->setSingleStep(100);
+    period_spin->setSuffix(tr(" ms"));
+    period_spin->setKeyboardTracking(false);
+    period_spin->setToolTip(tr("How often a Signal K delta or a ViewSync packet is sent"));
+    common->addRow(tr("Period"), period_spin);
+    connect(encoding_combo, &QComboBox::currentIndexChanged, this,
+            &OutputsPage::update_encoding_widgets);
+
+    tag_block_box = new QGroupBox(tr("IEC 61162-450 TAG block"), this);
+    auto* tag = new QFormLayout(tag_block_box);
+    tag_block_check = new QCheckBox(tr("Prefix every sentence with a TAG block"), tag_block_box);
+    tag->addRow(tag_block_check);
+    tag_source_edit = new QLineEdit(tag_block_box);
+    tag_source_edit->setMaxLength(15);
+    tag_source_edit->setPlaceholderText(QStringLiteral("SIM0001"));
+    tag->addRow(tr("Source (s:)"), tag_source_edit);
+    tag_time_check = new QCheckBox(tr("Include the time (c:)"), tag_block_box);
+    tag->addRow(tag_time_check);
+    tag_milliseconds_check = new QCheckBox(tr("Time in milliseconds"), tag_block_box);
+    tag->addRow(tag_milliseconds_check);
+
+    signalk_box = new QGroupBox(tr("Signal K"), this);
+    auto* signalk = new QFormLayout(signalk_box);
+    signalk_context_combo = new QComboBox(signalk_box);
+    signalk_context_combo->addItems(
+        {tr("Vessel with the AIS MMSI"), tr("Aircraft"), tr("Custom context")});
+    signalk->addRow(tr("Context"), signalk_context_combo);
+    signalk_context_edit = new QLineEdit(signalk_box);
+    signalk_context_edit->setPlaceholderText(QStringLiteral("vessels.urn:mrn:imo:mmsi:239000001"));
+    signalk->addRow(tr("Context string"), signalk_context_edit);
+    signalk_source_edit = new QLineEdit(signalk_box);
+    signalk_source_edit->setPlaceholderText(QStringLiteral("nmeasim"));
+    signalk->addRow(tr("Source label"), signalk_source_edit);
+    connect(signalk_context_combo, &QComboBox::currentIndexChanged, this,
+            [this](int index) { signalk_context_edit->setEnabled(index == 2); });
+
+    viewsync_box = new QGroupBox(tr("ViewSync camera"), this);
+    auto* viewsync = new QFormLayout(viewsync_box);
+    camera_altitude_spin = new QDoubleSpinBox(viewsync_box);
+    camera_altitude_spin->setRange(0.0, 100000.0);
+    camera_altitude_spin->setDecimals(0);
+    camera_altitude_spin->setSingleStep(100.0);
+    camera_altitude_spin->setSuffix(tr(" m"));
+    viewsync->addRow(tr("Height above the vessel"), camera_altitude_spin);
+    tilt_spin = new QDoubleSpinBox(viewsync_box);
+    tilt_spin->setRange(0.0, 90.0);
+    tilt_spin->setDecimals(0);
+    tilt_spin->setSuffix(tr("°"));
+    viewsync->addRow(tr("Tilt"), tilt_spin);
+    roll_spin = new QDoubleSpinBox(viewsync_box);
+    roll_spin->setRange(-180.0, 180.0);
+    roll_spin->setDecimals(0);
+    roll_spin->setSuffix(tr("°"));
+    viewsync->addRow(tr("Roll"), roll_spin);
+    planet_combo = new QComboBox(viewsync_box);
+    planet_combo->addItems(
+        {tr("Earth"), QStringLiteral("sky"), QStringLiteral("mars"), QStringLiteral("moon")});
+    viewsync->addRow(tr("Planet"), planet_combo);
 
     auto* server_page = new QWidget(editor_stack);
     auto* server = new QFormLayout(server_page);
@@ -193,6 +265,10 @@ OutputsPage::OutputsPage(QWidget* parent)
     auto* right = new QVBoxLayout;
     right->addLayout(common);
     right->addWidget(editor_stack, 1);
+    right->addWidget(tag_block_box);
+    right->addWidget(signalk_box);
+    right->addWidget(viewsync_box);
+    update_encoding_widgets();
 
     auto* columns = new QHBoxLayout(this);
     columns->addLayout(left, 1);
@@ -200,6 +276,17 @@ OutputsPage::OutputsPage(QWidget* parent)
 
     connect(list, &QListWidget::currentRowChanged, this, &OutputsPage::show_output);
     show_output(-1);
+}
+
+void OutputsPage::update_encoding_widgets() {
+    const auto encoding = static_cast<io::OutputConfig::Encoding>(encoding_combo->currentIndex());
+    const bool nmea = encoding == io::OutputConfig::Encoding::Nmea0183;
+    tag_block_box->setVisible(nmea);
+    signalk_box->setVisible(encoding == io::OutputConfig::Encoding::SignalK);
+    viewsync_box->setVisible(encoding == io::OutputConfig::Encoding::ViewSync);
+    period_spin->setEnabled(!nmea);
+    filter_edit->setPlaceholderText(nmea ? tr("All sentences") : tr("All paths"));
+    filter_edit->setEnabled(encoding != io::OutputConfig::Encoding::ViewSync);
 }
 
 void OutputsPage::load(const io::Profile& profile) {
@@ -318,13 +405,41 @@ void OutputsPage::show_output(int index) {
         editor_stack->setCurrentIndex(6);
         enabled_check->setEnabled(false);
         filter_edit->setEnabled(false);
+        encoding_combo->setEnabled(false);
+        period_spin->setEnabled(false);
+        tag_block_box->hide();
+        signalk_box->hide();
+        viewsync_box->hide();
         return;
     }
     const auto& output = outputs_.at(index);
     enabled_check->setEnabled(true);
     filter_edit->setEnabled(true);
+    encoding_combo->setEnabled(true);
     enabled_check->setChecked(output.enabled);
     filter_edit->setText(output.filter.join(QStringLiteral(", ")));
+    encoding_combo->setCurrentIndex(static_cast<int>(output.encoding));
+    period_spin->setValue(output.period_ms);
+    tag_block_check->setChecked(output.tag_block.enabled);
+    tag_source_edit->setText(QString::fromStdString(output.tag_block.options.source));
+    tag_time_check->setChecked(output.tag_block.options.include_time);
+    tag_milliseconds_check->setChecked(output.tag_block.options.milliseconds);
+    const QString context = QString::fromStdString(output.signalk.context);
+    signalk_context_combo->setCurrentIndex(context.isEmpty()                      ? 0
+                                           : context == QLatin1String("aircraft") ? 1
+                                                                                  : 2);
+    signalk_context_edit->setText(context == QLatin1String("aircraft") ? QString{} : context);
+    signalk_context_edit->setEnabled(signalk_context_combo->currentIndex() == 2);
+    signalk_source_edit->setText(QString::fromStdString(output.signalk.source_label));
+    camera_altitude_spin->setValue(output.viewsync.camera_altitude_m);
+    tilt_spin->setValue(output.viewsync.tilt_deg);
+    roll_spin->setValue(output.viewsync.roll_deg);
+    planet_combo->setCurrentIndex(
+        std::max(0, planet_combo->findText(QString::fromStdString(output.viewsync.planet))));
+    if (output.viewsync.planet.empty()) {
+        planet_combo->setCurrentIndex(0);
+    }
+    update_encoding_widgets();
     editor_stack->setCurrentIndex(page_of(output.type));
     switch (output.type) {
         case Type::TcpServer:
@@ -390,13 +505,42 @@ void OutputsPage::commit_editor() {
     }
     auto& output = outputs_[editing_];
     output.enabled = enabled_check->isChecked();
+    output.encoding = static_cast<io::OutputConfig::Encoding>(encoding_combo->currentIndex());
     output.filter.clear();
+    const bool nmea = output.encoding == io::OutputConfig::Encoding::Nmea0183;
     for (const auto& part : filter_edit->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) {
-        const QString id = part.trimmed().toUpper();
+        const QString id = nmea ? part.trimmed().toUpper() : part.trimmed();
         if (!id.isEmpty()) {
             output.filter.append(id);
         }
     }
+    output.period_ms = period_spin->value();
+    output.tag_block.enabled = tag_block_check->isChecked();
+    const QString tag_source = tag_source_edit->text().trimmed();
+    output.tag_block.options.source =
+        tag_source.isEmpty() ? std::string{"SIM0001"} : tag_source.toStdString();
+    output.tag_block.options.include_time = tag_time_check->isChecked();
+    output.tag_block.options.milliseconds = tag_milliseconds_check->isChecked();
+    switch (signalk_context_combo->currentIndex()) {
+        case 1:
+            output.signalk.context = "aircraft";
+            break;
+        case 2:
+            output.signalk.context = signalk_context_edit->text().trimmed().toStdString();
+            break;
+        default:
+            output.signalk.context.clear();
+            break;
+    }
+    const QString source_label = signalk_source_edit->text().trimmed();
+    output.signalk.source_label =
+        source_label.isEmpty() ? std::string{"nmeasim"} : source_label.toStdString();
+    output.viewsync.camera_altitude_m = camera_altitude_spin->value();
+    output.viewsync.tilt_deg = tilt_spin->value();
+    output.viewsync.roll_deg = roll_spin->value();
+    output.viewsync.planet = planet_combo->currentIndex() == 0
+                                 ? std::string{}
+                                 : planet_combo->currentText().toStdString();
     switch (output.type) {
         case Type::TcpServer:
         case Type::WebSocketServer:
@@ -479,6 +623,11 @@ QString OutputsPage::title_of(const io::OutputConfig& output) {
     QString title = type_label(output.type);
     if (!detail.trimmed().isEmpty()) {
         title += QStringLiteral(" - ") + detail;
+    }
+    if (output.encoding == io::OutputConfig::Encoding::SignalK) {
+        title += tr(" (Signal K)");
+    } else if (output.encoding == io::OutputConfig::Encoding::ViewSync) {
+        title += tr(" (ViewSync)");
     }
     if (!output.enabled) {
         title += tr(" (disabled)");

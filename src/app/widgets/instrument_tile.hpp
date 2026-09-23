@@ -19,6 +19,7 @@ public:
     void set_value(double value, int decimals);
     /// Shows arbitrary text, for values such as positions or times.
     void set_text(const QString& text);
+    [[nodiscard]] QString text() const { return value_label_->text(); }
 
     /// Adds the override control. Until this is called the tile is display-only.
     void enable_override(double minimum, double maximum, double step, int decimals);

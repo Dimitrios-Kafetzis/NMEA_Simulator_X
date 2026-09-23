@@ -64,6 +64,11 @@ new position. Drag the map to look around; the word *free view* appears because 
 longer follows the vessel. Press ++home++, or choose *View → Follow vessel on the map*, to
 lock onto the vessel again.
 
+Hold ++shift++ and click a spot further along the coast: a magenta diamond marks it as the
+destination, the *Destination* tile shows the bearing and distance, and the console starts
+listing APB, RMB and XTE sentences that an autopilot display would follow. *Simulation →
+Clear destination* removes it again.
+
 ## 6. Connect a chart plotter
 
 Any application that accepts NMEA 0183 over TCP can read the stream. With OpenCPN on the

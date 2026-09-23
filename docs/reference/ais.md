@@ -90,7 +90,7 @@ become `?`, and fields are padded with `@`.
 The built-in profile transmits MMSI `239000001`, name `NMEA SIMULATOR X`, call sign `SIMX`,
 ship type 37, dimensions 12/4/3/3 m and a draught of 1.8 m. Every value is set in the
 `simulation.seed.ais` object of the [profile](profile.md#simulationseedais) and on the
-*Vessel* tab of the settings dialog.
+*Vessel* tab of the [settings dialog](desktop-app.md#vessel-tab).
 
 ## Checking the output
 

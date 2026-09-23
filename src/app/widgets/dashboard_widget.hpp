@@ -4,14 +4,44 @@
 #include <nmeasim/core/simulation/delta_source.hpp>
 
 #include <QCheckBox>
+#include <QDoubleSpinBox>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
 #include <QSpinBox>
 #include <QWidget>
 
 #include <map>
+#include <vector>
 
 namespace nmeasim::app {
 
 class InstrumentTile;
+
+/// One engine on the dashboard: its label, a running switch and editable revolutions and
+/// coolant temperature.
+class EngineTile : public QFrame {
+    Q_OBJECT
+
+public:
+    explicit EngineTile(const QString& label, QWidget* parent = nullptr);
+
+    /// Shows an engine without emitting `changed`.
+    void show_engine(const core::model::Engine& engine);
+    [[nodiscard]] core::model::Engine engine() const;
+    void set_editable(bool editable);
+
+    QLabel* label;
+    QCheckBox* running_check;
+    QDoubleSpinBox* rpm_spin;
+    QDoubleSpinBox* temperature_spin;
+
+signals:
+    void changed();
+
+private:
+    bool suppress_signals_{false};
+};
 
 /// Formats a position as degrees and decimal minutes with hemisphere letters.
 [[nodiscard]] QString format_position(const core::geo::Position& position);
@@ -34,14 +64,22 @@ public:
     void set_overrides_enabled(bool enabled);
     [[nodiscard]] bool overrides_enabled() const noexcept { return overrides_enabled_; }
 
+    [[nodiscard]] int engine_count() const noexcept { return static_cast<int>(engines_.size()); }
+    [[nodiscard]] EngineTile* engine_tile(int index) const;
+    [[nodiscard]] QString destination_text() const;
+
 signals:
     void override_changed(nmeasim::core::simulation::Parameter parameter, bool active,
                           double value);
     void fix_changed(bool has_fix);
     void satellites_changed(int in_use);
+    /// The operator changed an engine on its tile.
+    void engine_changed(int index, const nmeasim::core::model::Engine& engine);
 
 private:
     InstrumentTile* add_tile(const QString& title, const QString& unit, int row, int column);
+    /// Rebuilds the engine tiles when the number or the labels of the engines change.
+    void sync_engines(const std::vector<core::model::Engine>& engines);
     InstrumentTile* add_controllable(core::simulation::Parameter parameter, const QString& title,
                                      const QString& unit, int row, int column, double minimum,
                                      double maximum, double step, int decimals);
@@ -52,7 +90,10 @@ private:
     InstrumentTile* course_tile_;
     InstrumentTile* rate_of_turn_tile_;
     InstrumentTile* apparent_wind_tile_;
+    InstrumentTile* destination_tile_;
     InstrumentTile* gnss_tile_;
+    QHBoxLayout* engines_row_;
+    std::vector<EngineTile*> engines_;
     QCheckBox* fix_check_;
     QSpinBox* satellites_spin_;
     bool suppress_signals_{false};
