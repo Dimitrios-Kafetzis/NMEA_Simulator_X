@@ -114,8 +114,20 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
     widget.set_vessel({37.99, 23.74}, 45.0, 47.0);
     widget.set_vessel({38.0, 23.75}, 45.0, 47.0);
     CHECK(widget.track_length() == 3);
+    CHECK(widget.track_segment_count() == 1);
+    // A break starts a new segment, so no line joins the old and the new position.
+    widget.break_track();
+    CHECK(widget.track_segment_count() == 1);
+    widget.set_vessel({37.5, 23.0}, 45.0, 47.0);
+    CHECK(widget.track_segment_count() == 2);
+    CHECK(widget.track_length() == 4);
+    widget.set_vessel({37.51, 23.01}, 45.0, 47.0);
+    CHECK(widget.track_segment_count() == 2);
+    CHECK(widget.track_length() == 5);
     widget.clear_track();
     CHECK(widget.track_length() == 0);
+    CHECK(widget.track_segment_count() == 0);
+    widget.set_vessel({38.0, 23.75}, 45.0, 47.0);
 
     // Double-click picks the position under the cursor.
     QSignalSpy picked(&widget, &map::MapWidget::position_picked);
@@ -151,6 +163,19 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
                       Qt::NoModifier, Qt::NoScrollPhase, false);
     QApplication::sendEvent(&widget, &wheel);
     CHECK(widget.zoom() == 11);
+    // Touchpads and high-resolution wheels send small deltas that add up to a zoom level.
+    for (int i = 0; i < 4; ++i) {
+        QWheelEvent small(QPointF(256, 192), QPointF(256, 192), QPoint(0, 3), QPoint(0, 30),
+                          Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
+        QApplication::sendEvent(&widget, &small);
+        CHECK(widget.zoom() == (i < 3 ? 11 : 12));
+    }
+    for (int i = 0; i < 8; ++i) {
+        QWheelEvent back(QPointF(256, 192), QPointF(256, 192), QPoint(0, -3), QPoint(0, -30),
+                         Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
+        QApplication::sendEvent(&widget, &back);
+    }
+    CHECK(widget.zoom() == 10);
     widget.set_zoom(99);
     CHECK(widget.zoom() == map::kMaxZoom);
     widget.set_zoom(0);
@@ -200,6 +225,30 @@ TEST_CASE("the main window moves the vessel when the map picks a position",
     CHECK(window.map_view()->center().latitude_deg == Approx(-33.86));
     REQUIRE(window.map_view()->vessel_position().has_value());
     CHECK(window.map_view()->vessel_position()->longitude_deg == Approx(151.21));
+}
+
+TEST_CASE("moving the vessel starts a new track segment and restarts the leg",
+          "[app][map][integration]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    auto* source = dynamic_cast<nmeasim::core::simulation::DeltaSource*>(
+        &window.runner().simulation()->source());
+    REQUIRE(source != nullptr);
+
+    window.move_vessel({37.90, 23.60});
+    const int segments = window.map_view()->track_segment_count();
+    REQUIRE(segments >= 1);
+    window.set_destination({37.7466, 23.4275}, QStringLiteral("AEGINA"));
+
+    window.move_vessel({37.80, 23.50});
+    CHECK(window.map_view()->track_segment_count() == segments + 1);
+    REQUIRE(source->current().destination.has_value());
+    CHECK(source->current().destination->origin.latitude_deg == Approx(37.80));
+    CHECK(source->current().destination->origin.longitude_deg == Approx(23.50));
+    CHECK(source->current().destination->position.latitude_deg == Approx(37.7466));
+    REQUIRE(window.profile().delta.seed.destination.has_value());
+    CHECK(window.profile().delta.seed.destination->origin.latitude_deg == Approx(37.80));
+    REQUIRE(window.map_view()->destination().has_value());
 }
 
 TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][map]") {

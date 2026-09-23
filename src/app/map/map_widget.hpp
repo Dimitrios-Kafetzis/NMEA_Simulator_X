@@ -18,6 +18,9 @@ class TileCache;
 /// A slippy map: raster tiles from a `TileCache`, the vessel with its heading, the track it
 /// has sailed, and mouse and keyboard navigation.
 ///
+/// The sailed track is a list of segments: moving the vessel by hand or seeking in a track or
+/// log starts a new segment, so that no line joins the old and the new position.
+///
 /// The widget keeps a centre position and an integer zoom level. In follow mode the centre
 /// tracks the vessel; dragging the map switches follow mode off.
 class MapWidget : public QWidget {
@@ -43,7 +46,13 @@ public:
                     double course_over_ground_deg);
     [[nodiscard]] std::optional<core::geo::Position> vessel_position() const noexcept;
     void clear_track();
-    [[nodiscard]] int track_length() const noexcept { return static_cast<int>(track_.size()); }
+    /// Ends the current track segment; the next vessel position starts a new one.
+    void break_track();
+    /// Number of points in all track segments.
+    [[nodiscard]] int track_length() const noexcept;
+    [[nodiscard]] int track_segment_count() const noexcept {
+        return static_cast<int>(track_.size());
+    }
 
     /// The track or route loaded from a file, drawn under the sailed track.
     void set_route(const QList<core::geo::Position>& route);
@@ -111,12 +120,15 @@ private:
     int zoom_{12};
     bool follow_{true};
     std::optional<Vessel> vessel_;
-    QList<core::geo::Position> track_;
+    QList<QList<core::geo::Position>> track_;
+    bool track_broken_{false};
     QList<core::geo::Position> route_;
     std::optional<core::geo::Position> destination_;
     std::optional<core::geo::Position> leg_origin_;
     std::optional<QPoint> drag_last_;
     bool dragged_{false};
+    /// Wheel rotation not yet turned into whole zoom levels, in eighths of a degree.
+    int wheel_remainder_{0};
 };
 
 }  // namespace nmeasim::app::map

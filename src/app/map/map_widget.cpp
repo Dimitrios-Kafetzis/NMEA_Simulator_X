@@ -83,17 +83,27 @@ void MapWidget::set_follow_vessel(bool follow) {
 void MapWidget::set_vessel(core::geo::Position position, double heading_true_deg,
                            double course_over_ground_deg) {
     vessel_ = Vessel{position, heading_true_deg, course_over_ground_deg};
-    if (track_.isEmpty()) {
-        track_.append(position);
+    if (track_.isEmpty() || track_broken_) {
+        track_.append(QList<core::geo::Position>{position});
+        track_broken_ = false;
     } else {
-        const QPointF last = pixel_coordinates(track_.last(), zoom_);
+        auto& segment = track_.last();
+        const QPointF last = pixel_coordinates(segment.last(), zoom_);
         const QPointF now = pixel_coordinates(position, zoom_);
         const QPointF delta = now - last;
         if (std::hypot(delta.x(), delta.y()) >= kTrackMinPixelDistance) {
-            track_.append(position);
-            if (track_.size() > kMaxTrackPoints) {
-                track_.remove(0, track_.size() - kMaxTrackPoints);
-            }
+            segment.append(position);
+        }
+    }
+    // Drop the oldest points once the whole track grows beyond its limit.
+    int excess = track_length() - kMaxTrackPoints;
+    while (excess > 0 && !track_.isEmpty()) {
+        auto& oldest = track_.first();
+        const auto removed = std::min<qsizetype>(excess, oldest.size());
+        oldest.remove(0, removed);
+        excess -= static_cast<int>(removed);
+        if (oldest.isEmpty()) {
+            track_.removeFirst();
         }
     }
     if (follow_) {
@@ -111,7 +121,20 @@ std::optional<core::geo::Position> MapWidget::vessel_position() const noexcept {
 
 void MapWidget::clear_track() {
     track_.clear();
+    track_broken_ = false;
     update();
+}
+
+void MapWidget::break_track() {
+    track_broken_ = true;
+}
+
+int MapWidget::track_length() const noexcept {
+    qsizetype points = 0;
+    for (const auto& segment : track_) {
+        points += segment.size();
+    }
+    return static_cast<int>(points);
 }
 
 void MapWidget::set_route(const QList<core::geo::Position>& route) {
@@ -240,13 +263,18 @@ void MapWidget::draw_route(QPainter& painter) {
 }
 
 void MapWidget::draw_track(QPainter& painter) {
-    if (track_.size() < 2) {
-        return;
-    }
     QPainterPath path;
-    path.moveTo(point_of(track_.first()));
-    for (qsizetype index = 1; index < track_.size(); ++index) {
-        path.lineTo(point_of(track_.at(index)));
+    for (const auto& segment : track_) {
+        if (segment.size() < 2) {
+            continue;
+        }
+        path.moveTo(point_of(segment.first()));
+        for (qsizetype index = 1; index < segment.size(); ++index) {
+            path.lineTo(point_of(segment.at(index)));
+        }
+    }
+    if (path.isEmpty()) {
+        return;
     }
     painter.setPen(QPen(QColor(0xd0, 0x30, 0x30, 0xa0), 2.0));
     painter.setBrush(Qt::NoBrush);
@@ -385,8 +413,12 @@ void MapWidget::contextMenuEvent(QContextMenuEvent* event) {
 }
 
 void MapWidget::wheelEvent(QWheelEvent* event) {
-    const int steps = event->angleDelta().y() / 120;
+    // A mouse wheel reports 120 per notch, but touchpads and high-resolution wheels report
+    // many smaller deltas; they add up here until they amount to a whole zoom level.
+    wheel_remainder_ += event->angleDelta().y();
+    const int steps = wheel_remainder_ / 120;
     if (steps != 0) {
+        wheel_remainder_ -= steps * 120;
         zoom_by(steps, event->position().toPoint());
     }
     event->accept();
