@@ -239,8 +239,18 @@ jobs:
           cmake --preset release -DNMEASIM_PACKAGE_VERSION="$VERSION"
           cmake --build --preset release
 
+      # hdiutil on hosted runners now and then fails with "Resource busy" while the system
+      # scans the new image; a second attempt succeeds.
       - name: Package
-        run: cpack --preset release
+        run: |
+          for attempt in 1 2 3; do
+            if cpack --preset release; then
+              exit 0
+            fi
+            echo "::warning::cpack attempt $attempt failed; retrying"
+            sleep 15
+          done
+          exit 1
 
       - name: Check the disk image
         run: |
