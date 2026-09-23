@@ -11,8 +11,9 @@ every standard sentence enabled and one TCP server output on port 10110.
 
 The window has four areas:
 
-- The **dashboard** in the centre shows the position, time, GNSS status, heading, speeds,
-  depth, water temperature, altitude and wind as instrument tiles.
+- The **dashboard** in the centre opens with a compass rose (heading, course and bearing to
+  a destination) and a wind dial, next to the position, time and GNSS status. Below them,
+  digital tiles show heading, speeds, depth, water temperature, altitude and wind.
 - The **Map** panel on the left shows the vessel on an OpenStreetMap chart. Tiles are
   downloaded the first time an area is shown and kept on disk, so the map also works
   offline afterwards.
@@ -26,7 +27,8 @@ remembered the next time you start.
 
 ## 2. Start the simulation
 
-Press **Start** in the toolbar or press ++f5++. The status bar changes to *Running*, the
+Press **Start** in the toolbar or press ++f5++. The light in the status bar turns green and
+reads *RUNNING*, the
 console starts scrolling and the *Outputs* panel shows the TCP server as *open*.
 
 Type `RMC` in the console filter to show only the recommended minimum sentence. Tick *Pause*
