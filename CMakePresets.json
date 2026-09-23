@@ -47,7 +47,8 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "cl",
-        "VCPKG_TARGET_TRIPLET": "x64-windows"
+        "VCPKG_TARGET_TRIPLET": "x64-windows",
+        "X_VCPKG_APPLOCAL_DEPS_INSTALL": "ON"
       }
     },
     {

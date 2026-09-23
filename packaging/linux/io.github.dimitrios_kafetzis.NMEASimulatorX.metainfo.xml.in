@@ -24,6 +24,9 @@
       <li>A headless command-line tool, nmeasim, for automated tests</li>
     </ul>
   </description>
+  <categories>
+    <category>Development</category>
+  </categories>
   <launchable type="desktop-id">@NMEASIM_APP_ID@.desktop</launchable>
   <icon type="stock">@NMEASIM_APP_ID@</icon>
   <url type="homepage">https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/</url>
