@@ -20,9 +20,12 @@ public:
     /// Appends `length` characters of six-bit ASCII, upper-cased, padded with `@` and
     /// truncated as needed; characters outside the six-bit alphabet become `?`.
     void append_text(std::string_view text, std::size_t length);
+    /// Appends one bit: 1 for true, 0 for false.
     void append_bool(bool value) { append_unsigned(value ? 1U : 0U, 1); }
 
+    /// Number of bits appended so far.
     [[nodiscard]] std::size_t size() const noexcept { return bits_.size(); }
+    /// The appended bits, most significant first, ready for armor().
     [[nodiscard]] const std::vector<bool>& bits() const noexcept { return bits_; }
 
 private:
@@ -32,7 +35,9 @@ private:
 /// A packed payload ready for a sentence: the armored characters and the number of padding
 /// bits added to the last one.
 struct Payload {
+    /// Armored six-bit characters for the payload field of VDO and VDM.
     std::string text;
+    /// Zero bits padding the last character to six bits, 0-5; sent in the last field.
     int fill_bits{0};
 };
 

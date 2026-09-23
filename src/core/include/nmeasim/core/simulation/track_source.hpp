@@ -20,7 +20,9 @@ enum class EndBehaviour {
     Loop,
 };
 
+/// Configuration of a `TrackSource`.
 struct TrackConfig {
+    /// The track to follow.
     track::Track track;
     /// Environment values (depth, wind, GNSS) and, for a track without timestamps, the
     /// start time. The position, course and speed come from the track.
@@ -30,6 +32,7 @@ struct TrackConfig {
     /// When false, timestamps in the track are ignored and every leg is sailed at
     /// `speed_kn` or the recorded point speed.
     bool use_timestamps{true};
+    /// Whether to stop at the last point or start again from the first.
     EndBehaviour end{EndBehaviour::Stop};
 };
 
@@ -43,6 +46,7 @@ struct TrackConfig {
 /// initial bearing; heading follows the course.
 class TrackSource final : public Source {
 public:
+    /// Builds the legs and places the vessel at the first point.
     explicit TrackSource(TrackConfig config);
 
     const model::VesselState& advance(std::chrono::milliseconds dt) override;
@@ -60,6 +64,7 @@ public:
 
     /// True when the source follows the track's own timestamps.
     [[nodiscard]] bool timed() const noexcept { return timed_; }
+    /// The configuration, including a destination set since construction.
     [[nodiscard]] const TrackConfig& config() const noexcept { return config_; }
 
     /// Simulates losing or regaining the GNSS fix.

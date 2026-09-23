@@ -18,7 +18,6 @@ Thumbs.db
 
 # Documentation build
 site/
-docs/api/
 
 # Python tooling
 .venv/

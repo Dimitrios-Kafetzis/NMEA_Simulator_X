@@ -14,6 +14,8 @@ class LogTransport final : public Transport {
     Q_OBJECT
 
 public:
+    /// Records to `path`. With `append` false the first open truncates the file; later opens
+    /// continue it.
     explicit LogTransport(QString path, bool append = true, QObject* parent = nullptr);
     ~LogTransport() override;
 
@@ -22,9 +24,11 @@ public:
     void close() override;
     void write(const QByteArray& line) override;
 
+    /// The log file written to.
     [[nodiscard]] QString path() const { return file_.fileName(); }
     /// Name written to the `# profile:` header line; empty omits the line.
     void set_profile_name(const QString& name) { profile_name_ = name; }
+    /// Sentences recorded since construction, header lines excluded.
     [[nodiscard]] qint64 lines_written() const noexcept { return lines_written_; }
 
 private:

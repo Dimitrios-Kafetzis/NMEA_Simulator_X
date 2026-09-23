@@ -12,8 +12,11 @@ struct NetworkInterfaceInfo {
     QString name;
     /// Descriptive name where the platform provides one.
     QString human_name;
+    /// The IPv4 address itself.
     QHostAddress address;
+    /// Broadcast address of the subnet; null when the platform reports none.
     QHostAddress broadcast;
+    /// True for the loopback interface.
     bool is_loopback{false};
 };
 

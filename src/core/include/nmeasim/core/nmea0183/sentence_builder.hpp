@@ -7,9 +7,10 @@
 /// Assembles one NMEA 0183 sentence field by field and frames it with a checksum.
 namespace nmeasim::core::nmea0183 {
 
-/// Maximum length of a sentence excluding the terminating <CR><LF>.
+/// Maximum length of a sentence excluding the terminating CR LF.
 inline constexpr std::size_t kMaxSentenceLengthWithoutTerminator{80};
 
+/// Builder for one sentence: fields are appended in order, separated by commas.
 class SentenceBuilder {
 public:
     /// Starts a sentence such as `$GPRMC`. `talker` is two characters, `formatter` three.

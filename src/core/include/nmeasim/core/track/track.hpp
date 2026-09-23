@@ -13,8 +13,11 @@ namespace nmeasim::core::track {
 
 /// One point of a track. Optional members are present only when the file carries them.
 struct TrackPoint {
+    /// Latitude and longitude of the point.
     geo::Position position;
+    /// Elevation in metres, as recorded at this point.
     std::optional<double> elevation_m;
+    /// UTC time at which the point was recorded.
     std::optional<std::chrono::system_clock::time_point> time;
     /// Course over ground in degrees true, as recorded at this point.
     std::optional<double> course_deg;
@@ -30,12 +33,16 @@ enum class TrackKind {
     KmlLineString,
 };
 
+/// Display name of a track kind, such as `GPX route`.
 [[nodiscard]] const char* to_string(TrackKind kind) noexcept;
 
 /// A sequence of points to follow. Segments of the source file are already concatenated.
 struct Track {
+    /// Name given in the file; empty when it has none.
     std::string name;
+    /// The file format and element the points came from.
     TrackKind kind{TrackKind::GpxTrack};
+    /// The points in sailing order.
     std::vector<TrackPoint> points;
     /// Number of segments (GPX `<trkseg>`, KML geometries) that were concatenated.
     std::size_t segment_count{0};

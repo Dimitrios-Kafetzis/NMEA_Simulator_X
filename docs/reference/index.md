@@ -15,3 +15,5 @@ Precise, exhaustive descriptions of what the software does.
 - [Transports](transports.md): every output channel, its settings and behaviour.
 - [Track files](track-files.md): what is read from GPX and KML files.
 - [Log files](log-format.md): what the recorder writes and what the replay reads.
+- [C++ API](api.md): the classes and functions of the `core` and `io` libraries, generated
+  from the headers by Doxygen.

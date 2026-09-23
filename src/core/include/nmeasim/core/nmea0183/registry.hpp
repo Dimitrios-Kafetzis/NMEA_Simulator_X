@@ -25,6 +25,7 @@ enum class SentenceGroup {
     Ais,
 };
 
+/// Display name of a group, e.g. "GNSS" or "AIS".
 [[nodiscard]] std::string_view to_string(SentenceGroup group) noexcept;
 
 /// Static description of one sentence: identity, defaults and the encoder that produces it.
@@ -36,18 +37,25 @@ struct SentenceDescriptor {
     std::string_view formatter;
     /// Talker used unless configuration overrides it.
     std::string_view default_talker;
+    /// Functional group the sentence is enabled or disabled with.
     SentenceGroup group;
+    /// Interval between emissions unless configuration overrides it.
     std::chrono::milliseconds default_period;
+    /// Whether the sentence is sent when configuration does not mention it.
     bool enabled_by_default;
+    /// One-line summary of the sentence contents for display.
     std::string_view description;
+    /// Function that produces the sentence from a vessel state.
     Encoder encoder;
 };
 
+/// Immutable list of sentence descriptors; the only instance is standard().
 class SentenceRegistry {
 public:
     /// The built-in catalogue, in a stable order suitable for display.
     [[nodiscard]] static const SentenceRegistry& standard();
 
+    /// Every descriptor in catalogue order.
     [[nodiscard]] std::span<const SentenceDescriptor> descriptors() const noexcept;
 
     /// Finds a descriptor by id, or nullptr when unknown.

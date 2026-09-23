@@ -15,8 +15,10 @@
 /// rate; the simulation never blocks, sleeps or touches I/O.
 namespace nmeasim::core::simulation {
 
+/// A source and a sentence schedule advanced together by the host.
 class Simulation {
 public:
+    /// Takes ownership of the source; `source` must not be null.
     Simulation(std::unique_ptr<Source> source, SentenceScheduler scheduler);
 
     /// Advances simulated time by `dt` and returns the sentences due at the new time. For a
@@ -34,10 +36,15 @@ public:
     /// Time elapsed since start or the last reset.
     [[nodiscard]] std::chrono::milliseconds elapsed() const noexcept { return elapsed_; }
 
+    /// The source's most recent state.
     [[nodiscard]] const model::VesselState& state() const noexcept { return source_->current(); }
+    /// The source, for mode-specific controls.
     [[nodiscard]] Source& source() noexcept { return *source_; }
+    /// The source, read-only.
     [[nodiscard]] const Source& source() const noexcept { return *source_; }
+    /// The sentence schedule, for changing settings while running.
     [[nodiscard]] SentenceScheduler& scheduler() noexcept { return scheduler_; }
+    /// The sentence schedule, read-only.
     [[nodiscard]] const SentenceScheduler& scheduler() const noexcept { return scheduler_; }
 
     /// True once the source has nothing more to produce.

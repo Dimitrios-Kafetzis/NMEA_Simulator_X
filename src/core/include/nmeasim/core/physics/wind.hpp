@@ -9,6 +9,7 @@ struct ApparentWind {
     double angle_relative_deg{0.0};
     /// Direction the apparent wind comes from, referenced to true north, in [0, 360).
     double direction_true_deg{0.0};
+    /// Apparent wind speed.
     double speed_kn{0.0};
 };
 

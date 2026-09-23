@@ -12,6 +12,7 @@
 /// any JSON library: the documents are small and their shape is fixed.
 namespace nmeasim::core::signalk {
 
+/// Settings shared by the delta and hello encoders.
 struct SignalKOptions {
     /// The context the values belong to, such as `vessels.urn:mrn:imo:mmsi:239000001` or
     /// `aircraft.urn:mrn:signalk:uuid:...`. Empty derives the vessel context from the MMSI.
@@ -22,7 +23,9 @@ struct SignalKOptions {
 
 /// One path of a delta with its value already rendered as JSON.
 struct PathValue {
+    /// Dotted Signal K path, such as `navigation.speedOverGround`.
     std::string path;
+    /// The value as a JSON literal: a number, `null`, a string or an object.
     std::string json_value;
 };
 

@@ -26,17 +26,21 @@ class LogTransport;
 
 /// A transport together with the sentence filter configured for it.
 struct OutputChannel {
+    /// The profile output this channel was built from.
     OutputConfig config;
+    /// The transport built from `config`.
     std::unique_ptr<Transport> transport;
     /// Registry ids admitted by this channel; empty admits everything. For a Signal K
     /// channel the entries are path prefixes.
     QSet<QString> filter;
+    /// Lines written to the transport so far: sentences, Signal K deltas or ViewSync packets.
     qint64 sentences_sent{0};
     /// Simulated time at which the next state message (Signal K, ViewSync) is due.
     std::chrono::milliseconds next_due{0};
     /// Packets sent so far on a ViewSync channel.
     quint32 counter{0};
 
+    /// True when the filter admits the registry or custom sentence `id`.
     [[nodiscard]] bool admits(const QString& id) const {
         return filter.isEmpty() || filter.contains(id);
     }
@@ -49,10 +53,13 @@ struct OutputChannel {
     }
 };
 
+/// Runs the simulation of a profile on a timer and writes its output to the profile's
+/// transports.
 class SimulationRunner : public QObject {
     Q_OBJECT
 
 public:
+    /// Creates a runner without a simulation; call `apply_profile` before `start`.
     explicit SimulationRunner(QObject* parent = nullptr);
     ~SimulationRunner() override;
 
@@ -65,7 +72,9 @@ public:
     /// Opens every enabled output and starts ticking. Outputs that fail to open are reported
     /// and skipped; the run proceeds with the rest.
     void start();
+    /// Stops advancing the simulation while keeping the outputs open.
     void pause();
+    /// Continues a paused run without catching up on the time spent paused.
     void resume();
     /// Stops ticking and closes every output.
     void stop();
@@ -86,24 +95,37 @@ public:
     /// stop and start until the recording is cleared with an empty path. Returns false and
     /// reports through `output_error` when the file cannot be opened.
     bool set_recording(const QString& path);
+    /// Path of the current recording; empty when not recording.
     [[nodiscard]] QString recording_path() const;
+    /// True while a recording path is set, whether or not the run is going.
     [[nodiscard]] bool is_recording() const noexcept { return recorder_ != nullptr; }
+    /// The log transport of the recording, or null when not recording.
     [[nodiscard]] const LogTransport* recorder() const noexcept { return recorder_.get(); }
 
+    /// True between `start` and `stop`, paused or not.
     [[nodiscard]] bool is_running() const noexcept { return tick_timer_.isActive(); }
+    /// True while a running simulation is paused.
     [[nodiscard]] bool is_paused() const noexcept { return paused_; }
 
+    /// The current simulation, or null before a profile has been applied.
     [[nodiscard]] core::simulation::Simulation* simulation() noexcept { return simulation_.get(); }
+    /// The current simulation, or null before a profile has been applied.
     [[nodiscard]] const core::simulation::Simulation* simulation() const noexcept {
         return simulation_.get();
     }
+    /// The channels of the enabled outputs of the applied profile, in profile order.
     [[nodiscard]] const std::vector<OutputChannel>& outputs() const noexcept { return outputs_; }
+    /// The profile last applied successfully.
     [[nodiscard]] const Profile& profile() const noexcept { return profile_; }
+    /// Sentences and state messages produced since the profile was applied, before filtering.
     [[nodiscard]] qint64 sentences_emitted() const noexcept { return sentences_emitted_; }
 
 signals:
+    /// The outputs were opened and ticking began.
     void started();
+    /// The run was paused (`paused` true) or resumed.
     void paused_changed(bool paused);
+    /// A running simulation stopped and its outputs were closed.
     void stopped();
     /// Emitted after every tick, step and seek; hosts refresh their view of
     /// `simulation()->state()`.
@@ -112,6 +134,7 @@ signals:
     /// a replayed sentence). Signal K and ViewSync messages are reported with the ids
     /// `SIGNALK` and `VIEWSYNC`.
     void sentence_emitted(const QString& id, const QString& text);
+    /// An output or the recording reported an error; `description` names the transport.
     void output_error(const QString& description, const QString& message);
     /// The track or log reached its end; `stopped` follows.
     void finished();

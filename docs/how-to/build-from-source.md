@@ -160,3 +160,8 @@ pip install -r docs/requirements.txt
 mkdocs serve          # live preview at http://127.0.0.1:8000
 mkdocs build --strict # what CI checks
 ```
+
+With [Doxygen](https://www.doxygen.nl/) 1.18 or later in `PATH`, the build also generates
+the [C++ API reference](../reference/api.md) under `api/`; without it the site gets a
+placeholder page. CI sets `NMEASIM_REQUIRE_DOXYGEN=1`, which turns a missing Doxygen or any
+Doxygen warning into a failed build.

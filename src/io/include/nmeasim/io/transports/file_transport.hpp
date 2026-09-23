@@ -12,6 +12,8 @@ class FileTransport final : public Transport {
     Q_OBJECT
 
 public:
+    /// Writes to `path`, appending to an existing file or, with `append` false, truncating it
+    /// when opened.
     explicit FileTransport(QString path, bool append = true, QObject* parent = nullptr);
     ~FileTransport() override;
 
@@ -20,6 +22,7 @@ public:
     void close() override;
     void write(const QByteArray& line) override;
 
+    /// The file written to.
     [[nodiscard]] QString path() const { return file_.fileName(); }
 
 private:
