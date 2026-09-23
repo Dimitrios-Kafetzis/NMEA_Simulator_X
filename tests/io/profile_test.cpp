@@ -251,7 +251,7 @@ TEST_CASE("track and replay modes round-trip with their settings", "[io][profile
     profile.outputs.append(log);
 
     const auto json = profile.to_json();
-    CHECK(json.value(QStringLiteral("schema_version")).toInt() == 2);
+    CHECK(json.value(QStringLiteral("schema_version")).toInt() == 3);
     CHECK(json.value(QStringLiteral("simulation")).toObject().value(QStringLiteral("mode")) ==
           QStringLiteral("track"));
     QString error;
@@ -277,7 +277,7 @@ TEST_CASE("track and replay modes round-trip with their settings", "[io][profile
     CHECK(replay->mode == SimulationMode::Replay);
 }
 
-TEST_CASE("schema version 1 profiles are migrated to version 2", "[io][profile]") {
+TEST_CASE("schema version 1 profiles are migrated to the current version", "[io][profile]") {
     QJsonObject v1{{QStringLiteral("schema_version"), 1},
                    {QStringLiteral("name"), QStringLiteral("Old")},
                    {QStringLiteral("simulation"), QJsonObject{{QStringLiteral("tick_ms"), 200}}}};
@@ -290,7 +290,7 @@ TEST_CASE("schema version 1 profiles are migrated to version 2", "[io][profile]"
     CHECK(parsed->track.speed_kn == Approx(6.0));
     CHECK(parsed->track.use_timestamps);
     CHECK(parsed->replay.fixed_interval_ms == 100);
-    CHECK(parsed->to_json().value(QStringLiteral("schema_version")).toInt() == 2);
+    CHECK(parsed->to_json().value(QStringLiteral("schema_version")).toInt() == 3);
 }
 
 TEST_CASE("mode settings are validated", "[io][profile]") {
@@ -354,4 +354,186 @@ TEST_CASE("relative track and log paths are resolved against the profile file", 
     profile.track.path = QDir::cleanPath(directory.filePath(QStringLiteral("abs.gpx")));
     REQUIRE(profile.save(path, &error));
     CHECK(Profile::load(path, &error)->track.path == profile.track.path);
+}
+
+TEST_CASE("destination, AIS data, custom sentences and encodings round-trip", "[io][profile]") {
+    Profile profile = Profile::default_profile();
+    profile.delta.seed.destination =
+        nmeasim::core::model::Destination{"AEGINA", {37.7466, 23.4275}, {38.0, 23.7}, 250.0};
+    profile.delta.seed.ais.mmsi = 211000123;
+    profile.delta.seed.ais.name = "TEST VESSEL";
+    profile.delta.seed.ais.call_sign = "DA1234";
+    profile.delta.seed.ais.ship_type = 70;
+    profile.delta.seed.ais.dimension_to_bow_m = 40.0;
+    profile.delta.seed.ais.draught_m = 4.5;
+    profile.delta.seed.ais.destination = "PIRAEUS";
+    profile.delta.seed.ais.navigation_status = 8;
+    profile.delta.seed.ais.position_report_type = 3;
+    profile.custom_sentences = {{"BARO", "$IIXDR,P,1.013,B,BARO", 5000ms, true},
+                                {"", "PXYZ,1,2,3", 1000ms, false}};
+    profile.outputs.clear();
+    OutputConfig tagged;
+    tagged.type = OutputConfig::Type::TcpServer;
+    tagged.tag_block.enabled = true;
+    tagged.tag_block.options.source = "GP0001";
+    tagged.tag_block.options.milliseconds = true;
+    profile.outputs.append(tagged);
+    OutputConfig signalk;
+    signalk.type = OutputConfig::Type::WebSocketServer;
+    signalk.port = 3000;
+    signalk.encoding = OutputConfig::Encoding::SignalK;
+    signalk.period_ms = 500;
+    signalk.signalk.context = "aircraft.urn:mrn:signalk:uuid:1";
+    signalk.signalk.source_label = "sim";
+    signalk.filter = {QStringLiteral("navigation"), QStringLiteral("environment.wind")};
+    profile.outputs.append(signalk);
+    OutputConfig viewsync;
+    viewsync.type = OutputConfig::Type::Udp;
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    viewsync.period_ms = 200;
+    viewsync.viewsync.camera_altitude_m = 1500.0;
+    viewsync.viewsync.tilt_deg = 45.0;
+    viewsync.viewsync.planet = "moon";
+    profile.outputs.append(viewsync);
+
+    const auto json = profile.to_json();
+    QString error;
+    const auto parsed = Profile::from_json(json, &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->to_json() == json);
+    REQUIRE(parsed->delta.seed.destination.has_value());
+    CHECK(parsed->delta.seed.destination->name == "AEGINA");
+    CHECK(parsed->delta.seed.destination->position.longitude_deg == Approx(23.4275));
+    CHECK(parsed->delta.seed.destination->origin.latitude_deg == Approx(38.0));
+    CHECK(parsed->delta.seed.destination->arrival_radius_m == Approx(250.0));
+    CHECK(parsed->delta.seed.ais.mmsi == 211000123);
+    CHECK(parsed->delta.seed.ais.name == "TEST VESSEL");
+    CHECK(parsed->delta.seed.ais.call_sign == "DA1234");
+    CHECK(parsed->delta.seed.ais.ship_type == 70);
+    CHECK(parsed->delta.seed.ais.dimension_to_bow_m == Approx(40.0));
+    CHECK(parsed->delta.seed.ais.draught_m == Approx(4.5));
+    CHECK(parsed->delta.seed.ais.destination == "PIRAEUS");
+    CHECK(parsed->delta.seed.ais.navigation_status == 8);
+    CHECK(parsed->delta.seed.ais.position_report_type == 3);
+    REQUIRE(parsed->custom_sentences.size() == 2);
+    CHECK(parsed->custom_sentences[0].id == "BARO");
+    CHECK(parsed->custom_sentences[0].period == 5000ms);
+    CHECK(parsed->custom_sentences[1].id.empty());
+    CHECK_FALSE(parsed->custom_sentences[1].enabled);
+    REQUIRE(parsed->outputs.size() == 3);
+    CHECK(parsed->outputs[0].encoding == OutputConfig::Encoding::Nmea0183);
+    CHECK(parsed->outputs[0].tag_block.enabled);
+    CHECK(parsed->outputs[0].tag_block.options.source == "GP0001");
+    CHECK(parsed->outputs[0].tag_block.options.milliseconds);
+    CHECK(parsed->outputs[1].encoding == OutputConfig::Encoding::SignalK);
+    CHECK(parsed->outputs[1].period_ms == 500);
+    CHECK(parsed->outputs[1].signalk.context == "aircraft.urn:mrn:signalk:uuid:1");
+    CHECK(parsed->outputs[1].signalk.source_label == "sim");
+    CHECK(parsed->outputs[1].filter.size() == 2);
+    CHECK(parsed->outputs[2].encoding == OutputConfig::Encoding::ViewSync);
+    CHECK(parsed->outputs[2].period_ms == 200);
+    CHECK(parsed->outputs[2].viewsync.camera_altitude_m == Approx(1500.0));
+    CHECK(parsed->outputs[2].viewsync.tilt_deg == Approx(45.0));
+    CHECK(parsed->outputs[2].viewsync.planet == "moon");
+
+    const auto scheduler = parsed->make_scheduler();
+    REQUIRE(scheduler.custom_sentences().size() == 2);
+    CHECK(scheduler.custom_sentences()[1].id == "CUSTOM-2");
+
+    // Clearing the destination writes null, which reads back as none.
+    profile.delta.seed.destination.reset();
+    const auto cleared = Profile::from_json(profile.to_json(), &error);
+    REQUIRE(cleared.has_value());
+    CHECK_FALSE(cleared->delta.seed.destination.has_value());
+}
+
+TEST_CASE("schema version 2 profiles load with the new defaults", "[io][profile]") {
+    QJsonObject v2{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("outputs"),
+         QJsonArray{QJsonObject{{QStringLiteral("type"), QStringLiteral("tcp-server")},
+                                {QStringLiteral("encoding"), QStringLiteral("nmea0183")}}}}};
+    QString error;
+    const auto parsed = Profile::from_json(v2, &error);
+    REQUIRE(parsed.has_value());
+    CHECK_FALSE(parsed->delta.seed.destination.has_value());
+    CHECK(parsed->delta.seed.ais.mmsi == 239000001);
+    CHECK(parsed->custom_sentences.empty());
+    REQUIRE(parsed->outputs.size() == 1);
+    CHECK(parsed->outputs[0].encoding == OutputConfig::Encoding::Nmea0183);
+    CHECK_FALSE(parsed->outputs[0].tag_block.enabled);
+    CHECK(parsed->outputs[0].period_ms == 1000);
+    CHECK(parsed->to_json().value(QStringLiteral("schema_version")).toInt() == 3);
+    for (const auto encoding : {OutputConfig::Encoding::Nmea0183, OutputConfig::Encoding::SignalK,
+                                OutputConfig::Encoding::ViewSync}) {
+        CHECK(nmeasim::io::encoding_from_string(nmeasim::io::to_string(encoding)) == encoding);
+    }
+    CHECK_FALSE(nmeasim::io::encoding_from_string(QStringLiteral("morse")).has_value());
+}
+
+TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
+    QString error;
+    const auto with = [](const QString& key, const QJsonValue& value) {
+        return QJsonObject{{QStringLiteral("schema_version"), 3}, {key, value}};
+    };
+    const auto seed = [](const QJsonObject& ais) {
+        return QJsonObject{{QStringLiteral("seed"), QJsonObject{{QStringLiteral("ais"), ais}}}};
+    };
+    CHECK_FALSE(Profile::from_json(with(QStringLiteral("simulation"),
+                                        seed({{QStringLiteral("mmsi"), 1234567890.0}})),
+                                   &error)
+                    .has_value());
+    CHECK(error.contains(QStringLiteral("mmsi")));
+    CHECK_FALSE(
+        Profile::from_json(
+            with(QStringLiteral("simulation"), seed({{QStringLiteral("ship_type"), 300}})), &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("ship_type")));
+    CHECK_FALSE(Profile::from_json(with(QStringLiteral("simulation"),
+                                        seed({{QStringLiteral("position_report_type"), 4}})),
+                                   &error)
+                    .has_value());
+    CHECK(error.contains(QStringLiteral("position_report_type")));
+
+    const auto custom = [](const QJsonObject& sentence) {
+        return QJsonObject{{QStringLiteral("custom"), QJsonArray{sentence}}};
+    };
+    CHECK_FALSE(
+        Profile::from_json(with(QStringLiteral("sentences"),
+                                custom({{QStringLiteral("body"), QStringLiteral("not valid")}})),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("custom[0]")));
+    CHECK_FALSE(
+        Profile::from_json(with(QStringLiteral("sentences"),
+                                custom({{QStringLiteral("id"), QStringLiteral("rmc")},
+                                        {QStringLiteral("body"), QStringLiteral("$PXYZ,1")}})),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("registry")));
+    CHECK_FALSE(Profile::from_json(with(QStringLiteral("sentences"),
+                                        custom({{QStringLiteral("body"), QStringLiteral("$PXYZ,1")},
+                                                {QStringLiteral("period_ms"), 10}})),
+                                   &error)
+                    .has_value());
+    CHECK(error.contains(QStringLiteral("period_ms")));
+
+    const auto output = [](const QJsonObject& extra) {
+        QJsonObject object{{QStringLiteral("type"), QStringLiteral("stdout")}};
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            object.insert(it.key(), it.value());
+        }
+        return QJsonArray{object};
+    };
+    CHECK_FALSE(
+        Profile::from_json(with(QStringLiteral("outputs"),
+                                output({{QStringLiteral("encoding"), QStringLiteral("n2k")}})),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("encoding")));
+    CHECK_FALSE(
+        Profile::from_json(
+            with(QStringLiteral("outputs"), output({{QStringLiteral("period_ms"), 10}})), &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("period_ms")));
 }

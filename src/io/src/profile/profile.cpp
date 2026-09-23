@@ -8,6 +8,7 @@
 #include <QSaveFile>
 
 #include <chrono>
+#include <cstdint>
 
 namespace nmeasim::io {
 
@@ -201,6 +202,32 @@ QJsonObject seed_to_json(const core::model::VesselState& seed) {
             {QStringLiteral("coolant_temperature_c"), engine.coolant_temperature_c},
         });
     }
+    QJsonObject ais{
+        {QStringLiteral("mmsi"), static_cast<qint64>(seed.ais.mmsi)},
+        {QStringLiteral("imo_number"), static_cast<qint64>(seed.ais.imo_number)},
+        {QStringLiteral("name"), QString::fromStdString(seed.ais.name)},
+        {QStringLiteral("call_sign"), QString::fromStdString(seed.ais.call_sign)},
+        {QStringLiteral("ship_type"), seed.ais.ship_type},
+        {QStringLiteral("dimension_to_bow_m"), seed.ais.dimension_to_bow_m},
+        {QStringLiteral("dimension_to_stern_m"), seed.ais.dimension_to_stern_m},
+        {QStringLiteral("dimension_to_port_m"), seed.ais.dimension_to_port_m},
+        {QStringLiteral("dimension_to_starboard_m"), seed.ais.dimension_to_starboard_m},
+        {QStringLiteral("draught_m"), seed.ais.draught_m},
+        {QStringLiteral("destination"), QString::fromStdString(seed.ais.destination)},
+        {QStringLiteral("navigation_status"), seed.ais.navigation_status},
+        {QStringLiteral("position_report_type"), seed.ais.position_report_type},
+    };
+    QJsonValue destination = QJsonValue::Null;
+    if (seed.destination) {
+        destination = QJsonObject{
+            {QStringLiteral("name"), QString::fromStdString(seed.destination->name)},
+            {QStringLiteral("latitude"), seed.destination->position.latitude_deg},
+            {QStringLiteral("longitude"), seed.destination->position.longitude_deg},
+            {QStringLiteral("origin_latitude"), seed.destination->origin.latitude_deg},
+            {QStringLiteral("origin_longitude"), seed.destination->origin.longitude_deg},
+            {QStringLiteral("arrival_radius_m"), seed.destination->arrival_radius_m},
+        };
+    }
     return {
         {QStringLiteral("position"),
          QJsonObject{{QStringLiteral("latitude"), navigation.position.latitude_deg},
@@ -218,6 +245,8 @@ QJsonObject seed_to_json(const core::model::VesselState& seed) {
         {QStringLiteral("wind_true_speed_kn"), seed.wind.true_speed_kn},
         {QStringLiteral("gnss"), gnss},
         {QStringLiteral("engines"), engines},
+        {QStringLiteral("destination"), destination},
+        {QStringLiteral("ais"), ais},
     };
 }
 
@@ -276,7 +305,65 @@ core::model::VesselState seed_from_json(const QJsonObject& object,
                                     number(engine, "coolant_temperature_c", 20.0)});
         }
     }
+    if (object.contains(QStringLiteral("destination"))) {
+        const auto value = object.value(QStringLiteral("destination"));
+        if (value.isObject()) {
+            const auto destination = value.toObject();
+            core::model::Destination result;
+            result.name = text(destination, "name", QStringLiteral("WPT")).toStdString();
+            result.position = {number(destination, "latitude", 0.0),
+                               number(destination, "longitude", 0.0)};
+            result.origin = {
+                number(destination, "origin_latitude", seed.navigation.position.latitude_deg),
+                number(destination, "origin_longitude", seed.navigation.position.longitude_deg)};
+            result.arrival_radius_m = number(destination, "arrival_radius_m", 100.0);
+            seed.destination = result;
+        } else {
+            seed.destination.reset();
+        }
+    }
+    const auto ais = object.value(QStringLiteral("ais")).toObject();
+    const auto& ais_fallback = fallback.ais;
+    seed.ais.mmsi =
+        static_cast<std::uint32_t>(ais.value(QStringLiteral("mmsi")).toDouble(ais_fallback.mmsi));
+    seed.ais.imo_number = static_cast<std::uint32_t>(
+        ais.value(QStringLiteral("imo_number")).toDouble(ais_fallback.imo_number));
+    seed.ais.name = text(ais, "name", QString::fromStdString(ais_fallback.name)).toStdString();
+    seed.ais.call_sign =
+        text(ais, "call_sign", QString::fromStdString(ais_fallback.call_sign)).toStdString();
+    seed.ais.ship_type = integer(ais, "ship_type", ais_fallback.ship_type);
+    seed.ais.dimension_to_bow_m =
+        number(ais, "dimension_to_bow_m", ais_fallback.dimension_to_bow_m);
+    seed.ais.dimension_to_stern_m =
+        number(ais, "dimension_to_stern_m", ais_fallback.dimension_to_stern_m);
+    seed.ais.dimension_to_port_m =
+        number(ais, "dimension_to_port_m", ais_fallback.dimension_to_port_m);
+    seed.ais.dimension_to_starboard_m =
+        number(ais, "dimension_to_starboard_m", ais_fallback.dimension_to_starboard_m);
+    seed.ais.draught_m = number(ais, "draught_m", ais_fallback.draught_m);
+    seed.ais.destination =
+        text(ais, "destination", QString::fromStdString(ais_fallback.destination)).toStdString();
+    seed.ais.navigation_status = integer(ais, "navigation_status", ais_fallback.navigation_status);
+    seed.ais.position_report_type =
+        integer(ais, "position_report_type", ais_fallback.position_report_type);
     return seed;
+}
+
+/// A problem with the AIS static data, or an empty string.
+QString validate_ais(const core::model::AisStatic& ais) {
+    if (ais.mmsi > 999'999'999U) {
+        return QStringLiteral("simulation.seed.ais.mmsi must have at most nine digits");
+    }
+    if (ais.ship_type < 0 || ais.ship_type > 255) {
+        return QStringLiteral("simulation.seed.ais.ship_type must be between 0 and 255");
+    }
+    if (ais.navigation_status < 0 || ais.navigation_status > 15) {
+        return QStringLiteral("simulation.seed.ais.navigation_status must be between 0 and 15");
+    }
+    if (ais.position_report_type < 1 || ais.position_report_type > 3) {
+        return QStringLiteral("simulation.seed.ais.position_report_type must be 1, 2 or 3");
+    }
+    return {};
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -286,9 +373,39 @@ QJsonObject output_to_json(const OutputConfig& output) {
     QJsonObject object{
         {QStringLiteral("type"), to_string(output.type)},
         {QStringLiteral("enabled"), output.enabled},
-        {QStringLiteral("encoding"), QStringLiteral("nmea0183")},
+        {QStringLiteral("encoding"), to_string(output.encoding)},
         {QStringLiteral("filter"), QJsonArray::fromStringList(output.filter)},
     };
+    switch (output.encoding) {
+        case OutputConfig::Encoding::Nmea0183:
+            object.insert(
+                QStringLiteral("tag_block"),
+                QJsonObject{
+                    {QStringLiteral("enabled"), output.tag_block.enabled},
+                    {QStringLiteral("source"),
+                     QString::fromStdString(output.tag_block.options.source)},
+                    {QStringLiteral("include_time"), output.tag_block.options.include_time},
+                    {QStringLiteral("milliseconds"), output.tag_block.options.milliseconds}});
+            break;
+        case OutputConfig::Encoding::SignalK:
+            object.insert(QStringLiteral("period_ms"), output.period_ms);
+            object.insert(QStringLiteral("signalk"),
+                          QJsonObject{{QStringLiteral("context"),
+                                       QString::fromStdString(output.signalk.context)},
+                                      {QStringLiteral("source_label"),
+                                       QString::fromStdString(output.signalk.source_label)}});
+            break;
+        case OutputConfig::Encoding::ViewSync:
+            object.insert(QStringLiteral("period_ms"), output.period_ms);
+            object.insert(
+                QStringLiteral("viewsync"),
+                QJsonObject{
+                    {QStringLiteral("camera_altitude_m"), output.viewsync.camera_altitude_m},
+                    {QStringLiteral("tilt_deg"), output.viewsync.tilt_deg},
+                    {QStringLiteral("roll_deg"), output.viewsync.roll_deg},
+                    {QStringLiteral("planet"), QString::fromStdString(output.viewsync.planet)}});
+            break;
+    }
     switch (output.type) {
         case OutputConfig::Type::TcpServer:
         case OutputConfig::Type::WebSocketServer:
@@ -338,11 +455,34 @@ std::optional<OutputConfig> output_from_json(const QJsonObject& object, int inde
     }
     output.type = *type;
     output.enabled = boolean(object, "enabled", true);
-    const auto encoding = text(object, "encoding", QStringLiteral("nmea0183"));
-    if (encoding != QLatin1String("nmea0183")) {
-        *error = QStringLiteral("outputs[%1]: unsupported encoding '%2'").arg(index).arg(encoding);
+    const auto encoding_text = text(object, "encoding", QStringLiteral("nmea0183"));
+    const auto encoding = encoding_from_string(encoding_text);
+    if (!encoding) {
+        *error =
+            QStringLiteral("outputs[%1]: unsupported encoding '%2'").arg(index).arg(encoding_text);
         return std::nullopt;
     }
+    output.encoding = *encoding;
+    output.period_ms = integer(object, "period_ms", 1000);
+    if (output.period_ms < 50 || output.period_ms > 3'600'000) {
+        *error = QStringLiteral("outputs[%1]: period_ms must be between 50 and 3600000").arg(index);
+        return std::nullopt;
+    }
+    const auto tag_block = object.value(QStringLiteral("tag_block")).toObject();
+    output.tag_block.enabled = boolean(tag_block, "enabled", false);
+    output.tag_block.options.source =
+        text(tag_block, "source", QStringLiteral("SIM0001")).toStdString();
+    output.tag_block.options.include_time = boolean(tag_block, "include_time", true);
+    output.tag_block.options.milliseconds = boolean(tag_block, "milliseconds", false);
+    const auto signalk = object.value(QStringLiteral("signalk")).toObject();
+    output.signalk.context = text(signalk, "context").toStdString();
+    output.signalk.source_label =
+        text(signalk, "source_label", QStringLiteral("nmeasim")).toStdString();
+    const auto viewsync = object.value(QStringLiteral("viewsync")).toObject();
+    output.viewsync.camera_altitude_m = number(viewsync, "camera_altitude_m", 500.0);
+    output.viewsync.tilt_deg = number(viewsync, "tilt_deg", 60.0);
+    output.viewsync.roll_deg = number(viewsync, "roll_deg", 0.0);
+    output.viewsync.planet = text(viewsync, "planet").toStdString();
     const auto filter = object.value(QStringLiteral("filter")).toArray();
     for (const auto& value : filter) {
         output.filter.append(value.toString());
@@ -408,6 +548,13 @@ QJsonObject migrate(QJsonObject document, int from_version) {
         }
         document.insert(QStringLiteral("simulation"), simulation);
     }
+    if (from_version < 3) {
+        // Version 3 (milestone M4) added "simulation.seed.destination" and
+        // "simulation.seed.ais", "sentences.custom", and per-output "encoding" values
+        // "signalk" and "viewsync" with their "period_ms", "tag_block", "signalk" and
+        // "viewsync" objects. Every new key has a default, so a version 2 document loads
+        // unchanged; a version 1 or 2 output always carried "nmea0183".
+    }
     document.insert(QStringLiteral("schema_version"), Profile::kCurrentSchemaVersion);
     return document;
 }
@@ -443,6 +590,28 @@ std::optional<OutputConfig::Type> output_type_from_string(const QString& value) 
           OutputConfig::Type::Stdout, OutputConfig::Type::Log}) {
         if (to_string(type) == value) {
             return type;
+        }
+    }
+    return std::nullopt;
+}
+
+QString to_string(OutputConfig::Encoding encoding) {
+    switch (encoding) {
+        case OutputConfig::Encoding::Nmea0183:
+            return QStringLiteral("nmea0183");
+        case OutputConfig::Encoding::SignalK:
+            return QStringLiteral("signalk");
+        case OutputConfig::Encoding::ViewSync:
+            return QStringLiteral("viewsync");
+    }
+    return QStringLiteral("nmea0183");
+}
+
+std::optional<OutputConfig::Encoding> encoding_from_string(const QString& value) {
+    for (const auto encoding : {OutputConfig::Encoding::Nmea0183, OutputConfig::Encoding::SignalK,
+                                OutputConfig::Encoding::ViewSync}) {
+        if (to_string(encoding) == value) {
+            return encoding;
         }
     }
     return std::nullopt;
@@ -502,6 +671,14 @@ QJsonObject Profile::to_json() const {
                 {QStringLiteral("talker"), QString::fromStdString(setting.talker)},
                 {QStringLiteral("period_ms"), static_cast<qint64>(setting.period.count())}});
     }
+    QJsonArray custom;
+    for (const auto& sentence : custom_sentences) {
+        custom.append(
+            QJsonObject{{QStringLiteral("id"), QString::fromStdString(sentence.id)},
+                        {QStringLiteral("body"), QString::fromStdString(sentence.body)},
+                        {QStringLiteral("period_ms"), static_cast<qint64>(sentence.period.count())},
+                        {QStringLiteral("enabled"), sentence.enabled}});
+    }
     QJsonArray output_array;
     for (const auto& output : outputs) {
         output_array.append(output_to_json(output));
@@ -542,7 +719,8 @@ QJsonObject Profile::to_json() const {
          }},
         {QStringLiteral("sentences"),
          QJsonObject{{QStringLiteral("position_decimals"), encoder.position_decimals},
-                     {QStringLiteral("settings"), sentence_settings}}},
+                     {QStringLiteral("settings"), sentence_settings},
+                     {QStringLiteral("custom"), custom}}},
         {QStringLiteral("outputs"), output_array},
     };
 }
@@ -596,6 +774,10 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
     }
     profile.delta.seed =
         seed_from_json(simulation.value(QStringLiteral("seed")).toObject(), profile.delta.seed);
+    if (const auto problem = validate_ais(profile.delta.seed.ais); !problem.isEmpty()) {
+        *err = problem;
+        return std::nullopt;
+    }
     const auto variation = simulation.value(QStringLiteral("variation")).toObject();
     profile.delta.heading =
         variation_from_json(variation.value(QStringLiteral("heading")), profile.delta.heading);
@@ -666,6 +848,34 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         profile.sentences[id] = setting;
     }
 
+    const auto custom = sentences.value(QStringLiteral("custom")).toArray();
+    for (qsizetype i = 0; i < custom.size(); ++i) {
+        const auto object = custom.at(i).toObject();
+        core::simulation::CustomSentence sentence;
+        sentence.id = text(object, "id").trimmed().toUpper().toStdString();
+        sentence.body = text(object, "body").toStdString();
+        sentence.period = std::chrono::milliseconds{integer(object, "period_ms", 1000)};
+        sentence.enabled = boolean(object, "enabled", true);
+        if (const auto problem = core::simulation::validate_custom_sentence(sentence.body)) {
+            *err = QStringLiteral("sentences.custom[%1]: %2")
+                       .arg(i)
+                       .arg(QString::fromStdString(*problem));
+            return std::nullopt;
+        }
+        if (registry.find(sentence.id) != nullptr) {
+            *err = QStringLiteral("sentences.custom[%1]: id '%2' is a registry sentence")
+                       .arg(i)
+                       .arg(QString::fromStdString(sentence.id));
+            return std::nullopt;
+        }
+        if (sentence.period.count() < 50 || sentence.period.count() > 3'600'000) {
+            *err = QStringLiteral("sentences.custom[%1]: period_ms must be between 50 and 3600000")
+                       .arg(i);
+            return std::nullopt;
+        }
+        profile.custom_sentences.push_back(sentence);
+    }
+
     const auto outputs = json.value(QStringLiteral("outputs")).toArray();
     for (qsizetype i = 0; i < outputs.size(); ++i) {
         auto output = output_from_json(outputs.at(i).toObject(), static_cast<int>(i), err);
@@ -727,6 +937,7 @@ core::simulation::SentenceScheduler Profile::make_scheduler() const {
     for (const auto& [id, setting] : sentences) {
         scheduler.configure(id, setting);
     }
+    scheduler.set_custom_sentences(custom_sentences);
     return scheduler;
 }
 

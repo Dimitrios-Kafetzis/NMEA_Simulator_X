@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <format>
 #include <iostream>
@@ -86,6 +87,10 @@ struct RunOptions {
     std::vector<std::string> files;
     std::vector<std::string> enable;
     std::vector<std::string> disable;
+    std::string encoding{"nmea0183"};
+    bool tag_block{false};
+    std::string tag_source;
+    std::string destination;
 };
 
 /// Splits "host:port" into its parts; returns nullopt when malformed.
@@ -131,6 +136,13 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
                      !options.serial_ports.empty() || !options.files.empty();
     if (!any) {
         return true;
+    }
+    const auto encoding =
+        nmeasim::io::encoding_from_string(QString::fromStdString(options.encoding));
+    if (!encoding) {
+        error = std::format("--encoding must be nmea0183, signalk or viewsync, got '{}'",
+                            options.encoding);
+        return false;
     }
     profile.outputs.clear();
     for (const int port : options.tcp_ports) {
@@ -184,6 +196,38 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
         output.type = OutputConfig::Type::Stdout;
         profile.outputs.append(output);
     }
+    for (auto& output : profile.outputs) {
+        output.encoding = *encoding;
+        output.tag_block.enabled = options.tag_block;
+        if (!options.tag_source.empty()) {
+            output.tag_block.options.source = options.tag_source;
+        }
+    }
+    return true;
+}
+
+/// Applies --destination "lat,lon[,name]" to the profile seed.
+bool apply_destination(const RunOptions& options, nmeasim::io::Profile& profile,
+                       std::string& error) {
+    if (options.destination.empty()) {
+        return true;
+    }
+    const auto parts = QString::fromStdString(options.destination).split(QLatin1Char(','));
+    bool lat_ok = false;
+    bool lon_ok = false;
+    const double latitude = parts.size() >= 2 ? parts[0].trimmed().toDouble(&lat_ok) : 0.0;
+    const double longitude = parts.size() >= 2 ? parts[1].trimmed().toDouble(&lon_ok) : 0.0;
+    if (!lat_ok || !lon_ok || std::fabs(latitude) > 90.0 || std::fabs(longitude) > 180.0) {
+        error = std::format("--destination expects LAT,LON[,NAME], got '{}'", options.destination);
+        return false;
+    }
+    nmeasim::core::model::Destination destination;
+    destination.position = {latitude, longitude};
+    destination.origin = profile.delta.seed.navigation.position;
+    if (parts.size() >= 3 && !parts[2].trimmed().isEmpty()) {
+        destination.name = parts[2].trimmed().toStdString();
+    }
+    profile.delta.seed.destination = destination;
     return true;
 }
 
@@ -270,7 +314,8 @@ int run_simulation(const RunOptions& options) {
     }
     std::string error;
     if (!apply_output_overrides(options, profile, error) ||
-        !apply_sentence_overrides(options, profile, error)) {
+        !apply_sentence_overrides(options, profile, error) ||
+        !apply_destination(options, profile, error)) {
         std::cerr << "error: " << error << '\n';
         return 2;
     }
@@ -439,6 +484,18 @@ int main(int argc, char** argv) {
     run->add_option("--file", options.files, "Append sentences to this file (repeatable)");
     run->add_option("--enable", options.enable, "Enable a sentence id such as MWV-T (repeatable)");
     run->add_option("--disable", options.disable, "Disable a sentence id such as GSV (repeatable)");
+    run->add_option("--encoding", options.encoding,
+                    "Encoding of the outputs given on the command line: nmea0183 (default), "
+                    "signalk or viewsync");
+    run->add_flag("--tag-block", options.tag_block,
+                  "Prefix every sentence of the command-line outputs with an IEC 61162-450 "
+                  "TAG block");
+    run->add_option("--tag-source", options.tag_source,
+                    "Source identifier of the TAG block (default: SIM0001)")
+        ->needs("--tag-block");
+    run->add_option("--destination", options.destination,
+                    "Steer for a waypoint given as LAT,LON[,NAME] so that APB, RMB and XTE "
+                    "are sent");
 
     auto* profile = cli.add_subcommand("profile", "Create or inspect profile files");
     profile->require_subcommand(1);

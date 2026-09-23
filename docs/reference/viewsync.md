@@ -4,7 +4,8 @@ An output with the `viewsync` encoding sends the UDP packets that Google Earth a
 [Liquid Galaxy](https://github.com/LiquidGalaxy/liquid-galaxy/wiki/GoogleEarth_ViewSync)
 use to synchronise their camera, so that Google Earth follows the simulated vessel. Use a
 UDP output pointed at the machine running Google Earth, with ViewSync enabled there in
-*Tools → Options → Navigation* or through its `drivers.ini`.
+*Tools → Options → Navigation* or through its `drivers.ini`. The
+[how-to guide](../how-to/google-earth.md) walks through the setup.
 
 ## Packet layout
 

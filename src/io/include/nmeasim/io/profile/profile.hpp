@@ -1,8 +1,12 @@
 #pragma once
 
 #include <nmeasim/core/nmea0183/encoders.hpp>
+#include <nmeasim/core/nmea0183/tag_block.hpp>
+#include <nmeasim/core/signalk/delta.hpp>
+#include <nmeasim/core/simulation/custom_sentence.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
+#include <nmeasim/core/viewsync/viewsync.hpp>
 #include <nmeasim/io/transports/serial_transport.hpp>
 #include <nmeasim/io/transports/udp_transport.hpp>
 
@@ -15,6 +19,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 /// A profile is everything needed to run the simulator: the simulation seed and behaviour,
 /// the sentence schedule and the outputs. Profiles are stored as JSON with a schema version
@@ -34,15 +39,33 @@ struct OutputConfig {
         /// A recording: every line prefixed with the wall-clock time, see ADR 0012.
         Log,
     };
+    /// What the output carries, see ADR 0014.
     enum class Encoding {
+        /// The NMEA 0183 sentences the simulation emits.
         Nmea0183,
+        /// Signal K delta messages built from the state on this output's period.
+        SignalK,
+        /// ViewSync camera packets built from the state on this output's period.
+        ViewSync,
+    };
+
+    /// IEC 61162-450 TAG block in front of every sentence of an NMEA 0183 output.
+    struct TagBlock {
+        bool enabled{false};
+        core::nmea0183::TagBlockOptions options;
     };
 
     Type type{Type::TcpServer};
     bool enabled{true};
     Encoding encoding{Encoding::Nmea0183};
-    /// Registry ids to send on this output; empty sends everything.
+    /// Registry ids to send on this output; empty sends everything. For a Signal K output
+    /// the entries are path prefixes instead.
     QStringList filter;
+    /// Period of the messages of a Signal K or ViewSync output.
+    int period_ms{1000};
+    TagBlock tag_block;
+    core::signalk::SignalKOptions signalk;
+    core::viewsync::ViewSyncOptions viewsync;
 
     // TCP server and WebSocket server
     QString bind_address{QStringLiteral("0.0.0.0")};
@@ -61,6 +84,8 @@ struct OutputConfig {
 
 [[nodiscard]] QString to_string(OutputConfig::Type type);
 [[nodiscard]] std::optional<OutputConfig::Type> output_type_from_string(const QString& text);
+[[nodiscard]] QString to_string(OutputConfig::Encoding encoding);
+[[nodiscard]] std::optional<OutputConfig::Encoding> encoding_from_string(const QString& text);
 
 /// What drives the vessel.
 enum class SimulationMode {
@@ -98,7 +123,7 @@ struct ReplaySettings {
 
 struct Profile {
     /// The schema version this code writes. Older files are migrated on load.
-    static constexpr int kCurrentSchemaVersion{2};
+    static constexpr int kCurrentSchemaVersion{3};
 
     QString name{QStringLiteral("Default")};
     /// Length of one simulation tick.
@@ -113,6 +138,8 @@ struct Profile {
     core::nmea0183::EncoderOptions encoder;
     /// Sentence settings that differ from the registry defaults, keyed by registry id.
     std::map<std::string, core::simulation::SentenceSetting> sentences;
+    /// Sentences typed in by the operator, in emission order.
+    std::vector<core::simulation::CustomSentence> custom_sentences;
     QList<OutputConfig> outputs;
 
     /// A ready-to-run profile: a vessel off Athens, every default sentence, a TCP server on
@@ -127,7 +154,7 @@ struct Profile {
     [[nodiscard]] static std::optional<Profile> load(const QString& path, QString* error);
     [[nodiscard]] bool save(const QString& path, QString* error) const;
 
-    /// Builds a scheduler with this profile's sentence settings applied.
+    /// Builds a scheduler with this profile's sentence settings and custom sentences applied.
     [[nodiscard]] core::simulation::SentenceScheduler make_scheduler() const;
 };
 

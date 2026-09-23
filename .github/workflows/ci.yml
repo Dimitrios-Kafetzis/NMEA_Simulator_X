@@ -99,6 +99,8 @@ jobs:
           "$NMEASIM" run --record recorded.log --stdout --quiet --duration 1 > /dev/null
           test -s recorded.log && head -3 recorded.log
           "$NMEASIM" run --replay recorded.log --stdout --quiet | wc -l
+          "$NMEASIM" run --stdout --quiet --duration 1 --encoding signalk | head -2
+          "$NMEASIM" run --stdout --quiet --duration 1 --encoding viewsync | head -2
 
       - name: Set up Python for the stream cross-check
         uses: actions/setup-python@v7
@@ -114,8 +116,12 @@ jobs:
           "$NMEASIM" run --stdout --quiet --duration 3 --enable MWV-T | python3 tools/check_nmea_stream.py --expect 21
           "$NMEASIM" run --track samples/saronic-gulf.gpx --stdout --quiet --duration 2 | python3 tools/check_nmea_stream.py --expect 20
           "$NMEASIM" run --replay tests/fixtures/logs/recorded.log --stdout --quiet | python3 tools/check_nmea_stream.py --expect 8
+          "$NMEASIM" run --stdout --quiet --duration 2 --destination 37.7466,23.4275,AEGINA | python3 tools/check_nmea_stream.py --expect 24
           python3 tools/check_ais_stream.py --mmsi 239000001 --name "NMEA SIMULATOR X" --callsign SIMX < tests/fixtures/ais/own_vessel.nmea
           "$NMEASIM" run --stdout --quiet --duration 2 --enable VDM-POS --enable VDM-STATIC | python3 tools/check_ais_stream.py --mmsi 239000001 --name "NMEA SIMULATOR X" --callsign SIMX
+          "$NMEASIM" run --stdout --quiet --duration 2 --encoding signalk --destination 37.7466,23.4275,AEGINA | python3 tools/check_signalk_stream.py --context vessels.urn:mrn:imo:mmsi:239000001 --require-path navigation.position --require-path navigation.courseRhumbline.crossTrackError --require-path propulsion.port.revolutions
+          python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
+          "$NMEASIM" run --stdout --quiet --duration 2 --encoding viewsync | python3 tools/check_viewsync_stream.py
 
   format:
     name: Code formatting

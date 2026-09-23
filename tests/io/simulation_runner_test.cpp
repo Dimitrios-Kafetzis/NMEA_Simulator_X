@@ -7,16 +7,23 @@
 #include <nmeasim/io/simulation_runner.hpp>
 #include <nmeasim/io/transports/log_transport.hpp>
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
+#include <nmeasim/io/transports/websocket_server_transport.hpp>
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTimeZone>
+#include <QUrl>
+#include <QWebSocket>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <string>
@@ -392,4 +399,130 @@ TEST_CASE("recording writes every emitted sentence to a log next to the outputs"
     CHECK(errors.count() == 1);
     CHECK(runner.is_running());
     runner.stop();
+}
+
+TEST_CASE("Signal K outputs greet with hello and send deltas on their own period",
+          "[io][runner][signalk][integration]") {
+    Profile profile = fast_profile();
+    profile.delta.seed.destination =
+        nmeasim::core::model::Destination{"AEGINA", {37.7466, 23.4275}, {38.0, 23.7}};
+    OutputConfig websocket;
+    websocket.type = OutputConfig::Type::WebSocketServer;
+    websocket.port = 0;
+    websocket.bind_address = QStringLiteral("127.0.0.1");
+    websocket.encoding = OutputConfig::Encoding::SignalK;
+    websocket.period_ms = 100;
+    websocket.signalk.context = "aircraft.urn:mrn:signalk:uuid:test";
+    profile.outputs.append(websocket);
+    OutputConfig wind_only;
+    wind_only.type = OutputConfig::Type::File;
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    wind_only.path = directory.filePath(QStringLiteral("wind.jsonl"));
+    wind_only.encoding = OutputConfig::Encoding::SignalK;
+    wind_only.period_ms = 100;
+    wind_only.filter = {QStringLiteral("environment.wind")};
+    profile.outputs.append(wind_only);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    runner.start();
+    const auto* server = dynamic_cast<const nmeasim::io::WebSocketServerTransport*>(
+        runner.outputs()[0].transport.get());
+    REQUIRE(server != nullptr);
+    REQUIRE(server->is_open());
+    CHECK(server->greeting().startsWith(QStringLiteral("{\"name\":\"NMEASimulatorX\"")));
+    CHECK(server->greeting().contains(
+        QStringLiteral("\"self\":\"aircraft.urn:mrn:signalk:uuid:test\"")));
+
+    QWebSocket client;
+    QStringList received;
+    QObject::connect(&client, &QWebSocket::textMessageReceived, &client,
+                     [&received](const QString& message) { received.append(message); });
+    client.open(QUrl(QStringLiteral("ws://127.0.0.1:%1").arg(server->port())));
+    REQUIRE(wait_until([&] { return received.size() >= 4; }, 5000));
+    runner.stop();
+    CHECK(received.first() == server->greeting());
+    const auto delta = QJsonDocument::fromJson(received.at(1).toUtf8());
+    REQUIRE(delta.isObject());
+    CHECK(delta.object().value(QStringLiteral("context")).toString() ==
+          QStringLiteral("aircraft.urn:mrn:signalk:uuid:test"));
+    const auto values = delta.object()
+                            .value(QStringLiteral("updates"))
+                            .toArray()
+                            .first()
+                            .toObject()
+                            .value(QStringLiteral("values"))
+                            .toArray();
+    QStringList paths;
+    for (const auto& value : values) {
+        paths.append(value.toObject().value(QStringLiteral("path")).toString());
+    }
+    CHECK(paths.contains(QStringLiteral("navigation.position")));
+    CHECK(paths.contains(QStringLiteral("navigation.courseRhumbline.crossTrackError")));
+    CHECK(paths.contains(QStringLiteral("propulsion.port.revolutions")));
+
+    // The filtered file output carries wind paths only, and the console signal saw deltas.
+    const auto lines = read_sentences(wind_only.path);
+    REQUIRE_FALSE(lines.empty());
+    for (const auto& line : lines) {
+        CHECK(line.find("environment.wind.") != std::string::npos);
+        CHECK(line.find("navigation.") == std::string::npos);
+    }
+    bool signalk_seen = false;
+    for (const auto& call : emitted) {
+        signalk_seen = signalk_seen || call.at(0).toString() == QStringLiteral("SIGNALK");
+    }
+    CHECK(signalk_seen);
+    CHECK(runner.outputs()[1].sentences_sent == static_cast<qint64>(lines.size()));
+}
+
+TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
+          "[io][runner][integration]") {
+    Profile profile = fast_profile();
+    profile.custom_sentences = {{"BARO", "$IIXDR,P,1.013,B,BARO", 100ms, true}};
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig viewsync;
+    viewsync.type = OutputConfig::Type::File;
+    viewsync.path = directory.filePath(QStringLiteral("viewsync.txt"));
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    viewsync.period_ms = 100;
+    viewsync.viewsync.planet = "mars";
+    profile.outputs.append(viewsync);
+    OutputConfig tagged;
+    tagged.type = OutputConfig::Type::File;
+    tagged.path = directory.filePath(QStringLiteral("tagged.nmea"));
+    tagged.tag_block.enabled = true;
+    tagged.tag_block.options.source = "GP0001";
+    tagged.filter = {QStringLiteral("RMC"), QStringLiteral("BARO")};
+    profile.outputs.append(tagged);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    runner.start();
+    REQUIRE(wait_until([&] { return runner.outputs()[0].sentences_sent >= 3; }, 5000));
+    runner.stop();
+
+    const auto packets = read_sentences(viewsync.path);
+    REQUIRE(packets.size() >= 3);
+    CHECK(packets[0].starts_with("0,37.98"));
+    CHECK(packets[1].starts_with("1,37.98"));
+    CHECK(packets[0].ends_with(",mars"));
+    CHECK(std::count(packets[0].begin(), packets[0].end(), ',') == 9);
+
+    const auto lines = read_sentences(tagged.path);
+    REQUIRE_FALSE(lines.empty());
+    bool baro_seen = false;
+    for (const auto& line : lines) {
+        CHECK(line.starts_with("\\s:GP0001,c:"));
+        const auto sentence = line.substr(line.find('\\', 1) + 1);
+        CHECK(nmeasim::core::nmea0183::verify_checksum(sentence));
+        CHECK((sentence.starts_with("$GPRMC,") || sentence == "$IIXDR,P,1.013,B,BARO*6F"));
+        baro_seen = baro_seen || sentence.starts_with("$IIXDR");
+    }
+    CHECK(baro_seen);
 }
