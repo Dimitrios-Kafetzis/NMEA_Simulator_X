@@ -532,9 +532,9 @@ void MainWindow::build_docks() {
         action->setChecked(theme::Theme::instance().mode() == mode);
         theme_group->addAction(action);
         theme_actions_.append(action);
-        connect(action, &QAction::triggered, this, [this, mode = mode] {
-            theme::Theme::instance().apply(mode);
-            settings_.set_theme(theme::to_string(mode));
+        connect(action, &QAction::triggered, this, [this, chosen = mode] {
+            theme::Theme::instance().apply(chosen);
+            settings_.set_theme(theme::to_string(chosen));
         });
     }
 }
