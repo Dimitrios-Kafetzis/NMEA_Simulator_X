@@ -91,7 +91,7 @@ Build output lands in `build/<preset>/`. The desktop application is
 | `windows-vs` | Generates a Visual Studio 2022 solution |
 | `release` | Optimised build without tests, used for packaging on Linux and macOS |
 | `release-windows` | The same with MSVC and statically linked vcpkg dependencies |
-| `ci-linux`, `ci-windows`, `ci-macos` | What CI runs: warnings are errors and, on Linux, sanitizers are on |
+| `ci-linux`, `ci-windows`, `ci-macos` | What CI runs: warnings are errors and, on Linux, sanitizers and coverage instrumentation are on |
 
 Options can be overridden on the command line, for example
 `cmake --preset dev -DNMEASIM_BUILD_APP=OFF` to skip the Qt Widgets application.
@@ -123,6 +123,22 @@ taken by a hidden test:
 ```bash
 NMEASIM_SCREENSHOT_DIR=docs/assets/screenshots build/dev/tests/nmeasim_app_tests "[.screenshot]"
 ```
+
+## Measuring coverage
+
+The `ci-linux` preset sets `NMEASIM_ENABLE_COVERAGE=ON`, which compiles first-party code with
+`--coverage`. After running the tests (and, if you like, the command-line tool):
+
+```bash
+pip install gcovr
+gcovr --root . --filter src/ --json-summary coverage.json --html-nested coverage/index.html
+python3 tools/coverage_summary.py coverage.json
+```
+
+The summary lists line and function coverage per library and fails when `core` is below
+the 90 percent line coverage that [ADR 0008](../adr/0008-testing-strategy.md) sets. CI
+prints the same table in the summary of the *Linux (GCC)* job of every pull request and keeps
+the HTML report as the `coverage-report` artifact.
 
 ## Formatting and static analysis
 

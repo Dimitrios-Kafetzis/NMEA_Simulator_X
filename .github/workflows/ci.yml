@@ -140,6 +140,25 @@ jobs:
           python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
           "$NMEASIM" run --stdout --quiet --duration 2 --encoding viewsync | python3 tools/check_viewsync_stream.py
 
+      # The ci-linux preset instruments the build for gcov; the report runs last so that the
+      # smoke tests above count towards the coverage of the command-line tool.
+      - name: Coverage report
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          pip install gcovr==8.6
+          mkdir -p coverage
+          gcovr --root . --filter src/ --json-summary coverage.json --html-nested coverage/index.html
+          python3 tools/coverage_summary.py coverage.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the coverage report
+        if: runner.os == 'Linux' && always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/
+          if-no-files-found: ignore
+
   format:
     name: Code formatting
     runs-on: ubuntu-24.04
