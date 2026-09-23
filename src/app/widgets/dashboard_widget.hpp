@@ -6,6 +6,7 @@
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSpinBox>
@@ -16,7 +17,9 @@
 
 namespace nmeasim::app {
 
+class CompassDial;
 class InstrumentTile;
+class WindDial;
 
 /// One engine on the dashboard: its label, a running switch and editable revolutions and
 /// coolant temperature.
@@ -46,7 +49,9 @@ private:
 /// Formats a position as degrees and decimal minutes with hemisphere letters.
 [[nodiscard]] QString format_position(const core::geo::Position& position);
 
-/// The instrument grid. Displays the vessel state and lets the operator override values.
+/// The instruments: a compass rose and a wind dial with the position, time and GNSS tiles on
+/// top, the grid of digital tiles below. Displays the vessel state and lets the operator
+/// override values. The whole dashboard scrolls when the window is too small for it.
 class DashboardWidget : public QWidget {
     Q_OBJECT
 
@@ -67,6 +72,8 @@ public:
     [[nodiscard]] int engine_count() const noexcept { return static_cast<int>(engines_.size()); }
     [[nodiscard]] EngineTile* engine_tile(int index) const;
     [[nodiscard]] QString destination_text() const;
+    [[nodiscard]] CompassDial* compass_dial() const noexcept { return compass_; }
+    [[nodiscard]] WindDial* wind_dial() const noexcept { return wind_; }
 
 signals:
     void override_changed(nmeasim::core::simulation::Parameter parameter, bool active,
@@ -78,12 +85,18 @@ signals:
 
 private:
     InstrumentTile* add_tile(const QString& title, const QString& unit, int row, int column);
+    /// A framed panel with a caption around a dial.
+    QFrame* dial_panel(const QString& title, QWidget* dial);
     /// Rebuilds the engine tiles when the number or the labels of the engines change.
     void sync_engines(const std::vector<core::model::Engine>& engines);
     InstrumentTile* add_controllable(core::simulation::Parameter parameter, const QString& title,
                                      const QString& unit, int row, int column, double minimum,
                                      double maximum, double step, int decimals);
 
+    QWidget* content_;
+    QGridLayout* grid_;
+    CompassDial* compass_;
+    WindDial* wind_;
     std::map<core::simulation::Parameter, InstrumentTile*> controls_;
     InstrumentTile* position_tile_;
     InstrumentTile* time_tile_;

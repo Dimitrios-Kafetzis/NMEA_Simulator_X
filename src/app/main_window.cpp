@@ -155,7 +155,14 @@ MainWindow::MainWindow(QWidget* parent)
             });
 
     restoreGeometry(settings_.window_geometry());
-    restoreState(settings_.window_state());
+    if (!restoreState(settings_.window_state())) {
+        // First start: room for the map and the instruments, a short console.
+        auto* map_dock = findChild<QDockWidget*>(QStringLiteral("map_dock"));
+        auto* outputs_dock = findChild<QDockWidget*>(QStringLiteral("outputs_dock"));
+        auto* console_dock = findChild<QDockWidget*>(QStringLiteral("console_dock"));
+        resizeDocks({map_dock, outputs_dock}, {400, 260}, Qt::Horizontal);
+        resizeDocks({console_dock}, {170}, Qt::Vertical);
+    }
     autostart_action_->setChecked(settings_.autostart());
 
     set_profile(profile_);

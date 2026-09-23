@@ -17,14 +17,15 @@ profile used is reopened, and if there is none the built-in default profile is u
 
 | Area | Contents | Can be hidden |
 | --- | --- | --- |
-| Dashboard (central) | Instrument tiles with override controls | No |
+| Dashboard (central) | Compass rose and wind dial, then instrument tiles with override controls; scrolls when the window is small | No |
 | Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
 | Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
 | Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the sentence counter. Errors appear here for ten seconds | No |
 
 Docks can be moved to any edge, stacked, floated or closed. Geometry and dock layout are
-saved on exit and restored at the next start.
+saved on exit and restored at the next start; the first start gives the map about 400 pixels,
+the outputs about 260 and the console about 170.
 
 ## Actions and shortcuts
 
@@ -105,11 +106,20 @@ The main window must have focus; click on the dashboard if the arrow keys do not
 A nudge sets an override on the parameter, which pins it at the new value until the override
 is cleared from the tile.
 
+## Dashboard instruments
+
+The top row holds two round instruments and the position, time and GNSS tiles:
+
+| Instrument | Shows |
+| --- | --- |
+| Compass | North-up rose with 5° ticks. The heading is the cyan pointer, the course over ground a green triangle on the ring and, with a destination, the bearing to it a magenta diamond. The centre reads *HDG*, and below it *COG* and *BRG* |
+| Wind | Angles relative to the bow, with the close-hauled sectors (20° to 60°) red to port and green to starboard. The apparent wind is the cyan arrow, the true wind the hollow triangle. The centre reads the apparent wind speed (*AWS*), the apparent wind angle (*AWA*), the true wind angle (*TWA*) and speed (*TWS*); angles are written as sailors say them, `104°P` to port, `30°S` to starboard |
+
 ## Dashboard tiles
 
 | Tile | Shows | Override |
 | --- | --- | --- |
-| Position | Latitude and longitude in degrees and decimal minutes | No |
+| Position | Latitude and longitude in degrees and decimal minutes, on two lines | No |
 | Time (UTC) | Simulated clock | No |
 | GNSS | Fix state, satellites in use, HDOP | *Fix* check box, *Satellites* spin box (0 to 12) |
 | Heading | True heading | Yes, 0 to 359.9°; disabled in steering mode |

@@ -64,6 +64,7 @@ endif()
 if(NMEASIM_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
     add_executable(nmeasim_app_tests
+        app/dials_test.cpp
         app/main.cpp
         app/main_window_test.cpp
         app/map_test.cpp
