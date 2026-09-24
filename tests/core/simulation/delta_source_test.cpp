@@ -5,8 +5,9 @@
 ///
 /// The cases cover the start from the seed, motion along a held heading, the derived
 /// apparent wind, the drift bounds and their wrap across north, reproducible runs, operator
-/// overrides and nudges of every `nmeasim::core::simulation::Parameter`, rudder steering,
-/// values the host sets directly, reset, and the destination and engines that survive it.
+/// overrides and nudges of every `nmeasim::core::simulation::Parameter`, the value an
+/// override reports, the return of a released value to its band, rudder steering, values
+/// the host sets directly, reset, and the destination and engines that survive it.
 /// No fixture file is read; the seed is `nmeasim::test::fixture_state`.
 
 #include "core/fixtures.hpp"
@@ -211,18 +212,88 @@ TEST_CASE("every parameter can be overridden and nudged within its range", "[sim
     CHECK(state.wind.true_speed_kn == Approx(7.0));
 
     // The rudder is clamped to the default 35 degrees either side. The nudge starts from the
-    // clamped 35, so the override becomes -45 and the state shows -35.
+    // clamped 35 and -45 is clamped to -35, which is also the value the override reports.
     source.set_override(sim::Parameter::RudderAngle, 50.0);
     CHECK(state.steering.rudder_angle_deg == Approx(35.0));
+    CHECK(source.override_value(sim::Parameter::RudderAngle) == Approx(35.0));
     source.nudge(sim::Parameter::RudderAngle, -80.0);
     CHECK(state.steering.rudder_angle_deg == Approx(-35.0));
-    CHECK(source.override_value(sim::Parameter::RudderAngle) == Approx(-45.0));
+    CHECK(source.override_value(sim::Parameter::RudderAngle) == Approx(-35.0));
 
     // Overridden values stay put while the simulation advances.
     source.advance(1000ms);
     CHECK(state.navigation.altitude_m == Approx(160.5));
     CHECK(state.water.temperature_c == Approx(2.5));
     CHECK(state.wind.true_direction_deg == Approx(355.0));
+}
+
+TEST_CASE("an override reports the value the simulation uses", "[simulation][delta]") {
+    sim::DeltaSource source(frozen_config());
+
+    // Normalised into [0, 360) and raised to zero, as the state holds them.
+    source.set_override(sim::Parameter::HeadingTrue, -30.0);
+    CHECK(source.override_value(sim::Parameter::HeadingTrue) == Approx(330.0));
+    source.set_override(sim::Parameter::SpeedOverGround, -2.0);
+    CHECK(source.override_value(sim::Parameter::SpeedOverGround) == Approx(0.0));
+    source.set_override(sim::Parameter::WindDirectionTrue, 725.0);
+    CHECK(source.override_value(sim::Parameter::WindDirectionTrue) == Approx(5.0));
+    source.nudge(sim::Parameter::WindDirectionTrue, -10.0);
+    CHECK(source.override_value(sim::Parameter::WindDirectionTrue) == Approx(355.0));
+}
+
+TEST_CASE("in steering mode a heading override reports the heading the rudder produces",
+          "[simulation][delta]") {
+    sim::DeltaSource source(frozen_config());
+    source.set_override(sim::Parameter::HeadingTrue, 90.0);
+    source.set_steering_mode(true);
+    // 10 degrees of rudder turn 6 degrees per minute: 090 to 096 in a minute.
+    source.set_override(sim::Parameter::RudderAngle, 10.0);
+    source.advance(60s);
+    CHECK(source.current().navigation.heading_true_deg == Approx(96.0));
+    CHECK(source.override_value(sim::Parameter::HeadingTrue) == Approx(96.0));
+
+    // Leaving steering mode, the override holds the heading where the rudder left it.
+    source.set_steering_mode(false);
+    source.advance(60s);
+    CHECK(source.current().navigation.heading_true_deg == Approx(96.0));
+    CHECK(source.override_value(sim::Parameter::HeadingTrue) == Approx(96.0));
+}
+
+TEST_CASE("a released value pinned outside its band drifts back at its step rate",
+          "[simulation][delta]") {
+    auto config = frozen_config();
+    // Seed 6.5 knots, so the band is [5.5, 7.5] and the value moves at most 0.5 knots a second.
+    config.speed = {1.0, 0.5};
+    // Seed 045, band [040, 050], at most 2 degrees a second.
+    config.heading = {5.0, 2.0};
+    sim::DeltaSource source(config);
+    source.set_override(sim::Parameter::SpeedOverGround, 20.0);
+    source.set_override(sim::Parameter::HeadingTrue, 90.0);
+    source.clear_override(sim::Parameter::SpeedOverGround);
+    source.clear_override(sim::Parameter::HeadingTrue);
+
+    // Outside the band every step moves the value a full step towards it.
+    source.advance(1000ms);
+    CHECK(source.current().navigation.speed_over_ground_kn == Approx(19.5));
+    CHECK(source.current().navigation.heading_true_deg == Approx(88.0));
+    CHECK(source.current().navigation.rate_of_turn_deg_per_min == Approx(-120.0));
+    for (int i = 0; i < 9; ++i) {
+        source.advance(1000ms);
+    }
+    CHECK(source.current().navigation.speed_over_ground_kn == Approx(15.0));
+    CHECK(source.current().navigation.heading_true_deg == Approx(70.0));
+
+    // Once back inside the band the value walks at random and stays there.
+    for (int i = 0; i < 100; ++i) {
+        source.advance(1000ms);
+    }
+    for (int i = 0; i < 100; ++i) {
+        const auto& state = source.advance(1000ms);
+        CHECK(state.navigation.speed_over_ground_kn >= 5.5 - 1e-9);
+        CHECK(state.navigation.speed_over_ground_kn <= 7.5 + 1e-9);
+        CHECK(std::fabs(std::remainder(state.navigation.heading_true_deg - 45.0, 360.0)) <=
+              5.0 + 1e-9);
+    }
 }
 
 TEST_CASE("the delta source ignores the transport controls of replay sources",

@@ -17,7 +17,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <optional>
 #include <string>
+#include <string_view>
 
 using Catch::Approx;
 using namespace std::chrono_literals;
@@ -110,6 +112,72 @@ TEST_CASE("field helpers parse coordinates, times, dates and numbers", "[nmea018
     CHECK_FALSE(nmea::parse_number_field("-").has_value());
 }
 
+TEST_CASE("field helpers reject signs, extra degree digits and days a month lacks",
+          "[nmea0183][decoder]") {
+    // The hemisphere letter carries the sign: a signed value is malformed.
+    CHECK_FALSE(nmea::parse_coordinate("-3759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("+3759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("-02343.6500", "E").has_value());
+    // A latitude has at most two degree digits and a longitude at most three.
+    CHECK_FALSE(nmea::parse_coordinate("03759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("003759.0280", "S").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("002343.6500", "E").has_value());
+    CHECK(nmea::parse_coordinate("2343.6500", "E") == Approx(23.7275).epsilon(1e-6));
+    CHECK(nmea::parse_coordinate("0000.0000", "N") == Approx(0.0));
+    CHECK(nmea::parse_coordinate("18000.0000", "W") == Approx(-180.0));
+    CHECK(nmea::parse_coordinate(" 3759.0280 ", "N") == Approx(37.9838).epsilon(1e-6));
+
+    // Day 31 exists only in some months; 29 February only in leap years. Two-digit years
+    // below 80 are 20xx: 2000 and 2024 are leap years, 2100 is out of reach and 2026 is not.
+    CHECK_FALSE(nmea::parse_date("310426").has_value());
+    CHECK_FALSE(nmea::parse_date("310926").has_value());
+    CHECK_FALSE(nmea::parse_date("300226").has_value());
+    CHECK_FALSE(nmea::parse_date("290226").has_value());
+    CHECK_FALSE(nmea::parse_date("000126").has_value());
+    CHECK(nmea::parse_date("290224").has_value());
+    CHECK(nmea::parse_date("290200").has_value());
+    CHECK(nmea::parse_date("310126").has_value());
+    CHECK(nmea::parse_date("300426").has_value());
+}
+
+TEST_CASE("a ZDA date is used only when it exists", "[nmea0183][decoder]") {
+    const auto zda_date = [](std::string_view line) {
+        const auto parsed = nmea::parse_sentence(line);
+        REQUIRE(parsed.has_value());
+        const auto time = nmea::sentence_time(*parsed);
+        REQUIRE(time.has_value());
+        return time->date;
+    };
+    const auto valid = zda_date("$GPZDA,120000.00,29,02,2024,00,00");
+    REQUIRE(valid.has_value());
+    CHECK(valid->year == 2024);
+    CHECK(valid->month == 2);
+    CHECK(valid->day == 29);
+    CHECK(zda_date("$GPZDA,120000.00,1,9,2026,00,00").has_value());
+    // Out of range, not in the calendar, not whole numbers or not a four-digit year: the time
+    // is still read, the date is not.
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,29,02,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,31,04,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,00,09,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,13,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,26,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,-2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22.5,09,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,99999,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,4294967318,09,2026,00,00").has_value());
+}
+
+TEST_CASE("a rate of turn is applied only with status A", "[nmea0183][decoder]") {
+    nmeasim::core::model::VesselState state;
+    CHECK(nmea::apply_sentence("$TIROT,-2.5,A", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
+    CHECK(nmea::apply_sentence("$TIROT,15.0,V", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
+    CHECK(nmea::apply_sentence("$TIROT,15.0,", state));
+    CHECK(nmea::apply_sentence("$TIROT,15.0", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
+}
+
 TEST_CASE("sentence times are read from the sentences that carry one", "[nmea0183][decoder]") {
     const auto rmc = nmea::parse_sentence(
         "$GPRMC,123456.78,A,3759.0280,N,02343.6500,E,6.5,47.3,220926,4.6,E,A*06");
@@ -138,6 +206,33 @@ TEST_CASE("sentence times are read from the sentences that carry one", "[nmea018
 
     CHECK_FALSE(nmea::sentence_time(*nmea::parse_sentence("$HEHDT,45.0,T")).has_value());
     CHECK_FALSE(nmea::sentence_time(*nmea::parse_sentence("$GPRMC,,V,,,,,,,,,,N")).has_value());
+}
+
+TEST_CASE("a time of day that wraps past midnight advances the date", "[nmea0183][decoder]") {
+    using std::chrono::sys_days;
+    using std::chrono::year;
+    nmeasim::core::model::VesselState state;
+    CHECK(nmea::apply_sentence("$GPZDA,235959.50,31,12,2026,00,00", state));
+    CHECK(state.time_utc == sys_days{year{2026} / 12 / 31} + 23h + 59min + 59s + 500ms);
+    // GGA and GLL just after midnight, before the next date: more than 12 hours back on the
+    // same date is the next day.
+    CHECK(nmea::apply_sentence("$GPGGA,000000.50,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 500ms);
+    CHECK(nmea::apply_sentence("$GPGLL,,,,,000001.00,V,N", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 1s);
+    // A smaller step back is taken as sent, on the same date.
+    CHECK(nmea::apply_sentence("$GPGGA,000000.00,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1});
+    state.time_utc = sys_days{year{2027} / 1 / 1} + 13h;
+    CHECK(nmea::apply_sentence("$GPGGA,010000.00,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 1h);
+    // An RMC whose date does not exist counts as time-only and advances the date too.
+    state.time_utc = sys_days{year{2027} / 1 / 1} + 23h;
+    CHECK(nmea::apply_sentence("$GPRMC,000010.00,V,,,,,,,320127,,,N", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 2} + 10s);
+    // A sentence with a valid date is always taken as sent, even far back.
+    CHECK(nmea::apply_sentence("$GPZDA,120000.00,01,01,2027,00,00", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 12h);
 }
 
 TEST_CASE("every encoded sentence decodes back to the state it came from", "[nmea0183][decoder]") {
@@ -217,6 +312,12 @@ TEST_CASE("autopilot and propulsion sentences update the destination and the eng
                                state));
     CHECK(state.destination->name == "WPT");
     CHECK(state.destination->origin.latitude_deg == Approx(37.9));
+    // An empty name is the same destination as the WPT it stands for: the leg is kept.
+    state.navigation.position = {37.8, 23.5};
+    CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A",
+                               state));
+    CHECK(state.destination->name == "WPT");
+    CHECK(state.destination->origin.latitude_deg == Approx(37.9));
     // An invalid RMB or one without a position changes nothing.
     CHECK(nmea::apply_sentence("$GPRMB,V,,,,,,,,,,,,V,N", state));
     CHECK(state.destination->name == "WPT");
@@ -266,9 +367,14 @@ TEST_CASE("a receiver without a fix decodes as such", "[nmea0183][decoder]") {
 TEST_CASE("individual sentences update only what they carry", "[nmea0183][decoder]") {
     nmeasim::core::model::VesselState state;
     state.navigation.magnetic_variation_deg = 4.0;
-    // The true heading adds variation and deviation to the magnetic one: 41.0 + 4.0 = 45.0,
-    // then 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
+    state.navigation.magnetic_deviation_deg = 2.0;
+    // HDM carries the magnetic heading, to which only the variation applies: 41.0 + 4.0 =
+    // 45.0, whatever the deviation. HDG carries the compass heading, to which the deviation
+    // applies too: 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
     CHECK(nmea::apply_sentence("$HCHDM,41.0,M", state));
+    CHECK(state.navigation.heading_true_deg == Approx(45.0));
+    // VHW takes its true heading field; the magnetic one does not change it.
+    CHECK(nmea::apply_sentence("$VWVHW,45.0,T,39.0,M,6.2,N,11.5,K", state));
     CHECK(state.navigation.heading_true_deg == Approx(45.0));
     CHECK(nmea::apply_sentence("$HCHDG,40.0,1.0,W,5.0,E", state));
     CHECK(state.navigation.heading_true_deg == Approx(44.0));

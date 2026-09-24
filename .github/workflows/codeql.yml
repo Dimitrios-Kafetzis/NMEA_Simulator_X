@@ -37,11 +37,15 @@ jobs:
       - name: Check out sources
         uses: actions/checkout@v7
 
-      # Same Qt as QT_VERSION in ci.yml; keep them equal.
-      - name: Install Qt
+      # QT_VERSION, the Qt that ci.yml builds with, from .github/versions.env.
+      - name: Read the pinned tool versions
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/versions.env >> "$GITHUB_ENV"
+
+      - name: Install Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.10.3
+          version: ${{ env.QT_VERSION }}
           host: linux
           arch: linux_gcc_64
           modules: qtserialport qtwebsockets
@@ -53,12 +57,31 @@ jobs:
           languages: c-cpp
           build-mode: manual
 
-      # CodeQL analyses the code that this build compiles. The sanitizers of the ci-linux
-      # preset are switched off; the dependencies are built by vcpkg without a binary cache.
+      # The runner's vcpkg with its binary cache in the workspace, as in ci.yml, so that the
+      # dependencies are not rebuilt from source on every run.
+      - name: Prepare vcpkg binary cache
+        run: |
+          echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
+          mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
+
+      # Keyed on vcpkg.json like the Linux job of ci.yml, whose cache it shares: the same
+      # runner image and preset build the same dependencies (the options below change only
+      # first-party code). The cache is restored before CodeQL watches the build, so the
+      # dependencies it restores are not compiled and not analysed.
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ github.workspace }}/vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ runner.os }}-${{ runner.arch }}-
+
+      # CodeQL analyses the code that this build compiles. The sanitizers and the coverage
+      # instrumentation of the ci-linux preset are switched off: they only slow the build down
+      # and add nothing to the analysis.
       - name: Build
         run: |
-          export VCPKG_ROOT="$VCPKG_INSTALLATION_ROOT"
-          cmake --preset ci-linux -DNMEASIM_ENABLE_SANITIZERS=OFF
+          cmake --preset ci-linux -DNMEASIM_ENABLE_SANITIZERS=OFF -DNMEASIM_ENABLE_COVERAGE=OFF
           cmake --build --preset ci-linux
 
       - name: Perform CodeQL analysis

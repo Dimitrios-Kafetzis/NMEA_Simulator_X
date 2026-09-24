@@ -65,7 +65,10 @@ skipped and counted as well. Trailing `<CR>`, `<LF>` and spaces are ignored.
 time fields are used; the reader also uses the other sentences listed above, and this page
 is the reference for the current behaviour.
 
-The duration of a log is the offset of its last entry.
+The duration of a log is the offset of its last entry. A looping replay starts the next
+pass one duration after the previous one, so the first entry of a pass is sent together
+with the last entry of the previous pass, and the time a tick runs past the end carries into
+the next pass.
 
 ## Replay behaviour
 
@@ -84,7 +87,7 @@ the state as it is.
 | VTG | Course and speed over ground |
 | ZDA | Time and date |
 | HDT, HDG, HDM | True heading; HDG also sets deviation and variation |
-| ROT | Rate of turn |
+| ROT | Rate of turn, when its status is `A` |
 | VHW | Heading and speed through water |
 | VBW | Speed through water |
 | DPT, DBT | Depth below transducer, DPT also the transducer offset |
@@ -92,11 +95,16 @@ the state as it is.
 | MWV | Apparent (`R`) or true (`T`) wind angle and speed, unit converted to knots |
 | MWD | True wind direction and speed |
 | RSA | Rudder angle |
-| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position |
+| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position, the same id keeps the leg (an empty id is `WPT`) |
 | APB, XTE | Recognised, nothing applied (they repeat what RMB carries) |
 | RPM | Revolutions of engine `n` (`E` source, status `A`), creating engines up to `n`; running when above zero |
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |
 | VDO, VDM | Passed through unchanged; the AIS payload is not decoded |
+
+The simulated UTC time follows the time fields: RMC and ZDA with a valid date set the date and
+the time, the other time fields only the time of day. A time of day more than 12 hours
+earlier than the current time is taken as the next day, so a GGA just after midnight moves
+to the new date without waiting for the next RMC or ZDA.
 
 Replayed sentences are identified by their formatter (`MWV`, not `MWV-R`) for output
 filters and the console filter.

@@ -181,6 +181,16 @@ TEST_CASE("a looping replay carries the surplus time into the next pass", "[simu
     CHECK(source.position() == 10ms);
     CHECK(source.entry_index() == 1);
 
+    // Time that runs past the end of the next pass as well carries on into the pass after
+    // it: 3300 ms is two passes of 1640 ms plus 20 ms, which reaches the first two entries
+    // of the third pass.
+    sim::ReplaySource laps(config_for("logs/recorded.log", sim::EndBehaviour::Loop));
+    laps.advance(3300ms);
+    CHECK(laps.take_sentences().size() == 66);
+    CHECK(laps.position() == 20ms);
+    CHECK(laps.entry_index() == 2);
+    CHECK_FALSE(laps.finished());
+
     // Entries all at one offset loop once per tick rather than forever.
     sim::ReplayConfig flat;
     flat.seed = nmeasim::test::fixture_state();
@@ -192,15 +202,26 @@ TEST_CASE("a looping replay carries the surplus time into the next pass", "[simu
     spinning.advance(100ms);
     CHECK(spinning.take_sentences().size() == 2);
     CHECK_FALSE(spinning.finished());
+}
 
-    sim::ReplayConfig empty;
-    empty.seed = nmeasim::test::fixture_state();
-    sim::ReplaySource nothing(empty);
-    nothing.advance(100ms);
-    nothing.step_once();
-    CHECK(nothing.take_sentences().empty());
-    CHECK_FALSE(nothing.finished());
-    CHECK(nothing.duration() == 0ms);
+TEST_CASE("an empty replay is finished at once", "[simulation][replay]") {
+    // Looping or not, a log without entries has nothing to send, so the run ends at once.
+    for (const auto end : {sim::EndBehaviour::Stop, sim::EndBehaviour::Loop}) {
+        sim::ReplayConfig empty;
+        empty.seed = nmeasim::test::fixture_state();
+        empty.end = end;
+        sim::ReplaySource nothing(empty);
+        CHECK(nothing.finished());
+        CHECK(nothing.duration() == 0ms);
+        nothing.advance(100ms);
+        nothing.step_once();
+        CHECK(nothing.take_sentences().empty());
+        CHECK(nothing.finished());
+        nothing.reset();
+        CHECK(nothing.finished());
+        nothing.seek(0ms);
+        CHECK(nothing.finished());
+    }
 }
 
 TEST_CASE("a plain third-party log replays on the time inside its sentences",

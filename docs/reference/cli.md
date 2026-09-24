@@ -33,10 +33,10 @@ nmeasim run [--profile FILE] [--duration SECONDS] [--rate MS] [--quiet]
 | Option | Description |
 | --- | --- |
 | `-p`, `--profile FILE` | Profile to run. Without it the built-in default profile is used: a vessel off Athens with a TCP server on port 10110. |
-| `-d`, `--duration SECONDS` | Stop after this many seconds. `0`, the default, runs until Ctrl+C. |
+| `-d`, `--duration SECONDS` | Stop after this many seconds. `0`, the default, runs until Ctrl+C. `nan` and infinite values are refused. |
 | `-r`, `--rate MS` | Send every sentence at this period, overriding the per-sentence periods of the profile. |
 | `--track FILE` | Follow a GPX or KML [track file](track-files.md) instead of running the delta simulation. Sets the profile's mode to `track`. |
-| `--speed KN` | Speed in knots along legs whose points have neither timestamps nor a recorded speed; also the speed of a timed track with `--ignore-timestamps`. Default: the profile's `simulation.track.speed_kn`, 6. |
+| `--speed KN` | Speed in knots along legs whose points have neither timestamps nor a recorded speed; also the speed of a timed track with `--ignore-timestamps`. Default: the profile's `simulation.track.speed_kn`, 6. `nan` and infinite values are refused. |
 | `--ignore-timestamps` | Sail a timed track at `--speed` instead of on its own timing. |
 | `--replay FILE` | Replay a [log file](log-format.md), recorded by the simulator or by other software, instead of simulating. Sets the mode to `replay`. Excludes `--track`. |
 | `--replay-interval MS` | Spacing between the sentences of a log that carries no time information at all. Default: the profile's `simulation.replay.fixed_interval_ms`, 100. |
@@ -45,15 +45,15 @@ nmeasim run [--profile FILE] [--duration SECONDS] [--rate MS] [--quiet]
 | `-q`, `--quiet` | Suppress the status lines written to standard error. |
 | `--stdout` | Write sentences to standard output. |
 | `--tcp-server PORT` | Serve sentences to any number of TCP clients on this port. Repeatable. |
-| `--udp HOST:PORT` | Send one datagram per sentence. `255.255.255.255` selects broadcast. Repeatable. |
+| `--udp HOST:PORT` | Send one datagram per sentence. `255.255.255.255` selects broadcast. The host must not be empty and the port is digits only, 1 to 65535. Repeatable. |
 | `--websocket PORT` | Serve sentences as WebSocket text frames on this port. Repeatable. |
-| `--serial DEVICE[@BAUD]` | Write to a serial device, 4800 baud unless given. Repeatable. |
+| `--serial DEVICE[@BAUD]` | Write to a serial device, 4800 baud unless given. The device must not be empty and the baud rate is digits only. Repeatable. |
 | `--file PATH` | Append sentences to a file. Repeatable. |
 | `--enable ID`, `--disable ID` | Turn a sentence on or off by registry id, for example `--enable MWV-T` or `--disable GSV`. Repeatable. |
 | `--encoding ENC` | What the outputs given on the command line carry: `nmea0183` (default), `signalk` deltas or `viewsync` packets, see the [profile reference](profile.md#outputs). Outputs from a profile keep their own encoding. |
 | `--tag-block` | Prefix every sentence of the command-line outputs with an IEC 61162-450 [TAG block](nmea0183-sentences.md#tag-blocks). |
 | `--tag-source ID` | Source identifier of the TAG block, `SIM0001` unless given. |
-| `--destination LAT,LON[,NAME]` | Steer for a waypoint so that APB, RMB and XTE are sent and the Signal K course paths appear; the leg starts at the seed position. |
+| `--destination LAT,LON[,NAME]` | Steer for a waypoint so that APB, RMB and XTE are sent and the Signal K course paths appear; the leg starts at the seed position. Latitude and longitude are finite decimal degrees within ±90 and ±180. |
 
 When any output option is given, the outputs of the profile are replaced by those from the
 command line; `--record` adds a log output in either case. Sentence options are applied on
@@ -70,6 +70,12 @@ Status lines go to standard error, sentences go only to the outputs, so
 Exit status: `0` on a normal stop, `2` for invalid arguments or profile, `3` when no output
 could be opened. An output that fails while others succeed is reported as a warning and the
 run continues.
+
+Every command-line error ends the tool with status `2`, whatever the subcommand, after a
+message on standard error: an unknown option or subcommand, a missing or malformed value, a
+file that does not exist, a value outside the range an option accepts, a number that is
+`nan` or infinite, and options that exclude or need each other. `--help` and `--version`
+exit with status `0`.
 
 ### Examples
 
