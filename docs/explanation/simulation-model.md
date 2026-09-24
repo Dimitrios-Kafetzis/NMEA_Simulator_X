@@ -41,9 +41,16 @@ clamped to the configured maximum, 35 degrees by default.
 Every controllable parameter can be **overridden** (pinned to a value, drift stops) or
 **nudged** (moved by a delta and then pinned). Keyboard arrows in the desktop application
 are nudges: up and down nudge speed, left and right nudge heading, or the rudder when
-steering mode is on. Clearing an override lets the value drift again from where it is,
-within its drift band: a value pinned outside the seed plus or minus the amplitude moves back
-to the edge of the band on the next tick.
+steering mode is on. An override holds the value as the simulation uses it, normalised into
+[0, 360) for angles, raised to zero for speeds and depth, and clamped to the maximum rudder
+angle for the rudder. In steering mode the rudder takes precedence over a heading override:
+the heading keeps turning, and when steering mode is switched off the override holds it
+where the rudder left it.
+
+Clearing an override lets the value drift again from where it is. A value pinned outside
+the seed plus or minus the amplitude drifts back gradually: every tick moves it towards
+that band by the full `step_per_second × tick`, and once inside it performs its bounded
+walk again. A value whose variation is zero stays where it was pinned.
 
 ### Apparent wind
 
