@@ -4,18 +4,33 @@
 ///
 /// Covers the exit status of `--help` and `--version`, the status 2 of every command-line
 /// error, whether CLI11 or the tool itself finds it, the strict reading of `--udp`,
-/// `--serial`, `--destination`, `--duration` and `--speed`, and that valid values are still
-/// accepted. Every run is short: it either fails while parsing or streams for a fraction of a
-/// second to standard output or to a UDP port on the loopback interface. The file reads the
-/// fixtures `tracks/timestamped.gpx` and `logs/plain.nmea` from `tests/fixtures`.
+/// `--serial`, `--destination`, `--duration` and `--speed`, that valid values are still
+/// accepted, that `--encoding`, `--tag-block` and `--tag-source` apply to a profile's outputs,
+/// that `--track` and `--replay` keep the profile's loop and timestamp settings unless a flag
+/// is given, and that a subnet broadcast address selects UDP broadcast. Every run is short: it
+/// either fails while parsing or streams for a fraction of a second to standard output, a
+/// temporary log file or a UDP port (on the loopback interface, or broadcast on a local
+/// subnet). The file reads the fixtures `tracks/timestamped.gpx` and `logs/plain.nmea` from
+/// `tests/fixtures` and writes profiles into temporary directories.
 
+#include <QFile>
+#include <QHostAddress>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QList>
+#include <QNetworkAddressEntry>
+#include <QNetworkInterface>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <functional>
+#include <string>
 #include <utility>
 
 namespace {
@@ -76,6 +91,79 @@ QStringList quick_run(const QStringList& extra) {
     return QStringList{QStringLiteral("run"), QStringLiteral("--stdout"), QStringLiteral("--quiet"),
                        QStringLiteral("--duration"), QStringLiteral("0.3")} +
            extra;
+}
+
+/// Writes the built-in default profile, changed by a function, to a file.
+///
+/// The profile is taken from `nmeasim profile show`, so it is the one the tool itself uses.
+/// Fails the running test case when the tool does not print it.
+///
+/// @param directory Directory the file is written to, as `profile.json`.
+/// @param change Function that edits the profile's JSON object before it is written.
+/// @return The path of the written file.
+QString write_profile(const QTemporaryDir& directory,
+                      const std::function<void(QJsonObject&)>& change) {
+    const auto shown = run_cli({QStringLiteral("profile"), QStringLiteral("show")});
+    REQUIRE(shown.exit_code == 0);
+    QJsonObject profile = QJsonDocument::fromJson(shown.out.toUtf8()).object();
+    REQUIRE_FALSE(profile.isEmpty());
+    change(profile);
+    const QString path = directory.filePath(QStringLiteral("profile.json"));
+    QFile file(path);
+    REQUIRE(file.open(QIODevice::WriteOnly));
+    file.write(QJsonDocument(profile).toJson());
+    return path;
+}
+
+/// Sets one key of a nested object of a profile.
+///
+/// @param profile The profile's JSON object.
+/// @param section Key of the object below `simulation`, such as `track`.
+/// @param key Key inside that object, such as `loop`.
+/// @param value The new value.
+void set_simulation_key(QJsonObject& profile, const QString& section, const QString& key,
+                        const QJsonValue& value) {
+    QJsonObject simulation = profile.value(QStringLiteral("simulation")).toObject();
+    QJsonObject object = simulation.value(section).toObject();
+    object.insert(key, value);
+    simulation.insert(section, object);
+    profile.insert(QStringLiteral("simulation"), simulation);
+}
+
+/// Reads the length of the source from the status line of a run that was not quiet.
+///
+/// @param err Standard error of the run, which holds a line such as
+///   `running profile 'Default' following track.gpx (12.3 s) with a 100 ms tick`.
+/// @return The length in seconds as printed, such as `12.3`, as a standard string so that
+///   Catch2 can print it; empty when there is none.
+std::string source_length(const QString& err) {
+    static const QRegularExpression pattern(QStringLiteral(R"(\(([0-9.]+) s[,)])"));
+    return pattern.match(err).captured(1).toStdString();
+}
+
+/// Returns the subnet broadcast address of a local interface that can broadcast.
+///
+/// @return The first IPv4 subnet broadcast address, other than `255.255.255.255`, of an
+///   interface that is up, running, able to broadcast and not the loopback; null when there
+///   is none.
+QHostAddress subnet_broadcast_address() {
+    for (const auto& interface : QNetworkInterface::allInterfaces()) {
+        const auto flags = interface.flags();
+        if (!flags.testFlag(QNetworkInterface::IsUp) ||
+            !flags.testFlag(QNetworkInterface::IsRunning) ||
+            !flags.testFlag(QNetworkInterface::CanBroadcast) ||
+            flags.testFlag(QNetworkInterface::IsLoopBack)) {
+            continue;
+        }
+        for (const auto& entry : interface.addressEntries()) {
+            const QHostAddress broadcast = entry.broadcast();
+            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !broadcast.isNull() &&
+                broadcast != QHostAddress(QHostAddress::Broadcast)) {
+                return broadcast;
+            }
+        }
+    }
+    return {};
 }
 
 }  // namespace
@@ -183,4 +271,108 @@ TEST_CASE("well-formed values are still accepted", "[cli]") {
         CHECK(result.exit_code == 0);
         CHECK(result.out.count(QStringLiteral("$GPRMC,")) == 4);
     }
+}
+
+TEST_CASE("encoding and TAG block options apply to the outputs of a profile", "[cli]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString recording = directory.filePath(QStringLiteral("recording.log"));
+    const QString profile = write_profile(directory, [&recording](QJsonObject& json) {
+        json.insert(QStringLiteral("outputs"),
+                    QJsonArray{QJsonObject{{QStringLiteral("type"), QStringLiteral("stdout")}},
+                               QJsonObject{{QStringLiteral("type"), QStringLiteral("log")},
+                                           {QStringLiteral("path"), recording},
+                                           {QStringLiteral("append"), false}}});
+    });
+    const QStringList run = {
+        QStringLiteral("run"),     QStringLiteral("--profile"),  profile,
+        QStringLiteral("--quiet"), QStringLiteral("--duration"), QStringLiteral("0.3")};
+
+    SECTION("without the options the outputs keep their own settings") {
+        const auto result = run_cli(run);
+        CHECK(result.exit_code == 0);
+        CHECK(result.out.startsWith(QLatin1Char('$')));
+    }
+    SECTION("--encoding changes the profile's outputs but not its recording") {
+        const auto result =
+            run_cli(run + QStringList{QStringLiteral("--encoding"), QStringLiteral("signalk")});
+        CHECK(result.exit_code == 0);
+        CHECK(result.out.startsWith(QLatin1Char('{')));
+        CHECK(result.out.contains(QStringLiteral("\"updates\"")));
+        QFile log(recording);
+        REQUIRE(log.open(QIODevice::ReadOnly));
+        CHECK(log.readAll().contains("$GPRMC,"));
+    }
+    SECTION("--tag-block and --tag-source prefix the profile's outputs") {
+        const auto result =
+            run_cli(run + QStringList{QStringLiteral("--tag-block"), QStringLiteral("--tag-source"),
+                                      QStringLiteral("GP0001")});
+        CHECK(result.exit_code == 0);
+        CHECK(result.out.startsWith(QStringLiteral("\\s:GP0001")));
+    }
+    SECTION("an unknown encoding is an error without an output option too") {
+        const auto result =
+            run_cli(run + QStringList{QStringLiteral("--encoding"), QStringLiteral("morse")});
+        CHECK(result.exit_code == 2);
+        CHECK(result.err.contains(QStringLiteral("--encoding")));
+    }
+}
+
+TEST_CASE("track and replay options keep the profile's loop and timestamp settings unless given",
+          "[cli]") {
+    const QString track = fixture("tracks/timestamped.gpx");
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString profile = write_profile(directory, [](QJsonObject& json) {
+        set_simulation_key(json, QStringLiteral("track"), QStringLiteral("loop"), true);
+        set_simulation_key(json, QStringLiteral("track"), QStringLiteral("use_timestamps"), false);
+        set_simulation_key(json, QStringLiteral("replay"), QStringLiteral("loop"), true);
+    });
+    // Not quiet, so that the status line shows the length of the source and whether it loops.
+    const QStringList run = {QStringLiteral("run"), QStringLiteral("--stdout"),
+                             QStringLiteral("--duration"), QStringLiteral("0.3")};
+
+    const auto timed = run_cli(run + QStringList{QStringLiteral("--track"), track});
+    const auto untimed = run_cli(
+        run + QStringList{QStringLiteral("--track"), track, QStringLiteral("--ignore-timestamps")});
+    REQUIRE(timed.exit_code == 0);
+    REQUIRE(untimed.exit_code == 0);
+    // The fixture's timestamps give it another length than the track speed does.
+    REQUIRE_FALSE(source_length(timed.err).empty());
+    REQUIRE(source_length(timed.err) != source_length(untimed.err));
+    CHECK_FALSE(timed.err.contains(QStringLiteral(", looping)")));
+
+    const auto from_profile = run_cli(
+        run + QStringList{QStringLiteral("--profile"), profile, QStringLiteral("--track"), track});
+    CHECK(from_profile.exit_code == 0);
+    CHECK(from_profile.err.contains(QStringLiteral(", looping)")));
+    CHECK(source_length(from_profile.err) == source_length(untimed.err));
+
+    const auto replay =
+        run_cli(run + QStringList{QStringLiteral("--profile"), profile, QStringLiteral("--replay"),
+                                  fixture("logs/plain.nmea")});
+    CHECK(replay.exit_code == 0);
+    CHECK(replay.err.contains(QStringLiteral(", looping)")));
+
+    const auto flag =
+        run_cli(run + QStringList{QStringLiteral("--track"), track, QStringLiteral("--loop")});
+    CHECK(flag.exit_code == 0);
+    CHECK(flag.err.contains(QStringLiteral(", looping)")));
+}
+
+TEST_CASE("broadcast addresses select UDP broadcast", "[cli]") {
+    const QStringList run = {QStringLiteral("run"), QStringLiteral("--duration"),
+                             QStringLiteral("0.2"), QStringLiteral("--udp")};
+    const auto limited = run_cli(run + QStringList{QStringLiteral("255.255.255.255:40002")});
+    CHECK(limited.err.contains(QStringLiteral("output: UDP broadcast to 255.255.255.255:40002")));
+
+    const QHostAddress subnet = subnet_broadcast_address();
+    if (subnet.isNull()) {
+        SKIP("No local interface has a subnet broadcast address");
+    }
+    const QString target = subnet.toString() + QStringLiteral(":40002");
+    INFO(target.toStdString());
+    const auto result = run_cli(run + QStringList{target});
+    CHECK(result.err.contains(QStringLiteral("output: UDP broadcast to ") + target));
+    CHECK(result.exit_code == 0);
 }
