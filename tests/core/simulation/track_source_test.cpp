@@ -221,6 +221,12 @@ TEST_CASE("a looping track starts again and its clock keeps running", "[simulati
     CHECK(source.point_index() == 0);
     CHECK(source.current().time_utc == config.seed.time_utc + total + 10s);
 
+    // Time that runs past the end of the next lap as well carries on into the lap after it.
+    source.reset();
+    source.advance(2 * total + 10s);
+    CHECK_FALSE(source.finished());
+    CHECK(static_cast<double>(source.position().count()) == Approx(10000.0).margin(1.0));
+
     // A timed loop rewinds the track clock as well.
     sim::TrackSource timed(config_for("tracks/timestamped.gpx", sim::EndBehaviour::Loop));
     timed.advance(*timed.duration() + 30s);
@@ -283,6 +289,19 @@ TEST_CASE("degenerate tracks are handled", "[simulation][track]") {
     CHECK(source.point_index() == 0);
     source.jump_to_point(5);
     CHECK(source.position() == 0ms);
+
+    // A looping single point stays at the point for ever, and its clock keeps running.
+    single.end = sim::EndBehaviour::Loop;
+    sim::TrackSource anchored(single);
+    for (int i = 0; i < 3; ++i) {
+        anchored.advance(1s);
+    }
+    CHECK_FALSE(anchored.finished());
+    CHECK(anchored.position() == 0ms);
+    CHECK(anchored.point_index() == 0);
+    CHECK(anchored.current().navigation.position.latitude_deg == Approx(10.0));
+    CHECK(anchored.current().navigation.speed_over_ground_kn == Approx(0.0));
+    CHECK(anchored.current().time_utc == single.seed.time_utc + 3s);
 
     // Repeated points with equal timestamps produce a zero-length leg and no NaN.
     sim::TrackConfig repeated;

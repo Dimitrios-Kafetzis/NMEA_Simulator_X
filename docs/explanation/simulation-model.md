@@ -82,7 +82,11 @@ from the profile seed and do not drift; apparent wind is recomputed from the ves
 
 At the end of the track the source either **stops**, holding the last point with zero speed
 and reporting that it is finished so that the run ends, or **loops** back to the first point.
-A timed track that loops rewinds the clock to its first timestamp.
+A loop carries the time that ran past the end into the next lap, however many laps one tick
+spans, so the pace along the track has no hiccup. A timed track that loops rewinds the clock
+to its first timestamp. A track without duration, such as a single point, stops on the
+first tick when it does not loop; when it loops, the vessel stays at the point with zero
+speed and the run goes on.
 
 The operator can jump to any point and seek to any elapsed time; the state is recomputed at
 once from the leg table, so seeking is as cheap as a tick.
@@ -102,7 +106,10 @@ Pausing stops the clock. **Step** emits exactly the next recorded sentence and m
 clock to it. **Seek** moves the clock to any offset: the entries before the new position are
 applied to the state without being sent, so the instruments show the right values the
 moment the replay continues. At the end the replay stops and the run ends, or loops,
-carrying the surplus time into the next pass so that the cadence has no hiccup.
+carrying the surplus time into the next pass so that the cadence has no hiccup, exactly as a
+looping track does: when one tick spans several passes of a very short log, every pass is
+sent. A log whose entries all share one offset has no duration and is sent once per tick
+when it loops. A replay with no entries at all ends the run at once, looping or not.
 
 ## Destination
 
