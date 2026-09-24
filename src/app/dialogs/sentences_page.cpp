@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `SentencesPage`, the *Sentences* tab of the settings dialog.
+///
+/// Builds the registry and custom sentence tables and moves values between them and the
+/// `sentences` fields of an `io::Profile`.
+
 #include "sentences_page.hpp"
 
 #include <nmeasim/core/nmea0183/registry.hpp>
@@ -19,6 +26,13 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Converts registry text to a `QString`.
+///
+/// The registry holds its ids, descriptions, group names and talkers as `std::string_view`
+/// values, which need not be null-terminated, so the length is passed explicitly.
+///
+/// @param text UTF-8 text; only read during the call.
+/// @return A copy of `text`.
 QString from_view(std::string_view text) {
     return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
 }
@@ -203,7 +217,9 @@ void SentencesPage::load(const io::Profile& profile) {
         static_cast<QSpinBox*>(custom_table->cellWidget(row, CustomPeriod))
             ->setValue(static_cast<int>(sentence.period.count()));
     }
+    // The scheduler fills in the registry default of every sentence the profile leaves out.
     const auto scheduler = profile.make_scheduler();
+    // The scheduler uses the standard registry, so its descriptors are in table row order.
     const auto descriptors = scheduler.registry().descriptors();
     for (std::size_t index = 0; index < descriptors.size(); ++index) {
         const int row = static_cast<int>(index);
@@ -231,6 +247,7 @@ void SentencesPage::store(io::Profile& profile) const {
         setting.enabled = is_enabled(row);
         setting.talker =
             static_cast<QLineEdit*>(table->cellWidget(row, Talker))->text().toUpper().toStdString();
+        // Spelling out the default talker is not a change from the default.
         if (setting.talker == descriptor.default_talker) {
             setting.talker.clear();
         }

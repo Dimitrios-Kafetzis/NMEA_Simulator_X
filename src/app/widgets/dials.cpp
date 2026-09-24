@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Painting of the compass rose and the wind dial, and the wind angle helpers.
+
 #include "dials.hpp"
 
 #include "theme/theme.hpp"
@@ -16,9 +20,17 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Space between the tick ring and the widget edge, in pixels; the bezel takes 6 of them.
 constexpr double kMargin{8.0};
+/// Factor that converts degrees to radians.
 constexpr double kDegreesToRadians{std::numbers::pi / 180.0};
 
+/// Returns a copy of a font sized in pixels, so that dial text scales with the dial.
+///
+/// @param base Font to copy the family and style from.
+/// @param pixels Text height in pixels; rounded, and raised to 1 when smaller.
+/// @param bold True for a bold font.
+/// @return The resized font.
 QFont pixel_font(const QFont& base, double pixels, bool bold) {
     QFont font = base;
     font.setPixelSize(std::max(1, static_cast<int>(std::lround(pixels))));
@@ -26,6 +38,10 @@ QFont pixel_font(const QFont& base, double pixels, bool bold) {
     return font;
 }
 
+/// Formats an angle for a compass readout with three integer digits and one decimal.
+///
+/// @param value Angle in degrees, expected in [0, 360).
+/// @return The angle zero-padded to five characters with a degree sign, such as `045.0°`.
 QString degrees(double value) {
     return QStringLiteral("%1°").arg(value, 5, 'f', 1, QLatin1Char('0'));
 }
@@ -150,7 +166,8 @@ void CompassDial::paintEvent(QPaintEvent* /*event*/) {
     draw_face(painter);
     draw_ticks(painter, 5, 30);
 
-    // Cardinal letters and degree labels inside the ring.
+    // Every 30 degrees a cardinal letter or the tens of degrees, as compass cards print them;
+    // north stands out in the danger colour.
     const double r = radius();
     for (int angle = 0; angle < 360; angle += 30) {
         const bool cardinal = angle % 90 == 0;

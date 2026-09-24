@@ -43,7 +43,7 @@ LEGACY_PAGES = Path(__file__).resolve().parent / "legacy-api-pages.txt"
 #: Directories whose documentation is complete. Every Doxygen warning and every missing file
 #: header in them fails the build. A directory is added in the pull request that completes
 #: its comments.
-ENFORCED: tuple[str, ...] = ("src/core", "src/io")
+ENFORCED: tuple[str, ...] = ("src/core", "src/io", "src/app", "src/cli")
 
 #: First line of every C++ file.
 LICENCE_LINE = "// SPDX-License-Identifier: GPL-3.0-only"

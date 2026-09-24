@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Layout, readouts and override wiring of the dashboard and its engine tiles.
+
 #include "dashboard_widget.hpp"
 
 #include "dials.hpp"
@@ -26,6 +30,13 @@ using core::simulation::Parameter;
 
 namespace {
 
+/// Formats one coordinate as degrees and decimal minutes with a hemisphere letter.
+///
+/// @param degrees Coordinate in degrees; the sign selects the letter.
+/// @param degree_digits Width of the zero-padded degrees: 2 for latitude, 3 for longitude.
+/// @param positive Letter for zero and positive values, `N` or `E`.
+/// @param negative Letter for negative values, `S` or `W`.
+/// @return The coordinate, such as `37°59.028'N`, with minutes to three decimals.
 QString format_coordinate(double degrees, int degree_digits, char positive, char negative) {
     const double magnitude = std::fabs(degrees);
     const int whole = static_cast<int>(magnitude);
@@ -36,6 +47,10 @@ QString format_coordinate(double degrees, int degree_digits, char positive, char
         .arg(QLatin1Char(degrees < 0.0 ? negative : positive));
 }
 
+/// Formats a time point for the *Time (UTC)* tile.
+///
+/// @param time The time point, UTC; sub-millisecond parts are dropped.
+/// @return The time as `yyyy-MM-dd HH:mm:ss` in UTC.
 QString format_time(std::chrono::system_clock::time_point time) {
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(time.time_since_epoch());
     return QDateTime::fromMSecsSinceEpoch(ms.count(), QTimeZone::utc())

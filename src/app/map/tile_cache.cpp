@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Memory, disk and network lookup, download queue and disk writes of `TileCache`.
+
 #include "tile_cache.hpp"
 
 #include <QDir>
@@ -13,8 +17,12 @@ namespace nmeasim::app::map {
 
 namespace {
 
+/// Capacity of the memory cache in tiles; 512 tiles of 256 by 256 pixels take about 128 MiB
+/// as 32-bit pixmaps.
 constexpr int kMemoryTiles{512};
+/// Largest number of downloads running at once, kept low as the tile usage policy asks.
 constexpr int kMaxConcurrentDownloads{4};
+/// Time in milliseconds a download may go without receiving data before it is aborted.
 constexpr int kTransferTimeoutMs{15000};
 
 }  // namespace
@@ -132,6 +140,8 @@ void TileCache::finish(const TileKey& key, QNetworkReply* reply) {
         return;
     }
     const QByteArray bytes = reply->readAll();
+    // A reply without a network error is not necessarily an image; only one that decodes is
+    // cached, so that the disk never holds a tile that cannot be drawn.
     QPixmap pixmap;
     if (!pixmap.loadFromData(bytes)) {
         emit tile_failed(key, tr("not an image"));
@@ -139,6 +149,8 @@ void TileCache::finish(const TileKey& key, QNetworkReply* reply) {
         return;
     }
     QDir().mkpath(QFileInfo(path_of(key)).path());
+    // QSaveFile writes to a temporary file and renames it, so an interrupted write never
+    // leaves a truncated tile that would later be served.
     QSaveFile file(path_of(key));
     if (file.open(QIODevice::WriteOnly)) {
         file.write(bytes);

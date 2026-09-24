@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `StatusLed`: its size, blinking and painting.
+
 #include "status_led.hpp"
 
 #include "theme/theme.hpp"
@@ -12,11 +16,20 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Diameter of the light, in pixels; its glow reaches one diameter from the centre. A
+/// user-interface choice for a light that fits in the status bar.
 constexpr int kLedDiameter{9};
+/// Space between the light and the caption, in pixels.
 constexpr int kGap{6};
+/// Space left of the light and right of the caption, in pixels.
 constexpr int kMargin{6};
+/// Duration of each lit and unlit phase while blinking, in milliseconds: one flash a second.
 constexpr int kBlinkIntervalMs{500};
 
+/// Derives the caption font from the widget font.
+///
+/// @param base The widget font.
+/// @return `base` in bold at 85 % of its point size, with letters spaced at 108 %.
 QFont caption_font(const QFont& base) {
     QFont font = base;
     font.setBold(true);
@@ -76,7 +89,8 @@ void StatusLed::paintEvent(QPaintEvent* /*event*/) {
     const bool on = color_.isValid() && lit_;
     const QColor fill = on ? color_ : colors.inactive;
     if (on) {
-        // Soft glow around a lit light.
+        // Soft glow around a lit light: 43 % opacity at the centre, fading to nothing at one
+        // diameter.
         QRadialGradient glow(centre, kLedDiameter);
         QColor halo = fill;
         halo.setAlpha(110);

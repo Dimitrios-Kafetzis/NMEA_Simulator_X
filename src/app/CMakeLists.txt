@@ -56,7 +56,7 @@ qt_add_resources(nmeasim_app_lib "fonts"
 
 target_link_libraries(nmeasim_app_lib
     PUBLIC nmeasim::core nmeasim::io Qt6::Network Qt6::Widgets
-    PRIVATE nmeasim::warnings nmeasim::sanitizers
+    PRIVATE nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
 )
 
 set(NMEASIM_ICONS_DIR "${PROJECT_SOURCE_DIR}/packaging/icons")
@@ -95,7 +95,8 @@ set_target_properties(nmeasim_app PROPERTIES
 )
 
 target_link_libraries(nmeasim_app
-    PRIVATE nmeasim::app_lib nmeasim::warnings nmeasim::sanitizers
+    PRIVATE nmeasim::app_lib nmeasim::warnings nmeasim::documentation_warnings
+            nmeasim::sanitizers
 )
 target_compile_definitions(nmeasim_app PRIVATE NMEASIM_APP_ID="${NMEASIM_APP_ID}")
 

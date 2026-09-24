@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Layout, fonts and override control of the dashboard's instrument tiles.
+
 #include "instrument_tile.hpp"
 
 #include "theme/theme.hpp"
@@ -11,11 +15,17 @@ namespace nmeasim::app {
 
 namespace {
 
-/// Point size of numeric readouts and of text readouts (positions, times), relative to the
-/// application font.
+/// Point size of numeric readouts relative to the default label font.
 constexpr double kNumberScale{2.1};
+/// Point size of text readouts (positions, times) relative to the default label font; smaller
+/// than `kNumberScale` because they run to several lines.
 constexpr double kTextScale{1.4};
 
+/// Returns the caption font of a tile: bold, slightly smaller, spaced-out capitals.
+///
+/// @param base Font of the caption label.
+/// @return A copy of `base` at 0.82 times its point size, bold, all upper case and with a
+///   letter spacing of 110 percent.
 QFont caption_font(const QFont& base) {
     QFont font = base;
     font.setPointSizeF(base.pointSizeF() * 0.82);

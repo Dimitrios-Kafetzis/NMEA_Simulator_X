@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `sentence_spans` and `SentenceHighlighter`.
+
 #include "sentence_highlighter.hpp"
 
 #include "theme/theme.hpp"
@@ -11,6 +15,11 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Tells whether a character is a hexadecimal digit, as used in NMEA 0183 checksums.
+///
+/// @param c Character to test.
+/// @return True for a decimal digit and for `A` to `F` and `a` to `f`. Digits are tested
+///   with `QChar::isDigit`, which also accepts non-ASCII decimal digits.
 bool is_hex(QChar c) {
     return c.isDigit() || (c >= QLatin1Char('A') && c <= QLatin1Char('F')) ||
            (c >= QLatin1Char('a') && c <= QLatin1Char('f'));

@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `SimulationPage`, the *Simulation* tab of the settings dialog.
+///
+/// Builds the widgets and moves values between them and the `simulation` fields of an
+/// `io::Profile`.
+
 #include "simulation_page.hpp"
 
 #include <QFileDialog>
@@ -19,6 +26,18 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Creates a floating-point spin box configured for this page.
+///
+/// Keyboard tracking is off, so the value changes when the operator finishes typing rather
+/// than on every keystroke.
+///
+/// @param parent The owner of the new spin box; must not be null, or the spin box leaks.
+/// @param minimum The smallest value the spin box accepts.
+/// @param maximum The largest value the spin box accepts.
+/// @param step The change applied by the arrow buttons and keys.
+/// @param decimals The number of decimals shown; values are rounded to it.
+/// @param suffix Unit text shown after the value, such as `" kn"`; empty for none.
+/// @return The new spin box, owned by `parent`.
 QDoubleSpinBox* make_double(QWidget* parent, double minimum, double maximum, double step,
                             int decimals, const QString& suffix = {}) {
     auto* spin = new QDoubleSpinBox(parent);
@@ -30,6 +49,14 @@ QDoubleSpinBox* make_double(QWidget* parent, double minimum, double maximum, dou
     return spin;
 }
 
+/// Creates an integer spin box configured for this page, with keyboard tracking off like
+/// `make_double`.
+///
+/// @param parent The owner of the new spin box; must not be null, or the spin box leaks.
+/// @param minimum The smallest value the spin box accepts.
+/// @param maximum The largest value the spin box accepts.
+/// @param suffix Unit text shown after the value, such as `" ms"`; empty for none.
+/// @return The new spin box, owned by `parent`.
 QSpinBox* make_int(QWidget* parent, int minimum, int maximum, const QString& suffix = {}) {
     auto* spin = new QSpinBox(parent);
     spin->setRange(minimum, maximum);
@@ -41,10 +68,11 @@ QSpinBox* make_int(QWidget* parent, int minimum, int maximum, const QString& suf
 }  // namespace
 
 SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
+    // The content has no parent until the scroll area takes it at the end of the constructor.
     auto* content = new QWidget;
     auto* columns = new QHBoxLayout(content);
 
-    // Left column: mode, profile, clock, seed values.
+    // Left column: mode, track, log replay, profile and clock, seed values.
     auto* left = new QVBoxLayout;
     auto* mode_box = new QGroupBox(tr("Mode"), content);
     auto* mode_form = new QFormLayout(mode_box);
@@ -141,7 +169,7 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     left->addStretch(1);
     columns->addLayout(left, 1);
 
-    // Right column: GNSS, drift, steering.
+    // Right column: GNSS, drift, destination, steering.
     auto* right = new QVBoxLayout;
     auto* gnss_box = new QGroupBox(tr("GNSS receiver"), content);
     auto* gnss = new QFormLayout(gnss_box);
@@ -278,6 +306,8 @@ void SimulationPage::load(const io::Profile& profile) {
     name_edit->setText(profile.name);
     tick_spin->setValue(profile.tick_ms);
     fixed_start_check->setChecked(profile.start_time.has_value());
+    // The display format has no milliseconds, so the proposed time drops them: otherwise the
+    // stored start time would carry a fraction the operator never saw.
     start_time_edit->setDateTime(profile.start_time.value_or(
         QDateTime::currentDateTimeUtc().addMSecs(-QDateTime::currentDateTimeUtc().time().msec())));
     random_seed_spin->setValue(static_cast<int>(profile.delta.random_seed));
@@ -327,6 +357,7 @@ void SimulationPage::load(const io::Profile& profile) {
         destination_name_edit->clear();
         destination_latitude_spin->setValue(seed.navigation.position.latitude_deg);
         destination_longitude_spin->setValue(seed.navigation.position.longitude_deg);
+        // The default radius of core::model::Destination.
         arrival_radius_spin->setValue(100.0);
     }
 }
@@ -349,6 +380,7 @@ void SimulationPage::store(io::Profile& profile) const {
     } else {
         profile.start_time.reset();
     }
+    // The spin box minimum is 0, so the cast never sees a negative value.
     profile.delta.random_seed = static_cast<unsigned int>(random_seed_spin->value());
 
     auto& seed = profile.delta.seed;
@@ -392,7 +424,9 @@ void SimulationPage::store(io::Profile& profile) const {
         destination.name = name.isEmpty() ? std::string{"WPT"} : name.toStdString();
         destination.position = {destination_latitude_spin->value(),
                                 destination_longitude_spin->value()};
-        // A leg that already exists keeps its origin; a new one starts at the seed position.
+        // A leg that already exists keeps its origin; a new one starts at the seed position,
+        // which this call has already written above. The comparison sees the coordinates
+        // after the spin boxes rounded them to six decimals.
         const bool same_destination =
             seed.destination &&
             seed.destination->position.latitude_deg == destination.position.latitude_deg &&

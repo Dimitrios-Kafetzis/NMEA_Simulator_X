@@ -1,3 +1,25 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Entry point of `nmeasim`, the headless command-line simulator.
+///
+/// The tool parses its command line with CLI11 and runs on a `QCoreApplication`, so it needs
+/// no display. It links the same engine (`nmeasim::core`) and transports (`nmeasim::io`) as
+/// the desktop application. Subcommands:
+///
+/// - `run`: loads a profile (the built-in default without `--profile`), applies the
+///   command-line overrides to it and streams the delta simulation, a track or a replayed log
+///   to the outputs until the duration elapses, a track or log that does not loop ends, or
+///   `SIGINT` or `SIGTERM` arrives;
+/// - `ports`, `interfaces` and `sentences`: print tables of the serial ports, the IPv4
+///   interfaces and the sentence registry;
+/// - `profile init` and `profile show`: write the default profile to a file, or print a
+///   validated and migrated profile as JSON.
+///
+/// `-V` or `--version` prints the project name and version. Errors, warnings and the status
+/// lines of `run` go to standard error, and `run` writes sentences to standard output only
+/// through a `--stdout` output, so `nmeasim run --stdout --quiet` produces a clean stream.
+/// The user-facing description of every option is in `docs/reference/cli.md`.
+
 #include <nmeasim/core/version.hpp>
 #include <nmeasim/io/network_interfaces.hpp>
 #include <nmeasim/io/profile/profile.hpp>
@@ -23,12 +45,32 @@
 
 namespace {
 
+/// Set by `on_interrupt` when `SIGINT` or `SIGTERM` arrives; never reset.
+///
+/// `run_simulation` polls it from the event loop and stops the runner once it is true.
+/// `std::atomic` makes the write from the handler visible to the event loop, which on
+/// Windows runs in a different thread from the Ctrl+C handler.
 std::atomic<bool> g_interrupted{false};
 
+/// Signal handler for `SIGINT` and `SIGTERM`, installed by `run_simulation`.
+///
+/// Only sets `g_interrupted`: Qt functions are not async-signal-safe, so the actual stop
+/// happens in the event loop, which polls the flag. The signal number is ignored.
+///
+/// @note `std::signal` may reset the disposition to the default before the handler runs (the
+/// Microsoft C runtime does), in which case a second Ctrl+C terminates the process at once.
 void on_interrupt(int) {
     g_interrupted.store(true);
 }
 
+/// Prints the serial ports present on this machine as a table on standard output.
+///
+/// The columns are the device path, the driver description and the manufacturer, as the
+/// operating system reports them; values it does not provide stay empty. Prints
+/// `No serial ports found.` instead when there are none.
+///
+/// @return Always 0.
+/// @see nmeasim::io::available_serial_ports
 int list_serial_ports() {
     const auto ports = nmeasim::io::available_serial_ports();
     if (ports.empty()) {
@@ -43,6 +85,13 @@ int list_serial_ports() {
     return 0;
 }
 
+/// Prints every IPv4 address of every interface that is up as a table on standard output.
+///
+/// The columns are the interface name, the address and its subnet broadcast address. The
+/// header is printed even when the list is empty.
+///
+/// @return Always 0.
+/// @see nmeasim::io::ipv4_interfaces
 int list_interfaces() {
     const auto interfaces = nmeasim::io::ipv4_interfaces();
     std::cout << std::format("{:<20} {:<18} {}\n", "INTERFACE", "ADDRESS", "BROADCAST");
@@ -54,6 +103,14 @@ int list_interfaces() {
     return 0;
 }
 
+/// Prints every sentence of the standard registry as a table on standard output.
+///
+/// The columns are the registry id (the value `--enable` and `--disable` take), the
+/// formatter, the default talker, the group, whether the sentence is `on` or `off` by
+/// default, and the description, in registry order.
+///
+/// @return Always 0.
+/// @see nmeasim::core::nmea0183::SentenceRegistry::standard
 int list_sentences() {
     const auto& registry = nmeasim::core::nmea0183::SentenceRegistry::standard();
     std::cout << std::format("{:<7} {:<4} {:<7} {:<9} {:<8} {}\n", "ID", "FMT", "TALKER", "GROUP",
@@ -67,33 +124,91 @@ int list_sentences() {
     return 0;
 }
 
+/// The options of the `run` subcommand, as CLI11 parsed them.
+///
+/// Each field is bound to one flag in `main`. A field's initial value is what a flag that is
+/// not given leaves, and for most fields it means "keep what the profile says".
+/// `run_simulation` applies the fields on top of the loaded profile through
+/// `apply_output_overrides`, `apply_sentence_overrides`, `apply_destination` and
+/// `apply_mode_overrides`. CLI11 ensures that `track_path` and `replay_path` are not both
+/// set, that `track_speed_kn` and `ignore_timestamps` are only given with `track_path`, that
+/// `replay_interval_ms` is only given with `replay_path` and that `tag_source` is only given
+/// with `tag_block`.
 struct RunOptions {
+    /// Profile file, `-p` or `--profile`; CLI11 checks that it exists. Empty runs the
+    /// built-in default profile.
     std::string profile_path;
+    /// GPX or KML track to follow, `--track`; CLI11 checks that it exists. Empty keeps the
+    /// profile's mode.
     std::string track_path;
+    /// Log file to replay, `--replay`; CLI11 checks that it exists. Empty keeps the profile's
+    /// mode.
     std::string replay_path;
+    /// Log file that records every sentence with a timestamp, `--record`; truncated when the
+    /// run starts. Empty records nothing.
     std::string record_path;
+    /// Speed along untimed track legs, `--speed`; also the speed of a timed track with
+    /// `ignore_timestamps`. Zero or negative keeps the profile's `simulation.track.speed_kn`.
     double track_speed_kn{0.0};
+    /// `--ignore-timestamps`: sails a timed track at the track speed instead of on its own
+    /// timing.
     bool ignore_timestamps{false};
+    /// `--loop`: starts the track or log again at its end instead of ending the run.
     bool loop{false};
+    /// Spacing of the sentences of a log without any time information, `--replay-interval`;
+    /// CLI11 accepts [1, 60000]. Zero keeps the profile's
+    /// `simulation.replay.fixed_interval_ms`.
     int replay_interval_ms{0};
+    /// Wall-clock run time, `-d` or `--duration`; truncated to whole milliseconds. Zero or
+    /// negative sets no limit.
     double duration_s{0.0};
+    /// Period of every registry sentence in milliseconds, `-r` or `--rate`; overrides the
+    /// profile's per-sentence periods. Zero or negative keeps them.
     int period_ms{0};
+    /// `-q` or `--quiet`: suppresses the status lines on standard error. Errors and output
+    /// warnings are still printed.
     bool quiet{false};
+    /// `--stdout`: adds an output that writes to standard output.
     bool use_stdout{false};
+    /// Ports of TCP server outputs, `--tcp-server`, repeatable; CLI11 accepts [1, 65535].
     std::vector<int> tcp_ports;
+    /// Destinations of UDP outputs as `host:port`, `--udp`, repeatable; parsed by
+    /// `split_host_port`. The host `255.255.255.255` selects broadcast.
     std::vector<std::string> udp_targets;
+    /// Ports of WebSocket server outputs, `--websocket`, repeatable; CLI11 accepts
+    /// [1, 65535].
     std::vector<int> websocket_ports;
+    /// Serial outputs as `device[@baud]`, `--serial`, repeatable; parsed by `split_serial`.
     std::vector<std::string> serial_ports;
+    /// Files that sentences are appended to, `--file`, repeatable.
     std::vector<std::string> files;
+    /// Registry ids to switch on, `--enable`, repeatable; for example `MWV-T`.
     std::vector<std::string> enable;
+    /// Registry ids to switch off, `--disable`, repeatable. Applied after `enable`, so an id
+    /// given to both ends up off.
     std::vector<std::string> disable;
+    /// Encoding of the command-line outputs, `--encoding`: `nmea0183`, `signalk` or
+    /// `viewsync`. Outputs that come from the profile keep their own encoding.
     std::string encoding{"nmea0183"};
+    /// `--tag-block`: prefixes every sentence of the command-line outputs with an
+    /// IEC 61162-450 TAG block.
     bool tag_block{false};
+    /// TAG block source identifier, `--tag-source`; empty keeps the default `SIM0001`.
     std::string tag_source;
+    /// Waypoint to steer for as `LAT,LON[,NAME]` in decimal degrees, `--destination`;
+    /// parsed by `apply_destination`. Empty sets no destination.
     std::string destination;
 };
 
-/// Splits "host:port" into its parts; returns nullopt when malformed.
+/// Splits a `--udp` argument of the form `host:port` into the host and the port.
+///
+/// The split is at the last colon. The host is not checked and may be empty. The port is
+/// read with `std::stoi`, which skips leading white space and ignores characters after the
+/// digits.
+///
+/// @param value The argument, for example `192.168.1.20:10110`.
+/// @return The host and the port, or `std::nullopt` when there is no colon or the port is
+/// not a number in [1, 65535].
 std::optional<std::pair<QString, quint16>> split_host_port(const std::string& value) {
     const auto colon = value.rfind(':');
     if (colon == std::string::npos) {
@@ -111,7 +226,16 @@ std::optional<std::pair<QString, quint16>> split_host_port(const std::string& va
     }
 }
 
-/// Splits "device@baud" into its parts; the baud rate defaults to 4800.
+/// Splits a `--serial` argument of the form `device[@baud]` into the device and the baud
+/// rate.
+///
+/// The split is at the last `@`. Without one the whole argument is the device and the baud
+/// rate is 4800, the standard rate of NMEA 0183 (IEC 61162-1) talkers. The baud rate is read
+/// with `std::stoi` and is not checked against the rates the port supports.
+///
+/// @param value The argument, for example `/dev/ttyUSB0@38400` or `COM3`.
+/// @return The device and the baud rate, or `std::nullopt` when the part after the `@` is
+/// not a positive number.
 std::optional<std::pair<QString, int>> split_serial(const std::string& value) {
     const auto at = value.rfind('@');
     if (at == std::string::npos) {
@@ -128,6 +252,24 @@ std::optional<std::pair<QString, int>> split_serial(const std::string& value) {
     }
 }
 
+/// Replaces the outputs of `profile` with the outputs given on the command line.
+///
+/// Does nothing when none of `--stdout`, `--tcp-server`, `--udp`, `--websocket`, `--serial`
+/// and `--file` is given. Otherwise it clears the profile's outputs and appends, in this
+/// order, the TCP servers, UDP senders, WebSocket servers, serial ports, files and finally
+/// standard output. Everything an option does not carry keeps the default of
+/// `nmeasim::io::OutputConfig`: servers listen on every interface and files are appended to.
+/// Every new output gets the `--encoding`, and a TAG block when `--tag-block` is given, with
+/// the `--tag-source` identifier when that is not empty.
+///
+/// @param options The parsed `run` options.
+/// @param[in,out] profile The profile to change.
+/// @param[out] error Set to a message for the user when the function returns false.
+/// @return True on success, including when there is nothing to replace; false when
+/// `--encoding` is not an encoding name or a `--udp` or `--serial` argument is malformed, in
+/// which case `profile` may be left partly changed.
+/// @note `--encoding`, `--tag-block` and `--tag-source` are only checked and applied here,
+/// so without an output option they have no effect.
 bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& profile,
                             std::string& error) {
     using nmeasim::io::OutputConfig;
@@ -164,6 +306,8 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
                               : nmeasim::io::UdpConfig::Mode::Unicast;
         output.udp.address = parts->first;
         output.udp.port = parts->second;
+        // Profile::from_json sets both ports from the one `port` key; keep them equal in the
+        // same way so that the output looks like one loaded from a profile.
         output.port = parts->second;
         profile.outputs.append(output);
     }
@@ -206,7 +350,22 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
     return true;
 }
 
-/// Applies --destination "lat,lon[,name]" to the profile seed.
+/// Sets the destination of the simulation seed from `--destination`.
+///
+/// The argument is `LAT,LON[,NAME]`: latitude in [-90, 90] positive north and longitude in
+/// [-180, 180] positive east, both in decimal degrees, and an optional waypoint name. White
+/// space around each part is ignored, parts after the third are ignored, and an empty name
+/// keeps the default `WPT`. The leg starts at the seed position of the profile, also when
+/// the run follows a track. A destination makes the simulation send APB, RMB and XTE and the
+/// Signal K course paths.
+///
+/// @param options The parsed `run` options; only `destination` is read.
+/// @param[in,out] profile The profile whose `delta.seed.destination` is set.
+/// @param[out] error Set to a message for the user when the function returns false.
+/// @return True when `--destination` is empty or valid; false when it has fewer than two
+/// parts, a coordinate is not a number or a coordinate is out of range, in which case
+/// `profile` is unchanged.
+/// @see nmeasim::core::model::Destination
 bool apply_destination(const RunOptions& options, nmeasim::io::Profile& profile,
                        std::string& error) {
     if (options.destination.empty()) {
@@ -231,9 +390,24 @@ bool apply_destination(const RunOptions& options, nmeasim::io::Profile& profile,
     return true;
 }
 
+/// Applies `--enable`, `--disable` and `--rate` on top of the profile's sentence settings.
+///
+/// A registry id that the profile has no setting for first gets one with the registry
+/// defaults (enabled state, talker and period). The ids of `--enable` are switched on
+/// first, then those of `--disable` are switched off. A positive `--rate` then sets the
+/// period of every registry sentence, which gives every one of them a setting; custom
+/// sentences and the message periods of Signal K and ViewSync outputs are not affected.
+///
+/// @param options The parsed `run` options; `enable`, `disable` and `period_ms` are read.
+/// @param[in,out] profile The profile whose `sentences` map is changed.
+/// @param[out] error Set to a message for the user when the function returns false.
+/// @return True on success; false when an id of `--enable` or `--disable` is not in the
+/// standard registry, in which case the ids before it have already been applied.
 bool apply_sentence_overrides(const RunOptions& options, nmeasim::io::Profile& profile,
                               std::string& error) {
     const auto& registry = nmeasim::core::nmea0183::SentenceRegistry::standard();
+    // Returns the profile's setting for `id`, created from the registry defaults when the
+    // profile has none, or null when the registry does not know the id.
     auto setting_for = [&](const std::string& id) -> nmeasim::core::simulation::SentenceSetting* {
         const auto* descriptor = registry.find(id);
         if (descriptor == nullptr) {
@@ -269,7 +443,27 @@ bool apply_sentence_overrides(const RunOptions& options, nmeasim::io::Profile& p
     return true;
 }
 
-/// Applies --track, --replay and their companions on top of the profile's simulation mode.
+/// Applies `--track`, `--replay`, their companion options and `--record` to `profile`.
+///
+/// - With `--track`, the mode becomes `nmeasim::io::SimulationMode::Track` and the track
+///   settings are replaced: the path, `loop` from `--loop`, `use_timestamps` unless
+///   `--ignore-timestamps` is given, and the speed when `--speed` is positive (otherwise the
+///   profile's speed stays).
+/// - With `--replay`, the mode becomes `nmeasim::io::SimulationMode::Replay` with the path,
+///   `loop` from `--loop` and the fixed interval when `--replay-interval` is positive.
+/// - With neither, `--loop` sets the loop flag of both the profile's track and replay
+///   settings, so that a profile already in one of those modes loops; without `--loop` the
+///   profile's flags stay.
+///
+/// `--record` then appends a log output that truncates its file. `run_simulation` calls this
+/// function after `apply_output_overrides`, so the log output joins whichever outputs the
+/// run has, the profile's or the command line's, and takes neither `--encoding` nor the TAG
+/// block.
+///
+/// @param options The parsed `run` options.
+/// @param[in,out] profile The profile to change.
+/// @note The track or log file is only read later, by
+/// `nmeasim::io::SimulationRunner::apply_profile`.
 void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profile) {
     using nmeasim::io::SimulationMode;
     if (!options.track_path.empty()) {
@@ -300,6 +494,32 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
     }
 }
 
+/// Runs the `run` subcommand: builds the profile, streams it and returns the exit status.
+///
+/// Loads the profile of `--profile`, or the built-in default, and applies
+/// `apply_output_overrides`, `apply_sentence_overrides`, `apply_destination` and
+/// `apply_mode_overrides` in this order. It then applies the profile to a
+/// `nmeasim::io::SimulationRunner`, starts it and runs the Qt event loop until the runner
+/// emits `stopped`, which happens when:
+///
+/// - `SIGINT` or `SIGTERM` arrives (see `on_interrupt`; the flag is polled every 100 ms);
+/// - `--duration` elapses, counted in wall-clock time from just before the event loop
+///   starts;
+/// - a track or log that does not loop reaches its end (the runner emits `finished`, then
+///   stops itself).
+///
+/// Unless `--quiet` is given it prints to standard error each output that opened, a line
+/// naming the profile, the track or log, its length and the tick, `end of the track or log
+/// reached` when a finite source ends, and the count of
+/// `nmeasim::io::SimulationRunner::sentences_emitted` when it stops.
+/// A failure of one output while others work is printed as a warning and the run continues.
+///
+/// @param options The parsed `run` options.
+/// @return 0 after a normal stop; 2 when the profile cannot be loaded or applied, an
+/// override is invalid or the run would have no outputs; 3 when none of the outputs could
+/// be opened.
+/// @pre A `QCoreApplication` exists.
+/// @note Installs `on_interrupt` for `SIGINT` and `SIGTERM` and leaves it installed.
 int run_simulation(const RunOptions& options) {
     nmeasim::io::Profile profile = nmeasim::io::Profile::default_profile();
     if (!options.profile_path.empty()) {
@@ -371,6 +591,9 @@ int run_simulation(const RunOptions& options) {
         }
     });
 
+    // Qt must not be called from a signal handler, so the handler only sets a flag and this
+    // timer turns it into a stop inside the event loop. 100 ms keeps Ctrl+C responsive at a
+    // negligible cost.
     std::signal(SIGINT, on_interrupt);
     std::signal(SIGTERM, on_interrupt);
     QTimer interrupt_poll;
@@ -394,6 +617,17 @@ int run_simulation(const RunOptions& options) {
     return result;
 }
 
+/// Runs `profile init`: writes the built-in default profile to `path` as indented JSON.
+///
+/// Prints `wrote PATH` to standard output on success and an error to standard error
+/// otherwise.
+///
+/// @param path The file to write, as given on the command line.
+/// @param force Overwrites an existing file when true (`-f` or `--force`); when false an
+/// existing file is left untouched and reported as an error.
+/// @return 0 when the file was written; 2 when it exists and `force` is false, or when it
+/// could not be written.
+/// @see nmeasim::io::Profile::save
 int write_default_profile(const std::string& path, bool force) {
     const QString qpath = QString::fromStdString(path);
     if (!force && QFile::exists(qpath)) {
@@ -409,6 +643,15 @@ int write_default_profile(const std::string& path, bool force) {
     return 0;
 }
 
+/// Runs `profile show`: prints a profile as indented JSON on standard output.
+///
+/// The file is loaded, validated and migrated to the current schema version, then written
+/// out again, so the output shows the profile as the simulator reads it.
+///
+/// @param path The profile file; empty prints the built-in default profile.
+/// @return 0 on success; 2 when the file cannot be loaded or is not a valid profile, after
+/// printing the reason to standard error.
+/// @see nmeasim::io::Profile::load
 int show_profile(const std::string& path) {
     nmeasim::io::Profile profile = nmeasim::io::Profile::default_profile();
     if (!path.empty()) {
@@ -426,6 +669,24 @@ int show_profile(const std::string& path) {
 
 }  // namespace
 
+/// Entry point of `nmeasim`: parses the command line and runs the chosen subcommand.
+///
+/// Creates the `QCoreApplication`, declares the subcommands and options with CLI11 (at most
+/// one top-level subcommand; `profile` needs `init` or `show`), then dispatches to
+/// `list_serial_ports`, `list_interfaces`, `list_sentences`, `run_simulation`,
+/// `write_default_profile` or `show_profile`. Without a subcommand it prints the help to
+/// standard output.
+///
+/// @param argc Number of command-line arguments, including the program name.
+/// @param argv The command-line arguments; `argv[0]` is the program name.
+/// @return The exit status:
+/// - 0 on success, after `--help` or `--version`, and when no subcommand is given;
+/// - 2 when `run` or `profile` rejects its input (see `run_simulation`,
+///   `write_default_profile` and `show_profile`);
+/// - 3 when `run` could open none of its outputs;
+/// - the CLI11 error code, from 100 upwards, when the command line itself cannot be parsed:
+///   an unknown option, a missing or malformed value, a missing file, or a value outside the
+///   range an option accepts.
 int main(int argc, char** argv) {
     // Qt's non-GUI modules expect an application object to exist, even in headless tools.
     QCoreApplication qt_application(argc, argv);
