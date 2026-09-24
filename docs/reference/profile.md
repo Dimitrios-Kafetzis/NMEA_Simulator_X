@@ -265,4 +265,7 @@ profile file, so a profile and the files it names can be moved together; it is r
 the profile is run, not when it is loaded. Saving a profile writes the paths as
 they were written; saving it into another directory (*Save profile as...*) rewrites the
 relative paths so that they still name the same files. Paths given on the command line
-(`--track`, `--replay`, `--file`, `--record`) are relative to the working directory.
+(`--track`, `--replay`, `--file`, `--record`) are relative to the working directory. In the
+desktop application the file dialogs (*Open track...*, *Open log for replay...* and the
+*Browse...* buttons of the settings dialog) start in the folder that a relative path names,
+next to the profile file.

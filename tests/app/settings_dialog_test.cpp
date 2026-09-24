@@ -10,20 +10,24 @@
 /// edited profile round-trips through JSON, and that `nmeasim::app::MainWindow` takes the
 /// dialog result as its profile, and that values an unchanged dialog cannot show exactly (the
 /// whole random seed range, coordinates with more than six decimals, output settings outside
-/// the old widget ranges) survive *OK*. The dialogs are never shown; `accept` is called
-/// directly.
+/// the old widget ranges) survive *OK*, and where the file dialogs of the *Browse...*
+/// buttons start for a path relative to the profile's directory. The dialogs are never shown;
+/// `accept` is called directly.
 /// The file reads no fixtures.
 
 #include "dialogs/settings_dialog.hpp"
 
+#include "app_settings.hpp"
 #include "dialogs/outputs_page.hpp"
 #include "dialogs/sentences_page.hpp"
 #include "dialogs/simulation_page.hpp"
 #include "dialogs/vessel_page.hpp"
 #include "main_window.hpp"
 
+#include <QDir>
 #include <QPushButton>
 #include <QSignalSpy>
+#include <QStandardPaths>
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -566,4 +570,27 @@ TEST_CASE("the outputs tab keeps loaded values and refuses a cleared baud rate",
     CHECK(page->outputs().at(3).serial.baud_rate == 0);
     dialog.accept();
     CHECK(dialog.error_text().contains(QStringLiteral("baud rate")));
+}
+
+TEST_CASE("file dialogs start next to a path relative to the profile's file", "[app][settings]") {
+    using nmeasim::app::AppSettings;
+    // A loaded profile's relative paths name files next to the profile file.
+    const QString profile_directory = QDir::cleanPath(QDir::tempPath() + QStringLiteral("/sail"));
+    CHECK(
+        AppSettings::resolve_profile_path(profile_directory, QStringLiteral("data/passage.gpx")) ==
+        profile_directory + QStringLiteral("/data/passage.gpx"));
+    CHECK(AppSettings::resolve_profile_path(profile_directory, QStringLiteral("../out.nmea")) ==
+          QDir::cleanPath(QDir::tempPath() + QStringLiteral("/out.nmea")));
+    CHECK(AppSettings::dialog_directory(profile_directory, QStringLiteral("data/passage.gpx")) ==
+          profile_directory + QStringLiteral("/data"));
+
+    // An absolute path is kept; a profile without a file resolves against the working
+    // directory; no path at all starts in the documents folder.
+    const QString absolute = QDir::cleanPath(QDir::tempPath() + QStringLiteral("/log.nmea"));
+    CHECK(AppSettings::resolve_profile_path(profile_directory, absolute) == absolute);
+    CHECK(AppSettings::resolve_profile_path({}, QStringLiteral("log.nmea")) ==
+          QDir::current().absoluteFilePath(QStringLiteral("log.nmea")));
+    CHECK(AppSettings::resolve_profile_path(profile_directory, {}).isEmpty());
+    CHECK(AppSettings::dialog_directory(profile_directory, {}) ==
+          QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
 }
