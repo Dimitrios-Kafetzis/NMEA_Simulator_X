@@ -32,8 +32,8 @@ namespace nmeasim::app {
 /// | `map/online` | `map_online`, `set_map_online` | `true` |
 /// | `map/tile_url` | `map_tile_url`, `set_map_tile_url` | empty |
 /// | `map/zoom` | `map_zoom`, `set_map_zoom` | `12` |
-/// | `map/cache_directory` | `map_cache_directory`, `set_map_cache_directory`, read by
-/// `tile_cache_directory` | empty | | `appearance/theme` | `theme`, `set_theme` | `night` |
+/// | `map/cache_directory` | `map_cache_directory`, `set_map_cache_directory` | empty |
+/// | `appearance/theme` | `theme`, `set_theme` | `night` |
 ///
 /// The store is chosen by `QSettings` from the organisation and application names that
 /// `main` sets (`NMEASimulatorX` for both) and, on macOS, the organisation domain: the
