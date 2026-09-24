@@ -161,11 +161,12 @@ Overlays keep the chart readable:
 | Top left | Zoom level (with one decimal between whole levels) and *offline*, *free view* or *destination set*; below it a north arrow, as the chart is always north up |
 | Top right | Buttons *+* and *−* (zoom one level) and *Follow the vessel* (lit while following) |
 | Bottom left | Scale bar in round nautical miles (0.1 to 5000 nm), or metres below 0.1 nm |
-| Bottom right | The position under the pointer while it is over the map, and the OpenStreetMap attribution |
+| Bottom right | The position under the pointer while it is over the map, and the attribution of the tile server |
 
 The zoom level is continuous: the wheel, the touchpad and pinch gestures zoom smoothly, using
 the tiles of the nearest whole level scaled to fit, while the keys and buttons step to whole
-levels.
+levels. The map pans freely across the 180th meridian: the world repeats east and west, and
+positions picked on the map always have a longitude between -180° and 180°.
 
 | Input | Effect |
 | --- | --- |
@@ -204,6 +205,12 @@ application restarts. After any other failure, such as no network
 connection, a timeout or another HTTP error, the tile is requested again at the earliest 30
 seconds later, and each further failure of the same tile doubles that delay up to 10 minutes.
 Unticking and ticking *View → Download map tiles* again retries those tiles at once.
+
+The map credits *© OpenStreetMap contributors* in its bottom-right corner when the tiles come
+from an OpenStreetMap server (a host ending in `openstreetmap.org`). For any other server it
+draws no attribution, because it cannot know that server's terms: put the credit the server
+asks for in the `map/tile_attribution` preference, which replaces the default for every
+server (an empty value draws none).
 
 Every downloaded tile is written to the tile cache directory below, so once an area has
 been viewed it stays available without a network connection. When a tile is missing the map
@@ -346,6 +353,7 @@ platform's native location:
 | `simulation/autostart` | Whether the simulation starts on launch |
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
+| `map/tile_attribution` | Attribution drawn on the map; unset credits OpenStreetMap for its own servers only |
 | `map/zoom` | Last map zoom level |
 | `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |

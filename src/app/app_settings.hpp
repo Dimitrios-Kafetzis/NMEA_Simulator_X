@@ -14,6 +14,8 @@
 #include <QSettings>
 #include <QString>
 
+#include <optional>
+
 namespace nmeasim::app {
 
 /// Persistent application preferences (not the simulation profile), stored with `QSettings`
@@ -31,6 +33,7 @@ namespace nmeasim::app {
 /// | `simulation/autostart` | `autostart`, `set_autostart` | `false` |
 /// | `map/online` | `map_online`, `set_map_online` | `true` |
 /// | `map/tile_url` | `map_tile_url`, `set_map_tile_url` | empty |
+/// | `map/tile_attribution` | `map_tile_attribution`, `set_map_tile_attribution` | unset |
 /// | `map/zoom` | `map_zoom`, `set_map_zoom` | `12` |
 /// | `map/cache_directory` | `map_cache_directory`, `set_map_cache_directory` | empty |
 /// | `appearance/theme` | `theme`, `set_theme` | `night` |
@@ -107,6 +110,20 @@ public:
     /// @param url A URL with `{z}`, `{x}` and `{y}` placeholders; empty returns to the
     ///   OpenStreetMap server at the next start.
     void set_map_tile_url(const QString& url);
+    /// Returns the attribution the map draws for the tile server (key `map/tile_attribution`).
+    ///
+    /// The application has no control for this key; it is edited in the settings store,
+    /// usually together with `map/tile_url`.
+    ///
+    /// @return The stored text, empty to draw no attribution; `std::nullopt` when the key was
+    ///   never set, in which case the map credits OpenStreetMap for the OpenStreetMap tile
+    ///   servers and draws nothing for any other server (see `map::default_attribution`).
+    [[nodiscard]] std::optional<QString> map_tile_attribution() const;
+    /// Stores the attribution the map draws for the tile server (key `map/tile_attribution`).
+    ///
+    /// @param attribution Text to draw, empty to draw none; `std::nullopt` removes the key, so
+    ///   that the map returns to its default at the next start.
+    void set_map_tile_attribution(const std::optional<QString>& attribution);
     /// Returns the map zoom level of the last session (key `map/zoom`).
     ///
     /// @return A whole slippy map zoom level as stored, not checked here; 12 when it was never

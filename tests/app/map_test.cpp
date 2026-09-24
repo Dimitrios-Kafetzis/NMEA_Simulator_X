@@ -4,13 +4,15 @@
 /// tile arithmetic of `map/tile_math.hpp`.
 ///
 /// Covers slippy-map tile coordinates and ground resolution, the disk and memory tile cache,
-/// coordinate conversion, panning, zooming and following in the widget, the sailed track, the
+/// coordinate conversion, panning, zooming and following in the widget, longitudes wrapped
+/// across the antimeridian, the attribution of the tile server, the sailed track, the
 /// loaded route, the destination, the scale bar, painting in both themes, and how
 /// `nmeasim::app::MainWindow` reacts to positions and destinations picked on the map. Every
 /// tile cache is switched offline, and the tiles a test needs are written into a temporary
 /// directory. The widgets are painted on the offscreen platform (see `main.cpp`). The file
 /// reads no fixtures.
 
+#include "app_settings.hpp"
 #include "io/event_loop.hpp"
 #include "main_window.hpp"
 #include "map/map_widget.hpp"
@@ -80,6 +82,19 @@ TEST_CASE("tile arithmetic matches the slippy map convention", "[app][map]") {
         }
     }
     CHECK(map::parent_of({12, 2317, 1583}) == map::TileKey{11, 1158, 791});
+    // The whole-world tile has no parent; it is its own.
+    CHECK(map::parent_of({0, 0, 0}) == map::TileKey{0, 0, 0});
+    // Rows beyond the projected world are clamped to the first and last row.
+    CHECK(map::tile_at(QPointF(1.5, -0.5), 1) == map::TileKey{1, 1, 0});
+    CHECK(map::tile_at(QPointF(0.5, 7.0), 1) == map::TileKey{1, 0, 1});
+
+    CHECK(map::wrap_longitude(0.0) == 0.0);
+    CHECK(map::wrap_longitude(-180.0) == -180.0);
+    CHECK(map::wrap_longitude(180.0) == -180.0);
+    CHECK(map::wrap_longitude(190.0) == Approx(-170.0));
+    CHECK(map::wrap_longitude(-190.0) == Approx(170.0));
+    CHECK(map::wrap_longitude(540.0) == -180.0);
+    CHECK(map::wrap_longitude(-725.0) == Approx(-5.0));
     // The equatorial circumference, 40075016.686 m, over the 256 pixels of zoom 0; at 60 degrees
     // and zoom 10 it is multiplied by cos 60 = 0.5 and divided by 2^10 = 1024.
     CHECK(map::metres_per_pixel(0.0, 0) == Approx(156543.03).epsilon(1e-4));
@@ -487,4 +502,112 @@ TEST_CASE("zooming in free view keeps the point under the pointer", "[app][map]"
     const Position after = widget.position_at(anchor);
     CHECK(after.latitude_deg == Approx(before.latitude_deg).margin(1e-7));
     CHECK(after.longitude_deg == Approx(before.longitude_deg).margin(1e-7));
+}
+
+TEST_CASE("the map wraps longitudes across the antimeridian", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(400, 300);
+    widget.set_follow_vessel(false);
+    widget.set_zoom(10);
+    widget.set_center({-17.0, 179.99});
+
+    // A point 100 pixels east of the centre lies beyond the antimeridian.
+    const Position east = widget.position_at(QPointF(300, 150));
+    CHECK(east.longitude_deg < -179.0);
+    CHECK(east.longitude_deg >= -180.0);
+    QSignalSpy picked(&widget, &map::MapWidget::position_picked);
+    QMouseEvent double_click(QEvent::MouseButtonDblClick, QPointF(300, 150), QPointF(300, 150),
+                             Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &double_click);
+    REQUIRE(picked.count() == 1);
+    CHECK(picked.first().first().value<Position>().longitude_deg ==
+          Approx(east.longitude_deg).margin(1e-9));
+    // The position is drawn next to the centre, not one world width away.
+    CHECK(widget.point_of(east).x() == Approx(300.0).margin(1e-6));
+
+    // Dragging the chart 100 pixels to the west moves the centre across the antimeridian.
+    QMouseEvent press(QEvent::MouseButtonPress, QPointF(300, 150), QPointF(300, 150),
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent move(QEvent::MouseMove, QPointF(200, 150), QPointF(200, 150), Qt::LeftButton,
+                     Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, QPointF(200, 150), QPointF(200, 150),
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(&widget, &press);
+    QApplication::sendEvent(&widget, &move);
+    QApplication::sendEvent(&widget, &release);
+    CHECK(widget.center().longitude_deg == Approx(east.longitude_deg).margin(1e-9));
+    CHECK(widget.center().longitude_deg < -179.0);
+
+    // Zooming in around a point west of the centre, beyond the antimeridian, moves the centre
+    // back across it: the anchor lies about 0.27 degrees west of -179.99 and the new centre
+    // about 0.14 degrees east of the anchor.
+    widget.set_center({-17.0, -179.99});
+    widget.zoom_to(11.0, QPointF(0, 150));
+    CHECK(widget.center().longitude_deg > 179.0);
+    CHECK(widget.center().longitude_deg < 180.0);
+}
+
+TEST_CASE("follow mode reports the view it moves to", "[app][map]") {
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    widget.resize(400, 300);
+    REQUIRE(widget.follows_vessel());
+    QSignalSpy view(&widget, &map::MapWidget::view_changed);
+    widget.set_vessel({37.9, 23.7}, 0.0, 0.0);
+    CHECK(view.count() == 1);
+    widget.set_vessel({37.91, 23.71}, 0.0, 0.0);
+    CHECK(view.count() == 2);
+    // A vessel at rest does not move the view.
+    widget.set_vessel({37.91, 23.71}, 0.0, 0.0);
+    CHECK(view.count() == 2);
+    // Following a vessel just across the antimeridian keeps the centre in [-180, 180).
+    widget.set_vessel({-17.0, 180.0}, 0.0, 0.0);
+    CHECK(widget.center().longitude_deg == -180.0);
+
+    widget.set_follow_vessel(false);
+    view.clear();
+    widget.set_vessel({38.0, 23.8}, 0.0, 0.0);
+    CHECK(view.count() == 0);
+}
+
+TEST_CASE("the map credits OpenStreetMap only for its own tile servers", "[app][map]") {
+    const QString osm = QStringLiteral("© OpenStreetMap contributors");
+    CHECK(map::default_attribution(
+              QStringLiteral("https://tile.openstreetmap.org/{z}/{x}/{y}.png")) == osm);
+    CHECK(map::default_attribution(
+              QStringLiteral("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png")) == osm);
+    CHECK(map::default_attribution(QStringLiteral("https://tiles.example.com/{z}/{x}/{y}.png"))
+              .isEmpty());
+    CHECK(map::default_attribution(QStringLiteral("https://notopenstreetmap.org/{z}/{x}/{y}.png"))
+              .isEmpty());
+
+    QTemporaryDir directory;
+    map::TileCache cache(directory.path());
+    cache.set_online(false);
+    map::MapWidget widget(&cache);
+    CHECK(widget.attribution() == osm);
+    cache.set_url_template(QStringLiteral("https://tiles.example.com/{z}/{x}/{y}.png"));
+    CHECK(widget.attribution().isEmpty());
+    widget.set_attribution(QStringLiteral("© Example Tiles"));
+    CHECK(widget.attribution() == QStringLiteral("© Example Tiles"));
+    widget.set_attribution(QString{});
+    CHECK(widget.attribution().isEmpty());
+    widget.set_attribution(std::nullopt);
+    CHECK(widget.attribution().isEmpty());
+    cache.set_url_template(QStringLiteral("https://tile.openstreetmap.org/{z}/{x}/{y}.png"));
+    CHECK(widget.attribution() == osm);
+
+    // The preference distinguishes an empty attribution from none at all.
+    nmeasim::app::AppSettings settings;
+    CHECK_FALSE(settings.map_tile_attribution().has_value());
+    settings.set_map_tile_attribution(QString{});
+    REQUIRE(settings.map_tile_attribution().has_value());
+    CHECK(settings.map_tile_attribution()->isEmpty());
+    settings.set_map_tile_attribution(std::nullopt);
+    CHECK_FALSE(settings.map_tile_attribution().has_value());
 }

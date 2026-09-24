@@ -82,14 +82,20 @@ MainWindow::MainWindow(QWidget* parent)
 
     tile_cache_->set_online(settings_.map_online());
     tile_cache_->set_url_template(settings_.map_tile_url());
+    map_->set_attribution(settings_.map_tile_attribution());
     map_->set_zoom(settings_.map_zoom());
     connect(map_, &map::MapWidget::position_picked, this, &MainWindow::move_vessel);
     // Through a lambda: a pointer to set_destination cannot supply its default name.
     connect(map_, &map::MapWidget::destination_picked, this,
             [this](core::geo::Position position) { set_destination(position); });
     connect(map_, &map::MapWidget::destination_cleared, this, &MainWindow::clear_destination);
-    connect(map_, &map::MapWidget::view_changed, this,
-            [this] { settings_.set_map_zoom(map_->zoom()); });
+    // Follow mode emits view_changed on every tick; storing only a changed zoom level keeps
+    // QSettings from rewriting its file several times a second.
+    connect(map_, &map::MapWidget::view_changed, this, [this] {
+        if (settings_.map_zoom() != map_->zoom()) {
+            settings_.set_map_zoom(map_->zoom());
+        }
+    });
 
     build_actions();
     build_docks();
