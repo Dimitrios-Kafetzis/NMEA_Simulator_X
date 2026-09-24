@@ -139,9 +139,11 @@ The top row holds two round instruments and the position, time and GNSS tiles:
 
 An active override stops the random drift of that parameter, and the tile gets an amber
 border so that overridden values stand out. Clearing it lets the value drift again from where
-it is, within its drift band: a value pinned outside the seed plus or minus the amplitude
-moves back to the edge of the band on the next tick. In track and replay mode every override control is disabled, because
-the file drives the vessel.
+it is: a value pinned outside the seed plus or minus the amplitude drifts back towards that
+band at its normal step rate, one full step per tick, and then wanders within it. In steering
+mode the heading follows the rudder even when its override is set; switching steering off
+leaves the override holding the heading where the rudder left it. In track and replay mode every override control is disabled,
+because the file drives the vessel.
 
 ## Map
 
@@ -215,6 +217,10 @@ the cache only and shows *offline*. Unticking it also cancels the downloads in p
 | Windows | `%LOCALAPPDATA%\NMEASimulatorX\NMEASimulatorX\cache\tiles` |
 | macOS | `~/Library/Caches/NMEASimulatorX/NMEASimulatorX/tiles` |
 | Linux | `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles` |
+
+The `map/cache_directory` preference moves the cache: the tiles are then kept in its `tiles`
+sub-directory, which *Clear map tile cache* deletes, and the change takes effect at the next
+start.
 
 ## Console
 
@@ -341,6 +347,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/zoom` | Last map zoom level |
+| `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the
