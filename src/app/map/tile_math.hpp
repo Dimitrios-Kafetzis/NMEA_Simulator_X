@@ -98,16 +98,22 @@ struct TileKey {
 /// @param tile Tile coordinates. The x may lie outside [0, 2^`zoom`) and is wrapped into it,
 ///     as the world repeats east and west.
 /// @param zoom Whole zoom level, stored in the key as given.
-/// @return The key of the tile. Its y is the floor of `tile.y()` and is neither wrapped nor
-///     clamped, so keeping y in range is up to the caller.
+/// @return The key of the tile. Its y is the floor of `tile.y()` clamped to [0, 2^`zoom`),
+///     so a point north or south of the projected world gives the first or last row.
 [[nodiscard]] TileKey tile_at(QPointF tile, int zoom) noexcept;
 
 /// Returns the tile one zoom level up (one level less detailed) that contains a tile.
 ///
-/// @param key Tile whose parent is wanted; `key.zoom` should be at least 1, since a key at
-///     zoom 0 yields zoom -1.
-/// @return The key at `key.zoom` - 1 whose area covers `key` and three sibling tiles.
+/// @param key Tile whose parent is wanted.
+/// @return The key at `key.zoom` - 1 whose area covers `key` and three sibling tiles. A key
+///     at zoom 0 or below has no parent and yields the whole-world tile (0, 0) at zoom 0.
 [[nodiscard]] TileKey parent_of(TileKey key) noexcept;
+
+/// Wraps a longitude into [-180, 180), as the world repeats east and west.
+///
+/// @param longitude_deg Longitude in degrees, positive east; any finite value.
+/// @return The same meridian in [-180, 180): 180 gives -180 and 190 gives -170.
+[[nodiscard]] double wrap_longitude(double longitude_deg) noexcept;
 
 /// Returns the ground distance one pixel covers at a latitude and zoom level.
 ///

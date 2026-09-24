@@ -350,8 +350,9 @@ private:
     void tick();
     /// Writes sentences to the admitting NMEA 0183 channels and to the recording.
     ///
-    /// The TAG block, where enabled, carries the simulated UTC time of the current state as
-    /// its `c:` parameter. Emits `sentence_emitted` for every sentence.
+    /// The TAG block, where enabled, is put in front of the sentence by
+    /// `core::nmea0183::prepend_tag_block` and carries the simulated UTC time of the current
+    /// state as its `c:` parameter. Emits `sentence_emitted` for every sentence.
     ///
     /// @param sentences The sentences the simulation produced, in order, without line
     ///   terminator.

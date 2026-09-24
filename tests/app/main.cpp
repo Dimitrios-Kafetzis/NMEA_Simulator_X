@@ -8,9 +8,12 @@
 /// `ctest` registration in `tests/CMakeLists.txt` sets `QT_QPA_PLATFORM=offscreen` as well.
 /// It also redirects `QSettings` to INI files in a temporary directory, deleted when the run
 /// ends, under the application and organisation name `NMEASimulatorX-tests`, so that the tests
-/// never read or overwrite the operator's preferences. The map tile cache is not redirected:
-/// a `MainWindow` keeps its tiles in the standard cache location, which for this application
-/// name is a directory of its own, separate from the installed application's cache.
+/// never read or overwrite the operator's preferences. In those settings it switches tile
+/// downloads off (`map/online`) and points the map tile cache (`map/cache_directory`) at a
+/// second temporary directory, so that a `MainWindow` never reaches the tile server and never
+/// reads or fills a tile cache outside the run.
+
+#include "app_settings.hpp"
 
 #include <QApplication>
 #include <QSettings>
@@ -18,7 +21,8 @@
 
 #include <catch2/catch_session.hpp>
 
-/// Creates the offscreen `QApplication`, isolates the settings and runs the Catch2 session.
+/// Creates the offscreen `QApplication`, isolates the settings and the tile cache, and runs the
+/// Catch2 session.
 ///
 /// @param argc Number of command-line arguments.
 /// @param argv Command-line arguments; Qt removes the options it recognises, and the rest are
@@ -36,6 +40,13 @@ int main(int argc, char* argv[]) {
     QTemporaryDir settings_directory;
     QSettings::setDefaultFormat(QSettings::IniFormat);
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings_directory.path());
+
+    QTemporaryDir cache_directory;
+    {
+        nmeasim::app::AppSettings settings;
+        settings.set_map_online(false);
+        settings.set_map_cache_directory(cache_directory.path());
+    }
 
     return Catch::Session().run(argc, argv);
 }

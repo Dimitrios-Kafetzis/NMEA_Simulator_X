@@ -13,9 +13,11 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace nmeasim::core::simulation {
 
@@ -23,13 +25,15 @@ namespace nmeasim::core::simulation {
 ///
 /// The values are taken as typed; `SentenceScheduler::set_custom_sentences` fills in an empty
 /// id, replaces a non-positive period and drops the sentence when its body cannot be framed
-/// or its id clashes with a registry id.
+/// or its id clashes with a registry id or with the id of an earlier custom sentence.
 struct CustomSentence {
     /// Identifier used by the output filters and the console, and as `EmittedSentence::id`.
     ///
-    /// Must not equal a registry id such as `RMC`, or the scheduler drops the sentence. An
-    /// empty id is replaced by `CUSTOM-n`, where `n` is the 1-based position of the sentence
-    /// in the list given to the scheduler.
+    /// Must not equal a registry id such as `RMC`, nor the id of another sentence of the same
+    /// list, or the scheduler drops the sentence. An empty id is replaced by `CUSTOM-n`, where
+    /// `n` is the 1-based position of the sentence in the list given to the scheduler (see
+    /// `effective_custom_id`); an explicit id such as `CUSTOM-2` counts as taken by the
+    /// sentence it names as well.
     std::string id;
     /// The sentence body as typed: an optional `$` or `!`, the address, then the fields.
     ///
@@ -66,12 +70,33 @@ struct CustomSentence {
 ///   (0x20 to 0x7E) or one of the reserved characters `$`, `!`, `\`, `^` and `~`;
 /// - its address, the text before the first comma, is shorter than three characters or
 ///   contains anything but letters and digits;
-/// - the framed sentence would be longer than 80 characters without its line terminator,
-///   the NMEA 0183 limit of 82 characters including CR LF.
+/// - the framed sentence would be longer than 80 characters with its checksum and without
+///   its line terminator, the NMEA 0183 limit of 82 characters including CR LF. The message
+///   then reads `The sentence exceeds 80 characters with its checksum`.
 ///
 /// @param body The body as typed by the operator.
 /// @return `std::nullopt` when the body is acceptable, otherwise an English sentence for the
 ///   operator saying what is wrong.
 [[nodiscard]] std::optional<std::string> validate_custom_sentence(std::string_view body);
+
+/// Returns the id a custom sentence is scheduled, filtered and shown under.
+///
+/// @param sentence The sentence.
+/// @param index The 0-based position of the sentence in its list.
+/// @return `sentence.id` when it is not empty, otherwise `CUSTOM-n` with `n` equal to
+///   `index + 1`.
+[[nodiscard]] std::string effective_custom_id(const CustomSentence& sentence, std::size_t index);
+
+/// Finds the first custom sentence whose id is already used by an earlier one.
+///
+/// The ids compared are those of `effective_custom_id`, so an explicit `CUSTOM-2` clashes
+/// with an unnamed second sentence. The comparison is exact and case-sensitive; a profile
+/// upper-cases its ids before.
+///
+/// @param sentences The custom sentences, in list order.
+/// @return The 0-based index of the first sentence whose id equals the id of a sentence
+///   before it, or `std::nullopt` when every id is unique.
+[[nodiscard]] std::optional<std::size_t> find_duplicate_custom_id(
+    const std::vector<CustomSentence>& sentences);
 
 }  // namespace nmeasim::core::simulation
