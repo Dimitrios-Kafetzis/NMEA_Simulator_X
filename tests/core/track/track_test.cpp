@@ -4,8 +4,9 @@
 /// loaders `nmeasim::core::track::parse_track` and `nmeasim::core::track::load_track`.
 ///
 /// The cases cover when a track counts as timed, its duration and length, the names of the
-/// track kinds, the choice of reader by file extension, the file name as fallback track
-/// name, load errors, and the sample tracks shipped with the application.
+/// track kinds, the choice of reader by the extension of the file name (a dotted directory
+/// or a missing extension included), the file name as fallback track name, load errors,
+/// and the sample tracks shipped with the application.
 ///
 /// Fixture files: tests/fixtures/tracks/route.gpx, linestring.kml, untimestamped.gpx,
 /// multi_geometry.kml, prefixed.gpx and malformed.gpx (and the absent missing.gpx); the
@@ -76,6 +77,16 @@ TEST_CASE("track files are dispatched on their extension", "[track]") {
     CHECK_FALSE(track::parse_track("track.csv", "1,2", &error).has_value());
     CHECK(error.find(".csv") != std::string::npos);
     CHECK_FALSE(track::parse_track("noextension", "", &error).has_value());
+    CHECK(error == "The track file 'noextension' has no extension; expected .gpx or .kml");
+
+    // Only the file name is looked at, so a dot in a directory name is not an extension.
+    CHECK_FALSE(track::parse_track("/home/sail/v1.2/passage", "", &error).has_value());
+    CHECK(error == "The track file 'passage' has no extension; expected .gpx or .kml");
+    CHECK_FALSE(track::parse_track("C:\\tracks.old\\passage", "", &error).has_value());
+    CHECK(error == "The track file 'passage' has no extension; expected .gpx or .kml");
+    const auto dotted = track::parse_track("/home/sail/v1.2/passage.gpx",
+                                           nmeasim::test::read_fixture("tracks/route.gpx"), &error);
+    CHECK(dotted.has_value());
 }
 
 TEST_CASE("tracks are loaded from disk with the file name as fallback name", "[track]") {

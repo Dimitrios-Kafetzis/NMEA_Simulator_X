@@ -3,13 +3,16 @@
 # comes from vcpkg through the `tests` manifest feature, which the development and CI presets
 # enable.
 #
-# Builds up to three Catch2 executables and registers every test case with CTest:
+# Builds up to four Catch2 executables and registers every test case with CTest:
 #   nmeasim_core_tests  nmeasim::core, always; Catch2's own main.
 #   nmeasim_io_tests    nmeasim::io, when the command-line tool or the application is built;
 #                       its main (io/main.cpp) creates the QCoreApplication that sockets
 #                       and timers need.
 #   nmeasim_app_tests   the desktop application's widgets, when NMEASIM_BUILD_APP is ON; its
 #                       main (app/main.cpp) creates an offscreen QApplication.
+#   nmeasim_cli_tests   the command-line tool, when NMEASIM_BUILD_CLI is ON: runs the built
+#                       nmeasim with QProcess, whose path NMEASIM_CLI_PATH gives; its main
+#                       (cli/main.cpp) creates the QCoreApplication that QProcess needs.
 # The compile definitions NMEASIM_FIXTURES_DIR and NMEASIM_SAMPLES_DIR give the tests the
 # absolute paths of tests/fixtures and samples, so that they run from any directory.
 
@@ -76,6 +79,22 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
     catch_discover_tests(nmeasim_io_tests DISCOVERY_MODE PRE_TEST)
 endif()
 
+if(NMEASIM_BUILD_CLI)
+    add_executable(nmeasim_cli_tests
+        cli/cli_test.cpp
+        cli/main.cpp
+    )
+    target_compile_definitions(nmeasim_cli_tests PRIVATE
+        NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+        NMEASIM_CLI_PATH="$<TARGET_FILE:nmeasim_cli>")
+    target_link_libraries(nmeasim_cli_tests
+        PRIVATE Catch2::Catch2 Qt6::Core nmeasim::warnings nmeasim::sanitizers
+    )
+    # The tests run the tool, so building them builds it too.
+    add_dependencies(nmeasim_cli_tests nmeasim_cli)
+    catch_discover_tests(nmeasim_cli_tests DISCOVERY_MODE PRE_TEST)
+endif()
+
 if(NMEASIM_BUILD_APP)
     find_package(Qt6 REQUIRED COMPONENTS Widgets Test)
     add_executable(nmeasim_app_tests
@@ -86,6 +105,7 @@ if(NMEASIM_BUILD_APP)
         app/screenshot_test.cpp
         app/settings_dialog_test.cpp
         app/theme_test.cpp
+        app/tile_cache_test.cpp
     )
     target_include_directories(nmeasim_app_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(nmeasim_app_tests PRIVATE

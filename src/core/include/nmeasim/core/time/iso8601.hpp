@@ -26,8 +26,8 @@ namespace nmeasim::core::time {
 /// - a calendar date `YYYY-MM-DD`, which must exist (2024-02-29 does, 2026-02-30 does not);
 /// - optionally a `T` or space separator and a time `hh:mm`, optionally followed by `:ss`
 ///   and a fraction introduced by `.` or `,`; digits beyond milliseconds are truncated. Hour
-///   24 is accepted only as `24:00` or `24:00:00`, meaning the end of the day, and second 60
-///   for a leap second, which lands on the next minute;
+///   24 is accepted only as `24:00` or `24:00:00`, with a fraction of zeros at most, meaning
+///   the end of the day, and second 60 for a leap second, which lands on the next minute;
 /// - after a time, optionally `Z` or an offset `+hh`, `+hhmm` or `+hh:mm` (or with `-`), in
 ///   hours up to 23 and minutes up to 59, which is subtracted to give UTC.
 ///

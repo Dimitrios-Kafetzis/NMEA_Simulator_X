@@ -15,8 +15,10 @@
 /// per four satellites in view; the autopilot sentences return none while no destination is
 /// set; the propulsion sentences return one per engine. Numbers use a fixed number of
 /// decimals per field and never render negative zero. Encoders never throw and do not check
-/// the length limit themselves: encode_within_limit() lowers the position precision when a
-/// sentence would otherwise be too long.
+/// the length limit themselves: encode_within_limit() lowers the position precision, down to
+/// two decimals, when a sentence would otherwise be too long, and returns the sentence as it
+/// is when even two decimals do not make it fit. The built-in sentences always fit with the
+/// default talkers.
 
 #pragma once
 
@@ -33,8 +35,9 @@ struct EncoderOptions {
     /// Fractional minute digits in latitude and longitude fields, including the destination
     /// position in RMB.
     ///
-    /// Four digits resolve 0.0001 minute, about 0.19 m. encode_within_limit() lowers the
-    /// value one digit at a time, down to 2, when a sentence would exceed the length limit.
+    /// Four digits resolve 0.0001 minute, about 0.19 m. encode_within_limit() raises a value
+    /// below 2 to 2, and lowers the value one digit at a time, down to 2, when a sentence
+    /// would exceed the length limit.
     int position_decimals{4};
 };
 
@@ -150,7 +153,7 @@ std::vector<std::string> encode_zda(const EncoderContext& context);
 
 /// Encodes HDG, the magnetic sensor heading with deviation and variation.
 ///
-/// Fields: the compass heading model::Navigation::heading_magnetic_deg() (true heading minus
+/// Fields: the compass heading model::Navigation::heading_compass_deg() (true heading minus
 /// variation and deviation), the magnitude of the deviation with its `E` or `W` letter and
 /// the magnitude of the variation with its letter, each with one decimal; a zero value is
 /// sent as `E`.
@@ -162,9 +165,8 @@ std::vector<std::string> encode_hdg(const EncoderContext& context);
 
 /// Encodes HDM, the heading referenced to magnetic north.
 ///
-/// Fields: model::Navigation::heading_magnetic_deg() with one decimal, then `M`. That value
-/// is the compass heading HDG sends: the true heading minus variation and deviation, which
-/// equals the magnetic heading only while the deviation is zero.
+/// Fields: model::Navigation::heading_magnetic_deg() (true heading minus variation) with one
+/// decimal, then `M`. The compass deviation does not apply; HDG carries it.
 ///
 /// @param context The state and talker to encode with.
 /// @return One sentence.
@@ -183,7 +185,7 @@ std::vector<std::string> encode_hdt(const EncoderContext& context);
 /// Encodes VHW, the water speed and heading.
 ///
 /// Fields: heading in degrees true, `T`, heading from
-/// model::Navigation::heading_magnetic_deg() (the compass heading, as in encode_hdm()), `M`,
+/// model::Navigation::heading_magnetic_deg() (without deviation, as in encode_hdm()), `M`,
 /// speed through the water in knots, `N`, and the same speed in km/h, `K`, each with one
 /// decimal.
 ///
@@ -415,10 +417,10 @@ std::vector<std::string> encode_vdm_static(const EncoderContext& context);
 
 /// Restricts a waypoint name to the characters an NMEA 0183 field may carry.
 ///
-/// Keeps the printable ASCII characters other than space and the characters NMEA 0183
-/// reserves (`,`, `*`, `$`, `!`, `\`, `^` and `~`); spaces, control characters and bytes
-/// outside ASCII are dropped. The result is truncated to `model::kMaxWaypointNameLength`
-/// characters.
+/// Keeps the characters is_text_field_character() allows except space: the printable ASCII
+/// characters other than those NMEA 0183 reserves (`,`, `*`, `$`, `!`, `\`, `^` and `~`);
+/// spaces, control characters and bytes outside ASCII are dropped. The result is truncated to
+/// `model::kMaxWaypointNameLength` characters.
 ///
 /// @param name The configured waypoint name, of any length.
 /// @return The sanitised name, or `WPT` when no character is left.

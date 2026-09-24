@@ -41,7 +41,10 @@ Each line is handled on its own, so the shapes below can be mixed in one file.
 | No `$` or `!` on the line | Skipped and counted |
 
 A sentence with a checksum that does not match is skipped and counted. A sentence without a
-checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
+checksum is accepted. The same holds for a TAG block: when it ends in `*hh`, the checksum of
+the text between its backslashes must match, or the whole line is skipped and counted, and
+a block without a checksum is accepted; a block that is not closed by a second backslash is
+skipped and counted as well. Trailing `<CR>`, `<LF>` and spaces are ignored.
 
 ### How replay timing is derived
 
@@ -51,12 +54,21 @@ checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
    gets the predecessor's offset.
 2. **Sentence times.** Otherwise, when sentences carry a UTC time field (RMC, GGA, GLL,
    ZDA, GNS, GST, GBS, GRS), offsets follow those times. Sentences without a time field share
-   the offset of the last one that had it. A jump back across midnight is treated as the
-   next day; any other backwards jump is ignored.
+   the offset of the last one that had it. A jump back of more than 12 hours is taken as
+   crossing midnight into the next day. A shorter jump back holds the replay: the offset
+   stays where it is until the times pass the latest time seen before the jump, and only
+   the time beyond it is added, so no time is counted twice.
 3. **Fixed interval.** Otherwise the entries are spaced by a fixed interval, 100 ms by
-   default, configurable per profile.
+   default, configurable per profile. A negative interval is rejected.
 
-The duration of a log is the offset of its last entry.
+[ADR 0012](../adr/0012-log-file-format.md) names RMC, GGA, GLL and ZDA as the sentences whose
+time fields are used; the reader also uses the other sentences listed above, and this page
+is the reference for the current behaviour.
+
+The duration of a log is the offset of its last entry. A looping replay starts the next
+pass one duration after the previous one, so the first entry of a pass is sent together
+with the last entry of the previous pass, and the time a tick runs past the end carries into
+the next pass.
 
 ## Replay behaviour
 
@@ -75,7 +87,7 @@ the state as it is.
 | VTG | Course and speed over ground |
 | ZDA | Time and date |
 | HDT, HDG, HDM | True heading; HDG also sets deviation and variation |
-| ROT | Rate of turn |
+| ROT | Rate of turn, when its status is `A` |
 | VHW | Heading and speed through water |
 | VBW | Speed through water |
 | DPT, DBT | Depth below transducer, DPT also the transducer offset |
@@ -83,11 +95,16 @@ the state as it is.
 | MWV | Apparent (`R`) or true (`T`) wind angle and speed, unit converted to knots |
 | MWD | True wind direction and speed |
 | RSA | Rudder angle |
-| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position |
+| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position, the same id keeps the leg (an empty id is `WPT`) |
 | APB, XTE | Recognised, nothing applied (they repeat what RMB carries) |
 | RPM | Revolutions of engine `n` (`E` source, status `A`), creating engines up to `n`; running when above zero |
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |
 | VDO, VDM | Passed through unchanged; the AIS payload is not decoded |
+
+The simulated UTC time follows the time fields: RMC and ZDA with a valid date set the date and
+the time, the other time fields only the time of day. A time of day more than 12 hours
+earlier than the current time is taken as the next day, so a GGA just after midnight moves
+to the new date without waiting for the next RMC or ZDA.
 
 Replayed sentences are identified by their formatter (`MWV`, not `MWV-R`) for output
 filters and the console filter.

@@ -6,6 +6,7 @@
 /// sent.
 
 #include <nmeasim/core/ais/messages.hpp>
+#include <nmeasim/core/geo/geodesic.hpp>
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/sentence_builder.hpp>
 
@@ -55,9 +56,22 @@ std::uint32_t clamp_unsigned(double value, std::uint32_t maximum) {
 }  // namespace
 
 int rate_of_turn_code(double rate_deg_per_min) noexcept {
-    const double code = 4.733 * std::sqrt(std::fabs(rate_deg_per_min));
-    const int magnitude = std::min(static_cast<int>(std::lround(code)), 126);
+    if (!std::isfinite(rate_deg_per_min)) {
+        return kRateOfTurnNotAvailable;
+    }
+    // The simulated rate comes from a turn indicator, so rates beyond the scale take the
+    // largest code with an indicator, 126, never 127 (no turn indicator available).
+    const double code = std::min(4.733 * std::sqrt(std::fabs(rate_deg_per_min)), 126.0);
+    const int magnitude = static_cast<int>(std::lround(code));
     return rate_deg_per_min < 0.0 ? -magnitude : magnitude;
+}
+
+std::uint32_t heading_code(double heading_true_deg) noexcept {
+    if (!std::isfinite(heading_true_deg)) {
+        return kHeadingNotAvailable;
+    }
+    // Rounding 359.5 degrees or more gives 360, which is north again.
+    return static_cast<std::uint32_t>(std::lround(geo::normalize_bearing(heading_true_deg))) % 360U;
 }
 
 BitPacker pack_position_report(const model::VesselState& state) {
@@ -87,7 +101,7 @@ BitPacker pack_position_report(const model::VesselState& state) {
                          27);
     packer.append_unsigned(
         fix ? clamp_unsigned(navigation.course_over_ground_deg * 10.0, 3599U) : 3600U, 12);
-    packer.append_unsigned(clamp_unsigned(navigation.heading_true_deg, 359U), 9);
+    packer.append_unsigned(heading_code(navigation.heading_true_deg), 9);
     packer.append_unsigned(seconds_of_minute(state.time_utc), 6);
     packer.append_unsigned(0, 2);   // manoeuvre indicator: not available
     packer.append_unsigned(0, 3);   // spare
@@ -102,7 +116,7 @@ BitPacker pack_static_data(const model::VesselState& state) {
     packer.append_unsigned(5, 6);
     packer.append_unsigned(0, 2);  // repeat indicator
     packer.append_unsigned(ais.mmsi, 30);
-    packer.append_unsigned(0, 2);  // AIS version: ITU-R M.1371-1
+    packer.append_unsigned(kAisVersionIndicator, 2);
     packer.append_unsigned(ais.imo_number, 30);
     packer.append_text(ais.call_sign, 7);
     packer.append_text(ais.name, 20);

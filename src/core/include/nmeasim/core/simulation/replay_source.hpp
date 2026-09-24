@@ -49,17 +49,20 @@ struct ReplayConfig {
 /// new position without sending them.
 ///
 /// At the end, a stopping replay holds the clock at the last offset and becomes finished. A
-/// looping replay starts again from the seed state and the first entry, carrying the time
-/// that ran past the last entry into the next pass. One `advance` wraps like this at most
-/// once: should the carried time reach the end of the new pass as well, the clock restarts
-/// from zero. A looping log whose entries all share one offset has no duration to carry
-/// time over and is played once per `advance`. An empty log produces nothing and never finishes.
+/// looping replay starts again from the seed state and the first entry, carrying all the time
+/// that ran past the last entry into the next pass: should the carried time reach the end of
+/// the new pass as well, that pass is played too, as often as `dt` spans passes, as a
+/// looping `TrackSource` does. A looping log whose entries all share one offset has no
+/// duration to carry time over and is played once per `advance`. An empty log produces
+/// nothing and is finished from the start, whatever its end behaviour, so that a run of it
+/// ends at once.
 class ReplaySource final : public Source {
 public:
     /// Creates a replay positioned before the first entry, with the state set to
     /// `config.seed`.
     ///
-    /// Nothing is decoded or queued until the first `advance`, `step_once` or `seek`.
+    /// Nothing is decoded or queued until the first `advance`, `step_once` or `seek`. A
+    /// replay of an empty log is finished at once.
     ///
     /// @param config The log, the seed state and the end behaviour.
     explicit ReplaySource(ReplayConfig config);
@@ -79,7 +82,7 @@ public:
     /// @return The state owned by the source, valid for its lifetime.
     [[nodiscard]] const model::VesselState& current() const noexcept override { return state_; }
     /// Returns to the start: clock zero, no entry played, the seed state, and no queued
-    /// sentences.
+    /// sentences; not finished, unless the log is empty.
     ///
     /// Unlike `seek` to zero, the entries at offset zero have not been played afterwards and
     /// are sent by the next `advance`.
@@ -87,8 +90,8 @@ public:
     /// Returns whether a stopping replay has played its last entry.
     ///
     /// @return True after the last entry of a replay configured with `EndBehaviour::Stop`
-    ///   has been played, or after a seek to its end; always false for a looping replay and
-    ///   for an empty log.
+    ///   has been played, or after a seek to its end; always true for an empty log and
+    ///   always false for a looping replay of a log with entries.
     [[nodiscard]] bool finished() const noexcept override { return finished_; }
     /// Returns the length of the replay.
     ///
@@ -106,7 +109,7 @@ public:
     /// whose offset is at or before the new position is decoded into the state and counts as
     /// played, so that the instruments show the right values the moment the replay
     /// continues. Seeking to the end of a stopping replay finishes it; seeking anywhere else
-    /// clears `finished()`.
+    /// clears `finished()`, except for an empty log, which stays finished.
     ///
     /// @param position Time since the first entry, clamped to [0, `duration()`].
     void seek(std::chrono::milliseconds position) override;
@@ -163,7 +166,7 @@ private:
     std::chrono::milliseconds clock_{0};
     /// Index of the next entry to play.
     std::size_t cursor_{0};
-    /// Whether a stopping replay has played its last entry.
+    /// Whether a stopping replay has played its last entry, or the log is empty.
     bool finished_{false};
 };
 
