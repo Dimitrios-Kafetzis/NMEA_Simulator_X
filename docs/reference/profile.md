@@ -225,7 +225,7 @@ decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.m
 | `viewsync.camera_altitude_m` | number | `500` | Camera height above the vessel |
 | `viewsync.tilt_deg` | number | `60` | Camera tilt |
 | `viewsync.roll_deg` | number | `0` | Camera roll |
-| `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon` |
+| `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon`; commas, control characters and non-ASCII bytes are removed when it is sent |
 
 The other keys depend on the type.
 
