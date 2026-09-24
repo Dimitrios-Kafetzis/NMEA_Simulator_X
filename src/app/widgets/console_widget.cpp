@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `ConsoleWidget`: filtering, buffering and the timed flush into the view.
+
 #include "console_widget.hpp"
 
 #include "sentence_highlighter.hpp"
@@ -12,7 +16,11 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Lines kept in the view and in the buffer. A user-interface choice that bounds the memory
+/// of the view and the cost of re-colouring it after a theme change.
 constexpr int kMaxLines{2000};
+/// Interval between flushes into the view, in milliseconds. Batching lines this way keeps the
+/// number of repaints near seven per second whatever the output rate.
 constexpr int kFlushIntervalMs{150};
 
 }  // namespace
@@ -71,6 +79,8 @@ void ConsoleWidget::flush() {
         flush_timer_.stop();
         return;
     }
+    // The scroll bar of a QPlainTextEdit counts lines: within two lines of the bottom still
+    // counts as at the bottom, so the view keeps following after a small scroll movement.
     const bool at_bottom =
         view_->verticalScrollBar()->value() >= view_->verticalScrollBar()->maximum() - 2;
     view_->appendPlainText(pending_.join(QLatin1Char('\n')));

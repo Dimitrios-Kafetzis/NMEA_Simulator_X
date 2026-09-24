@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `SettingsDialog`: builds the tabs and buttons, and validates and stores
+/// the pages when *OK* is pressed.
+
 #include "settings_dialog.hpp"
 
 #include "outputs_page.hpp"

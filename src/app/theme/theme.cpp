@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// The colour tables of the night-bridge and daylight looks, the style-sheet template and the
+/// `Theme` singleton that applies them.
+
 #include "theme.hpp"
 
 #include <QApplication>
@@ -14,6 +19,10 @@ namespace nmeasim::app::theme {
 
 namespace {
 
+/// Builds the colour table of the night-bridge look: charcoal and navy panels, cyan accent,
+/// map tiles dimmed by 45 %.
+///
+/// @return The night colours; `colors_for` keeps one copy for the whole program.
 Colors night_colors() {
     Colors c;
     c.dark = true;
@@ -47,6 +56,10 @@ Colors night_colors() {
     return c;
 }
 
+/// Builds the colour table of the daylight look: white and light grey panels, teal accent,
+/// map tiles undimmed.
+///
+/// @return The day colours; `colors_for` keeps one copy for the whole program.
 Colors day_colors() {
     Colors c;
     c.dark = false;
@@ -80,6 +93,11 @@ Colors day_colors() {
     return c;
 }
 
+/// Writes a colour in Qt style-sheet syntax.
+///
+/// @param color Colour to write.
+/// @return `#rrggbb` for an opaque colour, otherwise `rgba(r, g, b, a)` with every component
+///   from 0 to 255, as Qt style sheets read it.
 QString css(const QColor& color) {
     return color.alpha() == 255 ? color.name(QColor::HexRgb)
                                 : QStringLiteral("rgba(%1, %2, %3, %4)")
@@ -89,14 +107,24 @@ QString css(const QColor& color) {
                                       .arg(color.alpha());
 }
 
+/// Returns a colour with another opacity.
+///
+/// @param color Colour to change; taken by value.
+/// @param alpha Opacity from 0 (transparent) to 255 (opaque).
+/// @return `color` with its alpha replaced by `alpha`.
 QColor with_alpha(QColor color, int alpha) {
     color.setAlpha(alpha);
     return color;
 }
 
-// Style sheet shared by both looks; {tokens} are replaced by the colours of the look. Input
-// fields (line edits, spin boxes, combo boxes) are left to the Fusion style and the palette:
-// styling them here would also restyle the editor inside every spin box and drop its arrows.
+/// Style sheet shared by both looks, with `{token}` placeholders that `style_sheet` replaces
+/// by the colours of the look.
+///
+/// Input fields (line edits, spin boxes, combo boxes) are left to the Fusion style and the
+/// palette: styling them here would also restyle the editor inside every spin box and drop
+/// its arrows. Object names such as `instrument_tile`, `tile_value`, `map_button` and
+/// `dashboard_content` select widgets that set those names; the dynamic property
+/// `overridden` marks an instrument tile whose value is overridden.
 constexpr const char* kStyleTemplate = R"css(
 QMainWindow, QDialog { background: {window}; }
 QToolTip { background: {panel_raised}; color: {text}; border: 1px solid {border_strong}; padding: 4px; }
@@ -247,6 +275,9 @@ void Theme::apply(Mode mode) {
     resolved_ = resolve(mode);
     const Colors& c = colors_for(resolved_);
 
+    // Fusion is platform-independent and honours the palette, which native styles partly
+    // ignore, so both looks render alike on Windows, macOS and Linux. The application takes
+    // ownership of the style and deletes the previous one.
     if (auto* fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
         QApplication::setStyle(fusion);
     }
@@ -281,6 +312,7 @@ void Theme::apply(Mode mode) {
 }
 
 QFont Theme::readout_font(double point_size) {
+    // Registered and resolved once, on the first call; later calls only construct the font.
     static const QString family = [] {
         const int id =
             QFontDatabase::addApplicationFont(QStringLiteral(":/fonts/ShareTechMono-Regular.ttf"));

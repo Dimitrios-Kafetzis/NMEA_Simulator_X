@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Web Mercator (EPSG:3857) projection formulas behind the slippy-map tile arithmetic.
+///
+/// Implements the spherical forward and inverse projection of the OpenStreetMap slippy map
+/// scheme and the ground resolution per pixel.
+///
+/// @see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames
+
 #include "tile_math.hpp"
 
 #include <algorithm>
@@ -8,12 +17,22 @@ namespace nmeasim::app::map {
 
 namespace {
 
+/// Equatorial circumference of the Earth in metres: 2 pi times the WGS 84 semi-major axis of
+/// 6378137 m, the sphere Web Mercator projects from.
 constexpr double kEarthCircumferenceM{40075016.686};
 
+/// Converts an angle from degrees to radians.
+///
+/// @param degrees Angle in degrees, any value.
+/// @return The angle in radians.
 double to_radians(double degrees) noexcept {
     return degrees * std::numbers::pi / 180.0;
 }
 
+/// Converts an angle from radians to degrees.
+///
+/// @param radians Angle in radians, any value.
+/// @return The angle in degrees.
 double to_degrees(double radians) noexcept {
     return radians * 180.0 / std::numbers::pi;
 }
@@ -21,6 +40,7 @@ double to_degrees(double radians) noexcept {
 }  // namespace
 
 int tiles_at(int zoom) noexcept {
+    // Beyond 30 the shift would overflow a 32-bit int.
     return 1 << std::clamp(zoom, 0, 30);
 }
 

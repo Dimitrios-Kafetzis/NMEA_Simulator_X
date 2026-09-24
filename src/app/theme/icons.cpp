@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// The drawing code of the toolbar and menu icons and their rendering into pixmaps.
+
 #include "icons.hpp"
 
 #include "theme.hpp"
@@ -17,7 +21,14 @@ namespace nmeasim::app::theme {
 
 namespace {
 
-/// Draws `icon` into a 24 x 24 unit box; the painter is already scaled.
+/// Draws the outline and fills of one symbol.
+///
+/// Coordinates are in a 24 by 24 unit design grid with the origin at the top left. Sets the
+/// painter's pen to a 1.8-unit round-capped stroke and changes its brush.
+///
+/// @param p Painter already scaled so that 24 units span the target size.
+/// @param icon Symbol to draw.
+/// @param color Colour of strokes and fills.
 void draw(QPainter& p, Icon icon, const QColor& color) {
     QPen pen(color, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     p.setPen(pen);
@@ -149,6 +160,14 @@ void draw(QPainter& p, Icon icon, const QColor& color) {
     }
 }
 
+/// Renders one symbol into a square pixmap.
+///
+/// @param icon Symbol to draw.
+/// @param color Colour of strokes and fills.
+/// @param size Edge length in device-independent pixels, greater than 0.
+/// @param ratio Device pixel ratio: 1 for normal screens, 2 for HiDPI.
+/// @return A transparent pixmap of `size` times `ratio` physical pixels, rounded, with that
+///   device pixel ratio set.
 QPixmap render(Icon icon, const QColor& color, int size, double ratio) {
     QPixmap pixmap(static_cast<int>(std::lround(size * ratio)),
                    static_cast<int>(std::lround(size * ratio)));

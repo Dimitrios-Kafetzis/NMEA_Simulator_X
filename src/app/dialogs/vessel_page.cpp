@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `VesselPage`, the *Vessel* tab of the settings dialog.
+///
+/// Builds the engine table and the AIS static data form and moves values between them and
+/// the seed of an `io::Profile`.
+
 #include "vessel_page.hpp"
 
 #include <QCheckBox>
@@ -16,6 +23,18 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Creates a floating-point spin box configured for this page.
+///
+/// Keyboard tracking is off, so the value changes when the operator finishes typing rather
+/// than on every keystroke.
+///
+/// @param parent The owner of the new spin box; must not be null, or the spin box leaks.
+/// @param minimum The smallest value the spin box accepts.
+/// @param maximum The largest value the spin box accepts.
+/// @param step The change applied by the arrow buttons and keys.
+/// @param decimals The number of decimals shown; values are rounded to it.
+/// @param suffix Unit text shown after the value, such as `" m"`; empty for none.
+/// @return The new spin box, owned by `parent`.
 QDoubleSpinBox* make_double(QWidget* parent, double minimum, double maximum, double step,
                             int decimals, const QString& suffix = {}) {
     auto* spin = new QDoubleSpinBox(parent);
@@ -27,6 +46,13 @@ QDoubleSpinBox* make_double(QWidget* parent, double minimum, double maximum, dou
     return spin;
 }
 
+/// Creates an integer spin box configured for this page, with keyboard tracking off like
+/// `make_double`.
+///
+/// @param parent The owner of the new spin box; must not be null, or the spin box leaks.
+/// @param minimum The smallest value the spin box accepts.
+/// @param maximum The largest value the spin box accepts.
+/// @return The new spin box, owned by `parent`.
 QSpinBox* make_int(QWidget* parent, int minimum, int maximum) {
     auto* spin = new QSpinBox(parent);
     spin->setRange(minimum, maximum);
@@ -192,6 +218,7 @@ void VesselPage::load(const io::Profile& profile) {
     draught_spin->setValue(ais.draught_m);
     ais_destination_edit->setText(QString::fromStdString(ais.destination));
     navigation_status_spin->setValue(ais.navigation_status);
+    // The encoder sends any other report type as type 1, so the combo box shows it as such.
     report_type_combo->setCurrentIndex(ais.position_report_type >= 1 &&
                                                ais.position_report_type <= 3
                                            ? ais.position_report_type - 1

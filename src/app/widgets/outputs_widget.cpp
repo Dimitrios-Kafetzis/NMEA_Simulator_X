@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Table and status lights of the *Outputs* panel.
+
 #include "outputs_widget.hpp"
 
 #include "theme/theme.hpp"
@@ -11,10 +15,32 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Period of the table refresh, in milliseconds: twice a second, independent of the
+/// simulation step.
 constexpr int kRefreshIntervalMs{500};
 
-enum Column { Description = 0, Status, Clients, Sentences, Bytes, LastError, ColumnCount };
+/// Columns of the outputs table, in display order.
+enum Column {
+    /// The transport's description, naming the output.
+    Description = 0,
+    /// The transport state with a coloured light.
+    Status,
+    /// Connected clients, as `io::Transport::client_count` reports them.
+    Clients,
+    /// Lines handed to the open transport, `io::OutputChannel::sentences_sent`.
+    Sentences,
+    /// Bytes written, summed over every consumer.
+    Bytes,
+    /// Message of the most recent failure; empty when none occurred.
+    LastError,
+    /// Number of columns, not a column.
+    ColumnCount
+};
 
+/// Draws the status light of an output.
+///
+/// @param color Fill colour; the outline is a darker shade of it.
+/// @return A 12 by 12 pixel icon with a disc of radius 4 on a transparent background.
 QIcon dot_icon(const QColor& color) {
     QPixmap pixmap(12, 12);
     pixmap.fill(Qt::transparent);
@@ -107,7 +133,8 @@ void OutputsWidget::refresh() {
             }
             item->setText(cells.at(column));
         }
-        // The state column is a coloured badge: green open, amber opening, red failed.
+        // The state column is a coloured badge: green open, amber opening, red failed, grey
+        // closed. The foreground colour is also what status_color reads back.
         const QColor color = state_color(transport->state());
         auto* status = table_->item(row, Status);
         status->setIcon(dot_icon(color));

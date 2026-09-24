@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Painting, view arithmetic and input handling of `MapWidget`, and the scale bar choice.
+///
+/// Positions are converted to world pixels at the fractional zoom by scaling the pixel
+/// coordinates of the nearest whole level, the level the tiles are taken from, so the tiles,
+/// the vessel and the overlays always agree.
+
 #include "map_widget.hpp"
 
 #include "theme/icons.hpp"
@@ -26,18 +34,38 @@ namespace nmeasim::app::map {
 
 namespace {
 
+/// Largest number of points in all track segments together; beyond it the oldest points are
+/// dropped, which bounds memory and painting cost.
 constexpr int kMaxTrackPoints{5000};
+/// Number of zoom levels `MapWidget::draw_tile` looks up for a cached ancestor of a missing
+/// tile; four levels up, one ancestor pixel is stretched over 16 by 16 screen pixels.
 constexpr int kMaxParentLevels{4};
+/// Smallest distance in pixels, at the zoom of the moment, between a new vessel position and
+/// the last point of the track for the position to be added.
 constexpr double kTrackMinPixelDistance{2.0};
 /// Routes with more points than this are drawn without point markers.
 constexpr qsizetype kMaxRouteMarkers{500};
-/// The course vector ends where the vessel will be after this many hours.
+/// The course vector ends where the vessel will be after this many hours: six minutes, a
+/// tenth of an hour, so that the vector in nautical miles is a tenth of the speed in knots.
 constexpr double kVectorHours{0.1};
+/// Longest course vector in pixels; it caps the vector of a fast vessel at high zoom.
 constexpr double kMaxVectorPx{400.0};
+/// Width and height of the on-map buttons in pixels.
 constexpr int kButtonSize{28};
+/// Distance in pixels of the on-map buttons from the top and right edges.
 constexpr int kButtonMargin{8};
+/// Distance in pixels of the overlay boxes from the edges of the widget.
 constexpr int kOverlayMargin{6};
 
+/// Creates one of the square on-map buttons.
+///
+/// The button never takes keyboard focus, so that the map keeps it for its keys, and is
+/// styled through its object name `map_button`.
+///
+/// @param parent Widget that owns the button.
+/// @param text Caption; empty for a button that shows an icon.
+/// @param tip Tooltip, which names the keyboard shortcut.
+/// @return The new button, owned by `parent`.
 QToolButton* make_button(QWidget* parent, const QString& text, const QString& tip) {
     auto* button = new QToolButton(parent);
     button->setObjectName(QStringLiteral("map_button"));
@@ -49,7 +77,19 @@ QToolButton* make_button(QWidget* parent, const QString& text, const QString& ti
     return button;
 }
 
-/// A translucent box behind overlay text so that it reads on any chart.
+/// Returns the rectangle of a box that fits overlay text, placed with one corner on an
+/// anchor.
+///
+/// The box is the text's bounding box with 6 pixels of padding left and right and 3 above
+/// and below; the caller fills it translucently behind the text so that the text reads on
+/// any chart.
+///
+/// @param painter Painter whose current font measures the text.
+/// @param text Text the box must hold.
+/// @param anchor Widget pixel where the chosen corner of the box goes.
+/// @param corner Corner placed on `anchor`: `Qt::AlignRight` or left, combined with
+///     `Qt::AlignBottom` or top.
+/// @return The box in widget pixels.
 QRect overlay_box(QPainter& painter, const QString& text, QPoint anchor, Qt::Alignment corner) {
     const QRect bounds = painter.fontMetrics().boundingRect(text).adjusted(-6, -3, 6, 3);
     QRect box(QPoint(0, 0), bounds.size());
@@ -154,7 +194,8 @@ void MapWidget::zoom_to(double level, QPointF anchor) {
     const auto anchored = position_at(anchor);
     zoom_ = target;
     if (!follow_) {
-        // Keep the position under the pointer where it was.
+        // Move the centre so that the anchor still shows the same position; in follow mode
+        // the vessel must stay centred instead.
         const QPointF offset = anchor - QPointF(width(), height()) / 2.0;
         center_ = position_of_world(world_pixel(anchored) - offset);
     }
@@ -191,7 +232,7 @@ void MapWidget::set_vessel(core::geo::Position position, double heading_true_deg
             segment.append(position);
         }
     }
-    // Drop the oldest points once the whole track grows beyond its limit.
+    // Trim from the oldest segment, which may disappear, so that a long run stays bounded.
     int excess = track_length() - kMaxTrackPoints;
     while (excess > 0 && !track_.isEmpty()) {
         auto& oldest = track_.first();

@@ -1,3 +1,23 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `MainWindow`: building the actions, menus, toolbar, docks and status bar,
+/// wiring them to the `io::SimulationRunner`, and the slots behind every action.
+///
+/// The signal connections made in the constructor:
+///
+/// - `map::MapWidget`: `position_picked`, `destination_picked` and `destination_cleared` edit
+///   the vessel and the destination; `view_changed` stores the zoom level.
+/// - `DashboardWidget`: `override_changed`, `fix_changed`, `satellites_changed` and
+///   `engine_changed` go to the delta source, and are ignored in track and replay mode.
+/// - `theme::Theme::changed` repaints the icons, the lights and the map.
+/// - `io::SimulationRunner`: `ticked` refreshes the dashboard, map, transport controls and
+///   status bar; `sentence_emitted` feeds the console; `started` and `stopped` update the run
+///   controls; `paused_changed` ticks *Pause*; `recording_changed` ticks *Record log...*;
+///   `finished` and `output_error` show a message in the status bar.
+///
+/// Status bar messages last three seconds for confirmations, five for the end of a track or
+/// log and the recording state, and ten for errors.
+
 #include "main_window.hpp"
 
 #include "dialogs/settings_dialog.hpp"
@@ -55,11 +75,14 @@ MainWindow::MainWindow(QWidget* parent)
       position_label_(new QLabel(this)) {
     setWindowTitle(QStringLiteral("NMEA Simulator X"));
     setMinimumSize(900, 600);
+    // The window itself can hold focus, so the arrow keys reach keyPressEvent when no child
+    // widget has taken it.
     setFocusPolicy(Qt::StrongFocus);
     setCentralWidget(dashboard_);
 
     tile_cache_->set_online(settings_.map_online());
     tile_cache_->set_url_template(settings_.map_tile_url());
+    // The OpenStreetMap tile usage policy asks every client to identify itself.
     tile_cache_->set_user_agent(
         QStringLiteral(
             "NMEASimulatorX/%1 (+https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X)")
@@ -67,6 +90,7 @@ MainWindow::MainWindow(QWidget* parent)
                                    static_cast<qsizetype>(core::kVersion.size()))));
     map_->set_zoom(settings_.map_zoom());
     connect(map_, &map::MapWidget::position_picked, this, &MainWindow::move_vessel);
+    // Through a lambda: a pointer to set_destination cannot supply its default name.
     connect(map_, &map::MapWidget::destination_picked, this,
             [this](core::geo::Position position) { set_destination(position); });
     connect(map_, &map::MapWidget::destination_cleared, this, &MainWindow::clear_destination);
@@ -112,6 +136,7 @@ MainWindow::MainWindow(QWidget* parent)
     connect(&runner_, &io::SimulationRunner::finished, this,
             [this] { statusBar()->showMessage(tr("End of the track or log reached"), 5000); });
     connect(&runner_, &io::SimulationRunner::recording_changed, this, [this](const QString& path) {
+        // Blocked, or ticking the action here would open the file dialog of toggle_recording.
         const QSignalBlocker blocker(record_action_);
         record_action_->setChecked(!path.isEmpty());
         refresh_status();
@@ -165,12 +190,16 @@ MainWindow::MainWindow(QWidget* parent)
     }
     autostart_action_->setChecked(settings_.autostart());
 
+    // A simulation exists from the start, so the dashboard, the map and Step have a state even
+    // before main loads a profile.
     set_profile(profile_);
     update_actions();
     refresh_status();
 }
 
 MainWindow::~MainWindow() {
+    // Stop while the window is complete: the runner's own destructor would otherwise emit
+    // stopped into update_actions of a window whose members are being destroyed.
     runner_.stop();
 }
 
@@ -228,6 +257,7 @@ void MainWindow::build_actions() {
     });
     seek_slider_->setObjectName(QStringLiteral("seek_slider"));
     seek_slider_->setMinimumWidth(180);
+    // Seek only when the slider is released; sliderMoved previews the position in the label.
     seek_slider_->setTracking(false);
     seek_slider_->setToolTip(tr("Position within the track or log"));
     connect(seek_slider_, &QSlider::valueChanged, this, &MainWindow::seek_from_slider);
@@ -311,6 +341,7 @@ void MainWindow::set_destination(core::geo::Position position, const QString& na
     destination.name = name.isEmpty() ? std::string{"WPT"} : name.toStdString();
     destination.position = position;
     destination.origin = profile_.delta.seed.navigation.position;
+    // The leg starts where the vessel is now, not where the profile started it.
     if (const auto* simulation = runner_.simulation()) {
         destination.origin = simulation->state().navigation.position;
     }
@@ -385,6 +416,7 @@ void MainWindow::refresh_transport() {
     updating_slider_ = true;
     seek_slider_->setEnabled(finite);
     if (finite) {
+        // QSlider works in int milliseconds; anything past about 24.8 days sticks at the end.
         const auto clamp = [](std::chrono::milliseconds value) {
             return static_cast<int>(
                 std::min<long long>(value.count(), std::numeric_limits<int>::max()));
@@ -428,6 +460,7 @@ bool MainWindow::load_log(const QString& path) {
 bool MainWindow::set_recording(const QString& path) {
     if (!runner_.set_recording(path)) {
         report_error(tr("Cannot record"), tr("The log file %1 cannot be written").arg(path));
+        // The runner keeps a failed recording set; clearing it unticks Record log.
         runner_.set_recording({});
         return false;
     }
@@ -469,6 +502,7 @@ void MainWindow::toggle_recording(bool checked) {
     const QString path = QFileDialog::getSaveFileName(this, tr("Record log"), suggested,
                                                       tr("Logs (*.log);;All files (*)"));
     if (path.isEmpty()) {
+        // Untick without calling this slot again.
         const QSignalBlocker blocker(record_action_);
         record_action_->setChecked(false);
         return;
@@ -654,6 +688,8 @@ void MainWindow::toggle_steering(bool enabled) {
     if (auto* source = delta_source()) {
         source->set_steering_mode(enabled);
         if (!enabled) {
+            // Releasing an override leaves the rudder where it is; centre it first so that
+            // the vessel stops turning.
             source->set_override(Parameter::RudderAngle, 0.0);
             source->clear_override(Parameter::RudderAngle);
         }
@@ -745,6 +781,8 @@ bool MainWindow::save_profile_as() {
 void MainWindow::report_error(const QString& title, const QString& message) {
     statusBar()->showMessage(QStringLiteral("%1: %2").arg(title, message), 10000);
     emit error_reported(title, message);
+    // Hidden windows (the offscreen tests, or before main shows the window) get no modal box
+    // that would block.
     if (isVisible()) {
         QMessageBox::warning(this, title, message);
     }

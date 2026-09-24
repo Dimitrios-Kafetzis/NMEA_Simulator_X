@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `OutputsPage`, the *Outputs* tab of the settings dialog.
+///
+/// Builds the list and the editor widgets, moves values between the widgets and the page's
+/// copy of `io::Profile::outputs`, and checks the outputs before the dialog accepts them.
+
 #include "outputs_page.hpp"
 
 #include <nmeasim/io/serial_ports.hpp>
@@ -19,13 +26,23 @@ namespace nmeasim::app {
 
 namespace {
 
+/// Short name for the output transport type, used throughout this file.
 using Type = io::OutputConfig::Type;
 
+/// Every output type, in the order the *Add* menu offers them.
+///
+/// Holds every enumerator of `io::OutputConfig::Type`; a new type must be added here to be
+/// offered.
 constexpr std::array<Type, 8> kTypes{
     Type::TcpServer, Type::TcpClient, Type::Udp,    Type::WebSocketServer,
     Type::Serial,    Type::File,      Type::Stdout, Type::Log,
 };
 
+/// Returns the translated name of an output type, as shown in the *Add* menu and the list.
+///
+/// @param type The output type.
+/// @return The name, such as `TCP server` or `Log (timestamped)`; empty for a value outside
+///     the enumeration.
 QString type_label(Type type) {
     switch (type) {
         case Type::TcpServer:
@@ -48,6 +65,12 @@ QString type_label(Type type) {
     return {};
 }
 
+/// Creates a spin box for a TCP or UDP port number, limited to [0, 65535].
+///
+/// Keyboard tracking is off, so typing a port does not emit a value for every digit.
+///
+/// @param parent Qt parent that owns the spin box.
+/// @return The new spin box, owned by `parent`.
 QSpinBox* make_port(QWidget* parent) {
     auto* spin = new QSpinBox(parent);
     spin->setRange(0, 65535);
@@ -55,6 +78,8 @@ QSpinBox* make_port(QWidget* parent) {
     return spin;
 }
 
+/// Line speeds offered in the baud rate list, in bit/s: the common rates from 1200 to 115200,
+/// including 4800 for NMEA 0183 and 38400 for IEC 61162-2 (AIS). Other rates can be typed.
 constexpr std::array<int, 8> kBaudRates{1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200};
 
 }  // namespace
@@ -87,7 +112,7 @@ OutputsPage::OutputsPage(QWidget* parent)
     left->addWidget(list, 1);
     left->addLayout(buttons);
 
-    // Right: common fields and the per-type editor.
+    // Right: the common fields, the per-type editor and the encoding option groups.
     auto* common = new QFormLayout;
     common->addRow(enabled_check);
     filter_edit->setPlaceholderText(tr("All sentences"));
@@ -309,6 +334,8 @@ void OutputsPage::store(io::Profile& profile) const {
 QList<io::OutputConfig> OutputsPage::outputs() const {
     auto result = outputs_;
     if (editing_ >= 0 && editing_ < result.size()) {
+        // The widgets hold the latest values of the output being edited, so the copy is
+        // refreshed from them first; `validate` and `store` rely on that, hence the cast.
         const_cast<OutputsPage*>(this)->commit_editor();
         result = outputs_;
     }
@@ -350,6 +377,8 @@ void OutputsPage::remove_current() {
     if (index < 0 || index >= outputs_.size()) {
         return;
     }
+    // Forget the editor before removing, so the removed output's widgets are not committed
+    // into whichever output takes its index.
     editing_ = -1;
     outputs_.removeAt(index);
     delete list->takeItem(index);
@@ -513,6 +542,7 @@ void OutputsPage::commit_editor() {
     }
     output.period_ms = period_spin->value();
     output.tag_block.enabled = tag_block_check->isChecked();
+    // An empty source falls back to the profile default rather than an empty `s:` parameter.
     const QString tag_source = tag_source_edit->text().trimmed();
     output.tag_block.options.source =
         tag_source.isEmpty() ? std::string{"SIM0001"} : tag_source.toStdString();
