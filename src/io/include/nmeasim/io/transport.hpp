@@ -40,13 +40,13 @@ public:
     enum class State {
         /// Not opened yet, or closed by `close`. The initial state.
         Closed,
-        /// Opening, or waiting to reconnect (TCP client) after a connection attempt failed or
-        /// the peer dropped the connection.
+        /// Opening, or waiting to reconnect (TCP client) after the peer dropped the
+        /// connection.
         Opening,
         /// Ready: `write` delivers data.
         Open,
         /// Opening failed or the device went away; `last_error` says why. `open` may be
-        /// called again.
+        /// called again. A TCP client keeps retrying by itself in this state.
         Failed,
     };
     Q_ENUM(State)
