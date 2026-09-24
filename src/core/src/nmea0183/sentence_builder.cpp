@@ -10,6 +10,13 @@
 
 namespace nmeasim::core::nmea0183 {
 
+bool is_text_field_character(char c) noexcept {
+    const bool printable = c >= ' ' && c <= '~';
+    const bool reserved =
+        c == ',' || c == '*' || c == '$' || c == '!' || c == '\\' || c == '^' || c == '~';
+    return printable && !reserved;
+}
+
 SentenceBuilder::SentenceBuilder(std::string_view talker, std::string_view formatter,
                                  char delimiter) {
     body_.reserve(kMaxSentenceLengthWithoutTerminator);
@@ -20,13 +27,19 @@ SentenceBuilder::SentenceBuilder(std::string_view talker, std::string_view forma
 
 SentenceBuilder& SentenceBuilder::field(std::string_view value) {
     body_ += ',';
-    body_ += value;
+    for (const char c : value) {
+        if (is_text_field_character(c)) {
+            body_ += c;
+        }
+    }
     return *this;
 }
 
 SentenceBuilder& SentenceBuilder::field(char value) {
     body_ += ',';
-    body_ += value;
+    if (is_text_field_character(value)) {
+        body_ += value;
+    }
     return *this;
 }
 

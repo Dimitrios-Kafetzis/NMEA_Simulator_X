@@ -138,6 +138,17 @@ TEST_CASE("the delta carries the standard paths in SI units", "[signalk]") {
     CHECK(values.at("propulsion.starboard.state") == "\"stopped\"");
 }
 
+TEST_CASE("the magnetic heading does not include the compass deviation", "[signalk]") {
+    auto state = nmeasim::test::fixture_state();
+    state.navigation.magnetic_deviation_deg = 1.5;
+    const auto values = as_map(state);
+    constexpr double pi = std::numbers::pi;
+    // headingMagnetic is the heading referenced to magnetic north: 45.0 - 4.6 = 40.4 degrees.
+    // The deviation is published on its own path.
+    CHECK(number(values, "navigation.headingMagnetic") == Approx(40.4 * pi / 180.0));
+    CHECK(number(values, "navigation.magneticDeviation") == Approx(1.5 * pi / 180.0));
+}
+
 TEST_CASE("paths that need a fix or a destination disappear without them", "[signalk]") {
     auto state = nmeasim::test::fixture_state_without_fix();
     state.destination.reset();

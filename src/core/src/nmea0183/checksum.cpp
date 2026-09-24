@@ -68,8 +68,9 @@ std::string format_checksum(std::uint8_t checksum) {
 std::string append_checksum(std::string_view sentence) {
     std::string result{sentence};
     result += kChecksumDelimiter;
-    // The checksum does not cover the start delimiter.
-    result += format_checksum(compute_checksum(sentence.substr(1)));
+    // The checksum does not cover the start delimiter; an empty sentence has neither
+    // delimiter nor body.
+    result += format_checksum(compute_checksum(sentence.empty() ? sentence : sentence.substr(1)));
     return result;
 }
 

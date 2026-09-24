@@ -4,7 +4,8 @@
 ///
 /// The cases cover timed tracks with several segments, untimed tracks, GPX 1.0 course and
 /// speed elements, speed and course in GPX 1.1 extensions, routes, namespace prefixes, times
-/// out of order, and every reason a file is rejected.
+/// out of order, every reason a file is rejected, the track name taken from under the root
+/// when the metadata has none, and optional values that are not numbers.
 ///
 /// Fixture files, all under tests/fixtures/tracks: timestamped.gpx, untimestamped.gpx,
 /// gpx10_course_speed.gpx, extensions_speed.gpx, route.gpx, prefixed.gpx,
@@ -161,4 +162,35 @@ TEST_CASE("malformed GPX files are rejected with a reason", "[track][gpx]") {
     CHECK(error.find("lat/lon") != std::string::npos);
     // A null error pointer is accepted.
     CHECK_FALSE(track::parse_gpx("<gpx/>", nullptr).has_value());
+}
+
+TEST_CASE("a GPX name under the root is used when the metadata has none", "[track][gpx]") {
+    std::string error;
+    const auto parsed = track::parse_gpx(
+        "<gpx><metadata><author/></metadata><name>Passage</name><trk><name>Leg</name><trkseg>"
+        "<trkpt lat=\"37.9\" lon=\"23.6\"/></trkseg></trk></gpx>",
+        &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->name == "Passage");
+
+    // A metadata name still wins over the root name.
+    const auto both = track::parse_gpx(
+        "<gpx><metadata><name>Meta</name></metadata><name>Passage</name><trk><trkseg>"
+        "<trkpt lat=\"37.9\" lon=\"23.6\"/></trkseg></trk></gpx>",
+        &error);
+    REQUIRE(both.has_value());
+    CHECK(both->name == "Meta");
+}
+
+TEST_CASE("unreadable optional GPX values are left absent", "[track][gpx]") {
+    std::string error;
+    const auto parsed = track::parse_gpx(
+        "<gpx><trk><trkseg><trkpt lat=\"37.9\" lon=\"23.6\"><ele>high</ele><course>north</course>"
+        "<speed>fast</speed></trkpt></trkseg></trk></gpx>",
+        &error);
+    REQUIRE(parsed.has_value());
+    REQUIRE(parsed->points.size() == 1);
+    CHECK_FALSE(parsed->points[0].elevation_m.has_value());
+    CHECK_FALSE(parsed->points[0].course_deg.has_value());
+    CHECK_FALSE(parsed->points[0].speed_kn.has_value());
 }
