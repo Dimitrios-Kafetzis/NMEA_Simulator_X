@@ -101,17 +101,19 @@ struct SentenceTime {
 
 /// Applies the values carried by a parametric sentence to a vessel state.
 ///
-/// Recognised formatters, whatever the talker: RMC, GGA, GLL, GSA, GSV, VTG, ZDA, HDT, HDG,
-/// HDM, ROT, VHW, VBW, DPT, DBT, MTW, MWV, MWD, RSA, RMB, RPM and XDR, plus APB and XTE,
-/// which are recognised but change nothing because RMB carries the same destination with its
-/// position. Only the quantities a sentence carries are updated, and a field that is empty or
-/// malformed leaves its value unchanged, so a state can be built up from a mixed stream.
+/// Recognised formatters, whatever the talker: RMC, GGA, GLL, GNS, GSA, GSV, VTG, ZDA, HDT,
+/// HDG, HDM, ROT, VHW, VBW, DPT, DBT, MTW, MWV, MWD, RSA, RMB, RPM and XDR; GST, GBS and GRS,
+/// of which only the time is applied; and APB and XTE, which are recognised but change
+/// nothing because RMB carries the same destination with its position. Every sentence that
+/// sentence_time() reads a time from is thus applied. Only the quantities a sentence carries are
+/// updated, and a field that is empty or malformed leaves its value unchanged, so a state can be
+/// built up from a mixed stream.
 ///
 /// A time field updates `state.time_utc`: RMC and ZDA with a valid date set date and time;
-/// GGA, GLL, and RMC or ZDA without a valid date, set the time of day and keep the date of
-/// the current `state.time_utc`. When keeping the date would move the time back by more than
-/// 12 hours, the time of day has wrapped past midnight and the date advances by one day, so a
-/// GGA just after midnight lands on the new date before the next RMC or ZDA arrives.
+/// GGA, GLL, GNS, GST, GBS, GRS, and RMC or ZDA without a valid date, set the time of day and
+/// keep the date of the current `state.time_utc`. When keeping the date would move the time back by
+/// more than 12 hours, the time of day has wrapped past midnight and the date advances by one day,
+/// so a GGA just after midnight lands on the new date before the next RMC or ZDA arrives.
 ///
 /// @param sentence The parsed sentence to apply.
 /// @param[in,out] state The state to update; values the sentence does not carry are kept.
