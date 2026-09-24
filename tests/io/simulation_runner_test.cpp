@@ -305,6 +305,9 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     Profile profile = fast_profile();
     profile.mode = SimulationMode::Replay;
     profile.replay.path = fixture("logs/plain.nmea");
+    // The log was recorded from the default seed, so every value in it equals the seed. A
+    // seed speed the log does not contain tells a decoded RMC apart from the seed.
+    profile.delta.seed.navigation.speed_over_ground_kn = 3.0;
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
     OutputConfig file;
@@ -338,7 +341,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     runner.step();
     CHECK(emitted.count() == 2);
     CHECK(emitted.last().at(0).toString() == QStringLiteral("GGA"));
-    // The log's RMC sentences report 6.5 kn.
+    // The log's RMC sentences report 6.5 kn, not the seed's 3.0 kn.
     CHECK(runner.simulation()->state().navigation.speed_over_ground_kn == Catch::Approx(6.5));
 
     // Seeking skips the rest of the first round; resuming plays the remaining three rounds.
