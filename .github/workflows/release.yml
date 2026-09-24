@@ -58,9 +58,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 env:
-  # The tools that go into the packages are pinned to exact releases (ADR 0015). QT_VERSION
-  # matches ci.yml; the linuxdeploy values are release tags of linuxdeploy and of its Qt plugin.
-  QT_VERSION: 6.10.3
+  # The tools that go into the packages are pinned to exact releases (ADR 0015). Qt is pinned
+  # in .github/versions.env, which the prepare job reads; the linuxdeploy values are release
+  # tags of linuxdeploy and of its Qt plugin.
   LINUXDEPLOY_VERSION: 1-alpha-20251107-1
   LINUXDEPLOY_QT_VERSION: 1-alpha-20250213-1
   # NMEASIM_APP_ID of CMakeLists.txt; it names the Flatpak manifest and application.
@@ -68,7 +68,8 @@ env:
 
 jobs:
   # Works out from the trigger which commit to build, the package version and whether to
-  # publish, and fails for a final tag that does not match the version in CMakeLists.txt.
+  # publish, and fails for a final tag that does not match the version in CMakeLists.txt. Also
+  # reads the Qt version that the build jobs install.
   prepare:
     name: Prepare
     runs-on: ubuntu-24.04
@@ -79,11 +80,22 @@ jobs:
       publish: ${{ steps.meta.outputs.publish }}
       prerelease: ${{ steps.meta.outputs.prerelease }}
       commit: ${{ steps.meta.outputs.commit }}
+      qt_version: ${{ steps.versions.outputs.QT_VERSION }}
     steps:
       - name: Check out sources
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
+
+      # The pinned versions of the workflow's own commit (github.sha), not of the commit that is
+      # packaged: a rebuild of an older tag installs the Qt that the current workflow pins, even
+      # when the tag predates .github/versions.env.
+      - name: Read the pinned tool versions
+        id: versions
+        shell: bash
+        run: |
+          git fetch --quiet --depth 1 origin "$GITHUB_SHA"
+          git show FETCH_HEAD:.github/versions.env | grep -E '^[A-Z0-9_]+=' | tee -a "$GITHUB_OUTPUT"
 
       - name: Work out the version and what to publish
         id: meta
@@ -133,6 +145,7 @@ jobs:
     runs-on: windows-2022
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      QT_VERSION: ${{ needs.prepare.outputs.qt_version }}
     steps:
       # The full history, so that git describe names the tag in the version description.
       - name: Check out sources
@@ -231,6 +244,7 @@ jobs:
       # Hands the deployment target to vcpkg's builds of the dependencies as well, so that they
       # run on the same macOS versions as the application.
       VCPKG_KEEP_ENV_VARS: MACOSX_DEPLOYMENT_TARGET
+      QT_VERSION: ${{ needs.prepare.outputs.qt_version }}
     steps:
       # The full history, so that git describe names the tag in the version description.
       - name: Check out sources
@@ -323,6 +337,7 @@ jobs:
             qt_arch: linux_gcc_arm64
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      QT_VERSION: ${{ needs.prepare.outputs.qt_version }}
       # Lets linuxdeploy's AppImages and the AppImage under test run without mounting through
       # FUSE.
       APPIMAGE_EXTRACT_AND_RUN: "1"
