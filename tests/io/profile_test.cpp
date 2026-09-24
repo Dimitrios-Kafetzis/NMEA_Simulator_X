@@ -356,6 +356,82 @@ TEST_CASE("mode settings are validated", "[io][profile]") {
     CHECK(error.contains(QStringLiteral("log output needs a path")));
 }
 
+TEST_CASE("output settings are validated for the types that use them", "[io][profile]") {
+    QString error;
+    const auto output = [](const QString& type, const QJsonObject& extra) {
+        QJsonObject object{{QStringLiteral("type"), type}};
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            object.insert(it.key(), it.value());
+        }
+        if (type == QLatin1String("serial") && !object.contains(QStringLiteral("port_name"))) {
+            object.insert(QStringLiteral("port_name"), QStringLiteral("/dev/ttyUSB0"));
+        }
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("outputs"), QJsonArray{object}}};
+    };
+    const auto rejected = [&error, &output](const QString& type, const QJsonObject& extra,
+                                            const QString& key) {
+        const bool parsed = Profile::from_json(output(type, extra), &error).has_value();
+        return !parsed && error.contains(key);
+    };
+    const auto accepted = [&error, &output](const QString& type, const QJsonObject& extra) {
+        return Profile::from_json(output(type, extra), &error).has_value();
+    };
+    const QString udp = QStringLiteral("udp");
+    const QString serial = QStringLiteral("serial");
+
+    // The UDP mode and the port belong to the types that use them; other types ignore them.
+    CHECK(rejected(udp, {{QStringLiteral("mode"), QStringLiteral("anycast")}},
+                   QStringLiteral("UDP mode")));
+    CHECK(accepted(QStringLiteral("file"), {{QStringLiteral("path"), QStringLiteral("x.nmea")},
+                                            {QStringLiteral("mode"), QStringLiteral("anycast")},
+                                            {QStringLiteral("port"), 70000}}));
+    CHECK(accepted(QStringLiteral("stdout"), {{QStringLiteral("port"), -1}}));
+    CHECK(rejected(udp, {{QStringLiteral("port"), 70000}}, QStringLiteral("port")));
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("port"), -1}},
+                   QStringLiteral("port")));
+    CHECK(rejected(QStringLiteral("websocket-server"), {{QStringLiteral("port"), 65536}},
+                   QStringLiteral("port")));
+
+    // Reconnect interval in [1, 3600000] ms, TTL in [1, 255], a positive baud rate.
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 0}},
+                   QStringLiteral("reconnect_ms")));
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 3'600'001}},
+                   QStringLiteral("reconnect_ms")));
+    CHECK(accepted(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 1}}));
+    CHECK(rejected(udp, {{QStringLiteral("multicast_ttl"), 0}}, QStringLiteral("multicast_ttl")));
+    CHECK(rejected(udp, {{QStringLiteral("multicast_ttl"), 256}}, QStringLiteral("multicast_ttl")));
+    CHECK(accepted(udp, {{QStringLiteral("multicast_ttl"), 255}}));
+    CHECK(rejected(serial, {{QStringLiteral("baud_rate"), 0}}, QStringLiteral("baud_rate")));
+    CHECK(rejected(serial, {{QStringLiteral("baud_rate"), -4800}}, QStringLiteral("baud_rate")));
+
+    // Serial line settings must be names the transport knows.
+    CHECK(rejected(serial, {{QStringLiteral("data_bits"), 9}}, QStringLiteral("data_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("data_bits"), 4}}, QStringLiteral("data_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("parity"), QStringLiteral("Even")}},
+                   QStringLiteral("parity")));
+    CHECK(rejected(serial, {{QStringLiteral("stop_bits"), QStringLiteral("3")}},
+                   QStringLiteral("stop_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("flow_control"), QStringLiteral("rts")}},
+                   QStringLiteral("flow_control")));
+    // Keys of another type are not checked: a TCP server has no serial line.
+    CHECK(accepted(QStringLiteral("tcp-server"), {{QStringLiteral("parity"), QStringLiteral("x")},
+                                                  {QStringLiteral("baud_rate"), 0},
+                                                  {QStringLiteral("multicast_ttl"), 0},
+                                                  {QStringLiteral("reconnect_ms"), 0}}));
+    const auto parsed = Profile::from_json(
+        output(serial, {{QStringLiteral("data_bits"), 5},
+                        {QStringLiteral("parity"), QStringLiteral("space")},
+                        {QStringLiteral("stop_bits"), QStringLiteral("1.5")},
+                        {QStringLiteral("flow_control"), QStringLiteral("software")}}),
+        &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->outputs[0].serial.data_bits == QSerialPort::Data5);
+    CHECK(parsed->outputs[0].serial.parity == QSerialPort::SpaceParity);
+    CHECK(parsed->outputs[0].serial.stop_bits == QSerialPort::OneAndHalfStop);
+    CHECK(parsed->outputs[0].serial.flow_control == QSerialPort::SoftwareControl);
+}
+
 TEST_CASE("relative track and log paths are resolved against the profile file", "[io][profile]") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
