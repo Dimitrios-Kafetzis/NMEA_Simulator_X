@@ -69,7 +69,7 @@ until the file provides one. The `variation` values are not used in those modes.
 | `wind_true_direction_deg` | number | `270` | degrees true, the direction the wind blows from |
 | `wind_true_speed_kn` | number | `12` | knots |
 | `gnss.fix` | boolean | `true` | `false` simulates a receiver without a fix |
-| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"` |
+| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"`; any other text is rejected |
 | `gnss.satellites_in_use`, `gnss.satellites_in_view` | integer | `8`, `10` | 0 to 12 |
 | `gnss.hdop`, `gnss.pdop`, `gnss.vdop` | number | `0.9`, `1.7`, `1.4` | dilution of precision |
 | `gnss.geoid_separation_m` | number | `0` | metres |
@@ -80,7 +80,7 @@ until the file provides one. The `variation` values are not used in those modes.
 ### `simulation.seed.destination`
 
 `null` (or a missing key) means no destination: APB, RMB and XTE are not sent and the Signal K
-course paths are absent. See the [simulation model](../explanation/simulation-model.md#destination).
+course paths are absent. An object without a numeric `latitude` and `longitude` is rejected. See the [simulation model](../explanation/simulation-model.md#destination).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -168,8 +168,9 @@ value. See the [simulation model](../explanation/simulation-model.md).
 | `settings` | object | `{}` | Per-sentence overrides keyed by registry id |
 | `custom` | array | `[]` | Sentences typed in by the operator, see below |
 
-Each entry of `settings` may contain `enabled` (boolean), `talker` (two characters, empty for
-the default) and `period_ms` (integer). Ids and defaults are listed by `nmeasim sentences`
+Each entry of `settings` may contain `enabled` (boolean), `talker` (two upper-case letters
+such as `GN`, empty for the default) and `period_ms` (integer, 50 to 3600000). A talker or
+period outside these is rejected when the profile is loaded. Ids and defaults are listed by `nmeasim sentences`
 and on the [sentence reference](nmea0183-sentences.md).
 
 ```json
