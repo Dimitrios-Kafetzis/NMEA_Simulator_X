@@ -29,6 +29,8 @@ const auto kAutostart = QStringLiteral("simulation/autostart");
 const auto kMapOnline = QStringLiteral("map/online");
 /// Key of the tile server URL template; see `AppSettings::map_tile_url`.
 const auto kMapTileUrl = QStringLiteral("map/tile_url");
+/// Key of the attribution drawn for the tile server; see `AppSettings::map_tile_attribution`.
+const auto kMapTileAttribution = QStringLiteral("map/tile_attribution");
 /// Key of the last map zoom level; see `AppSettings::map_zoom`.
 const auto kMapZoom = QStringLiteral("map/zoom");
 /// Key of the directory that holds the tile cache; see `AppSettings::map_cache_directory`.
@@ -81,6 +83,21 @@ QString AppSettings::map_tile_url() const {
 
 void AppSettings::set_map_tile_url(const QString& url) {
     settings_.setValue(kMapTileUrl, url);
+}
+
+std::optional<QString> AppSettings::map_tile_attribution() const {
+    if (!settings_.contains(kMapTileAttribution)) {
+        return std::nullopt;
+    }
+    return settings_.value(kMapTileAttribution).toString();
+}
+
+void AppSettings::set_map_tile_attribution(const std::optional<QString>& attribution) {
+    if (attribution) {
+        settings_.setValue(kMapTileAttribution, *attribution);
+    } else {
+        settings_.remove(kMapTileAttribution);
+    }
 }
 
 int AppSettings::map_zoom() const {
