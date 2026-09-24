@@ -16,6 +16,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nmeasim::core::track {
@@ -84,28 +85,29 @@ std::vector<std::string_view> split(std::string_view text, char separator) {
 /// third are ignored, and an altitude that is not a number is left absent.
 ///
 /// @param parts The values of the tuple, in KML order: longitude first.
-/// @param index 0-based number of the tuple within its geometry; messages show it 1-based.
+/// @param number 1-based number of the point in the whole file, counted across geometries,
+///        as the messages show it.
 /// @param[out] point Receives the position and elevation; its time is not touched.
 /// @param error Receives the reason when the tuple is rejected (fewer than two values, a
 ///        longitude or latitude that is not a number, or one out of range); see
 ///        `parse_kml`. May be null.
 /// @return True when the tuple was read, false when it is rejected.
-bool read_tuple(const std::vector<std::string_view>& parts, std::size_t index, TrackPoint& point,
+bool read_tuple(const std::vector<std::string_view>& parts, std::size_t number, TrackPoint& point,
                 std::string* error) {
     if (parts.size() < 2) {
-        set_error(error, std::format("coordinate {}: expected longitude and latitude", index + 1));
+        set_error(error, std::format("point {}: expected longitude and latitude", number));
         return false;
     }
     const auto lon = xml::parse_number(parts[0]);
     const auto lat = xml::parse_number(parts[1]);
     if (!lon || !lat) {
-        set_error(error, std::format("coordinate {}: '{},{}' is not numeric", index + 1, parts[0],
-                                     parts[1]));
+        set_error(error,
+                  std::format("point {}: '{},{}' is not numeric", number, parts[0], parts[1]));
         return false;
     }
     if (*lat < -90.0 || *lat > 90.0 || *lon < -180.0 || *lon > 180.0) {
         set_error(error,
-                  std::format("coordinate {}: {}, {} is out of range", index + 1, *lat, *lon));
+                  std::format("point {}: coordinates {}, {} are out of range", number, *lat, *lon));
         return false;
     }
     point.position = {*lat, *lon};
@@ -117,8 +119,9 @@ bool read_tuple(const std::vector<std::string_view>& parts, std::size_t index, T
 
 /// Depth-first traversal of a KML document that concatenates its track geometries.
 ///
-/// It keeps the names of the placemarks and containers it passes so that the first
-/// geometry can name the track. The error pointer it is given must outlive it.
+/// It keeps the name of the placemark it is inside and of the first named container so
+/// that the first geometry can name the track. The error pointer it is given must outlive
+/// it.
 class Reader {
 public:
     /// Creates a reader with an empty track.
@@ -141,14 +144,15 @@ public:
             return true;
         }
         if (xml::is_named(node, "Placemark")) {
-            const auto name = xml::child_text(node, "name");
-            if (!name.empty()) {
-                placemark_name_ = name;
-            }
-        } else if (xml::is_named(node, "Document") || xml::is_named(node, "Folder")) {
-            if (document_name_.empty()) {
-                document_name_ = xml::child_text(node, "name");
-            }
+            // The name, even an empty one, belongs to the geometries of this placemark only.
+            auto outer = std::exchange(placemark_name_, xml::child_text(node, "name"));
+            const bool read = visit_children(node);
+            placemark_name_ = std::move(outer);
+            return read;
+        }
+        if ((xml::is_named(node, "Document") || xml::is_named(node, "Folder")) &&
+            document_name_.empty()) {
+            document_name_ = xml::child_text(node, "name");
         }
         if (xml::is_named(node, "Track")) {
             return read_track(node);
@@ -156,6 +160,28 @@ public:
         if (xml::is_named(node, "LineString")) {
             return read_line_string(node);
         }
+        return visit_children(node);
+    }
+
+    /// Returns the track collected so far; its `kind` is not set by the reader.
+    ///
+    /// @return A reference to the reader's track, valid while the reader lives; the caller
+    ///         may move from it.
+    [[nodiscard]] Track& track() noexcept { return track_; }
+    /// Tells whether a `<gx:Track>` element provided points.
+    ///
+    /// @return True when at least one `<gx:Track>` added a point to the track; false when
+    ///         the points all come from `<LineString>` elements, even when an empty
+    ///         `<gx:Track>` was met.
+    [[nodiscard]] bool track_points() const noexcept { return track_points_; }
+
+private:
+    /// Visits every child of an element in document order.
+    ///
+    /// @param node The element whose children to visit.
+    /// @return True when every geometry below `node` was read, false when one was rejected
+    ///         and the error was set.
+    bool visit_children(const pugi::xml_node& node) {
         for (const auto& element : node.children()) {
             if (!visit(element)) {
                 return false;
@@ -164,20 +190,9 @@ public:
         return true;
     }
 
-    /// Returns the track collected so far; its `kind` is not set by the reader.
-    ///
-    /// @return A reference to the reader's track, valid while the reader lives; the caller
-    ///         may move from it.
-    [[nodiscard]] Track& track() noexcept { return track_; }
-    /// Tells whether a `<gx:Track>` element was met, even one without points.
-    ///
-    /// @return True when at least one `<gx:Track>` was visited.
-    [[nodiscard]] bool saw_track() const noexcept { return saw_track_; }
-
-private:
-    /// Names the track, unless it already has a name, from the placemark or container names
-    /// met so far: the most recent named `<Placemark>`, else the first named `<Document>` or
-    /// `<Folder>`.
+    /// Names the track, unless it already has a name: the `<name>` of the `<Placemark>`
+    /// holding the geometry being read, else the first named `<Document>` or `<Folder>` met
+    /// so far.
     void take_name() {
         if (track_.name.empty()) {
             track_.name = !placemark_name_.empty() ? placemark_name_ : document_name_;
@@ -193,7 +208,6 @@ private:
     /// @return True when the element was read, false when a `<when>` or a `<gx:coord>` is
     ///         rejected and the error was set.
     bool read_track(const pugi::xml_node& node) {
-        saw_track_ = true;
         ++track_.segment_count;
         take_name();
         std::vector<std::optional<std::chrono::system_clock::time_point>> whens;
@@ -203,15 +217,16 @@ private:
                 const auto text = xml::trim(element.child_value());
                 const auto parsed = time::parse_iso8601(text);
                 if (!parsed) {
-                    set_error(error_, std::format("<when> {}: '{}' is not an ISO 8601 time",
-                                                  whens.size() + 1, text));
+                    // The `<when>` belongs to the point at the same index of this track.
+                    set_error(error_, std::format("point {}: '{}' is not an ISO 8601 time",
+                                                  track_.points.size() + whens.size() + 1, text));
                     return false;
                 }
                 whens.push_back(parsed);
             } else if (xml::is_named(element, "coord")) {
                 TrackPoint point;
-                if (!read_tuple(split_whitespace(element.child_value()), points.size(), point,
-                                error_)) {
+                if (!read_tuple(split_whitespace(element.child_value()),
+                                track_.points.size() + points.size() + 1, point, error_)) {
                     return false;
                 }
                 points.push_back(point);
@@ -223,6 +238,7 @@ private:
             }
             track_.points.push_back(points[i]);
         }
+        track_points_ = track_points_ || !points.empty();
         return true;
     }
 
@@ -239,9 +255,9 @@ private:
         ++track_.segment_count;
         take_name();
         const auto tuples = split_whitespace(xml::child(node, "coordinates").child_value());
-        for (std::size_t i = 0; i < tuples.size(); ++i) {
+        for (const auto tuple : tuples) {
             TrackPoint point;
-            if (!read_tuple(split(tuples[i], ','), i, point, error_)) {
+            if (!read_tuple(split(tuple, ','), track_.points.size() + 1, point, error_)) {
                 return false;
             }
             track_.points.push_back(point);
@@ -253,12 +269,13 @@ private:
     std::string* error_;
     /// The points and name collected so far.
     Track track_;
-    /// Name of the most recent `<Placemark>` with a non-empty `<name>`; empty before one.
+    /// `<name>` of the `<Placemark>` being visited; empty outside a placemark or when it has
+    /// none.
     std::string placemark_name_;
     /// First non-empty `<name>` of a `<Document>` or `<Folder>`; empty before one.
     std::string document_name_;
-    /// Whether a `<gx:Track>` was visited, which makes the result a `TrackKind::KmlTrack`.
-    bool saw_track_{false};
+    /// Whether a `<gx:Track>` added points, which makes the result a `TrackKind::KmlTrack`.
+    bool track_points_{false};
 };
 
 }  // namespace
@@ -282,7 +299,7 @@ std::optional<Track> parse_kml(std::string_view xml_text, std::string* error) {
         set_error(error, "No <gx:Track> or <LineString> geometry found");
         return std::nullopt;
     }
-    track.kind = reader.saw_track() ? TrackKind::KmlTrack : TrackKind::KmlLineString;
+    track.kind = reader.track_points() ? TrackKind::KmlTrack : TrackKind::KmlLineString;
     return track;
 }
 
