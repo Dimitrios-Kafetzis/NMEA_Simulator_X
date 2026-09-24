@@ -63,10 +63,10 @@ git tag -d v1.0.0-rc.1
 ## Dry runs
 
 Pushing a branch that changes `.github/workflows/release.yml`, `packaging/`, `cmake/`,
-`CMakeLists.txt`, `CMakePresets.json` or the application and CLI `CMakeLists.txt` runs the
-release workflow as a dry run: every package is built and checked with the version
-`<project version>-dryrun.<commit>`, and the result is kept as the workflow artifact
-`dry-run-<version>`. Nothing is published.
+`CMakePresets.json` or any `CMakeLists.txt` runs the release workflow as a dry run: every
+package is built and checked with the version `<project version>-dryrun.<commit>`, and the
+result is kept as the workflow artifact `dry-run-<version>`. Nothing is published. A newer
+push to the same branch cancels a dry run still in progress; a release is never cancelled.
 
 ## Rebuilding the packages of a release
 

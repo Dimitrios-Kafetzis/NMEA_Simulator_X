@@ -256,6 +256,50 @@ TEST_CASE("the simulated clock starts from the profile start time", "[io][runner
     CHECK(runner.simulation()->state().time_utc == expected);
 }
 
+TEST_CASE("a TAG block goes in front of each sentence byte for byte", "[io][runner][integration]") {
+    Profile profile = fast_profile();
+    profile.start_time = QDateTime(QDate(2026, 9, 22), QTime(12, 34, 56), QTimeZone::utc());
+    OutputConfig tagged;
+    tagged.type = OutputConfig::Type::TcpServer;
+    // Port 0 lets the operating system pick a free port.
+    tagged.port = 0;
+    tagged.bind_address = QStringLiteral("127.0.0.1");
+    tagged.filter = {QStringLiteral("RMC")};
+    tagged.tag_block.enabled = true;
+    tagged.tag_block.options.source = "GP0001";
+    tagged.tag_block.options.milliseconds = true;
+    profile.outputs.append(tagged);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    runner.start();
+    runner.pause();
+    const auto* server =
+        dynamic_cast<const nmeasim::io::TcpServerTransport*>(runner.outputs()[0].transport.get());
+    REQUIRE(server != nullptr);
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, server->port());
+    REQUIRE(wait_until([&] { return server->client_count() == 1; }));
+
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    runner.step();
+    QString rmc;
+    for (const auto& call : emitted) {
+        if (call.at(0).toString() == QStringLiteral("RMC")) {
+            rmc = call.at(1).toString();
+        }
+    }
+    REQUIRE_FALSE(rmc.isEmpty());
+    REQUIRE(wait_until([&] { return client.bytesAvailable() > 0; }));
+    runner.stop();
+    // The step of one 20 ms tick puts the sentence at 12:34:56.020 UTC, Unix time
+    // 1790080496020 ms; 14 is the XOR of the characters of `s:GP0001,c:1790080496020`, both
+    // computed in Python.
+    CHECK(client.readAll() ==
+          QByteArray("\\s:GP0001,c:1790080496020*14\\") + rmc.toLatin1() + QByteArray("\r\n"));
+}
+
 TEST_CASE("a track profile drives a track source and ends the run at the last point",
           "[io][runner][track]") {
     Profile profile = fast_profile();
@@ -315,6 +359,9 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     Profile profile = fast_profile();
     profile.mode = SimulationMode::Replay;
     profile.replay.path = fixture("logs/plain.nmea");
+    // The log was recorded from the default seed, so every value in it equals the seed. A
+    // seed speed the log does not contain tells a decoded RMC apart from the seed.
+    profile.delta.seed.navigation.speed_over_ground_kn = 3.0;
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
     OutputConfig file;
@@ -348,7 +395,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     runner.step();
     CHECK(emitted.count() == 2);
     CHECK(emitted.last().at(0).toString() == QStringLiteral("GGA"));
-    // The log's RMC sentences report 6.5 kn.
+    // The log's RMC sentences report 6.5 kn, not the seed's 3.0 kn.
     CHECK(runner.simulation()->state().navigation.speed_over_ground_kn == Catch::Approx(6.5));
 
     // Seeking skips the rest of the first round; resuming plays the remaining three rounds.

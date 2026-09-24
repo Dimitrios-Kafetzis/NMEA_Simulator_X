@@ -340,7 +340,7 @@ std::vector<std::string> encode_zda(const EncoderContext& context) {
 std::vector<std::string> encode_hdg(const EncoderContext& context) {
     const auto& navigation = context.state.navigation;
     SentenceBuilder builder(context.talker, "HDG");
-    builder.field(navigation.heading_magnetic_deg(), 1)
+    builder.field(navigation.heading_compass_deg(), 1)
         .field(std::fabs(navigation.magnetic_deviation_deg), 1)
         .field(east_west(navigation.magnetic_deviation_deg))
         .field(std::fabs(navigation.magnetic_variation_deg), 1)
@@ -487,10 +487,7 @@ std::vector<std::string> encode_rsa(const EncoderContext& context) {
 std::string sanitize_waypoint_name(std::string_view name) {
     std::string result;
     for (const char c : name) {
-        const bool printable = c > ' ' && c <= '~';
-        const bool reserved =
-            c == ',' || c == '*' || c == '$' || c == '!' || c == '\\' || c == '^' || c == '~';
-        if (printable && !reserved) {
+        if (c != ' ' && is_text_field_character(c)) {
             result += c;
         }
         if (result.size() == model::kMaxWaypointNameLength) {

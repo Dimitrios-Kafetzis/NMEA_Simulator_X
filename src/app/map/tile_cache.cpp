@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /// @file
-/// Memory, disk and network lookup, download queue and disk writes of `TileCache`.
+/// Memory, disk and network lookup, download queue, failure memory and disk writes of
+/// `TileCache`.
 
 #include "tile_cache.hpp"
+
+#include <nmeasim/core/version.hpp>
 
 #include <QDir>
 #include <QDirIterator>
@@ -12,6 +15,9 @@
 #include <QNetworkRequest>
 #include <QSaveFile>
 #include <QUrl>
+
+#include <algorithm>
+#include <cstddef>
 
 namespace nmeasim::app::map {
 
@@ -24,6 +30,29 @@ constexpr int kMemoryTiles{512};
 constexpr int kMaxConcurrentDownloads{4};
 /// Time in milliseconds a download may go without receiving data before it is aborted.
 constexpr int kTransferTimeoutMs{15000};
+/// Longest delay before a failed tile is requested again, however often it failed; long
+/// enough to spare the server, short enough that a map left open recovers after an outage.
+constexpr std::chrono::milliseconds kMaxRetryDelay{std::chrono::minutes{10}};
+
+/// Returns the `User-Agent` the cache identifies itself with.
+///
+/// @return `NMEASimulatorX/<version> (+<project page>)`, the form the OpenStreetMap tile usage
+///     policy asks for: the application, its version and a way to contact its authors.
+QString default_user_agent() {
+    return QStringLiteral(
+               "NMEASimulatorX/%1 (+https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X)")
+        .arg(QString::fromUtf8(core::kVersion.data(),
+                               static_cast<qsizetype>(core::kVersion.size())));
+}
+
+/// Returns whether a finished reply means that the server does not have the tile at all.
+///
+/// @param reply Finished reply.
+/// @return `true` for HTTP 404 (Not Found) and 410 (Gone), which asking again will not change.
+bool is_not_found(const QNetworkReply& reply) {
+    const int status = reply.attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    return status == 404 || status == 410;
+}
 
 }  // namespace
 
@@ -31,25 +60,49 @@ TileCache::TileCache(QString directory, QObject* parent)
     : QObject(parent),
       directory_(std::move(directory)),
       url_template_(QStringLiteral("https://tile.openstreetmap.org/{z}/{x}/{y}.png")),
-      user_agent_(QStringLiteral("NMEASimulatorX")),
+      user_agent_(default_user_agent()),
       memory_(kMemoryTiles) {
     network_.setTransferTimeout(kTransferTimeoutMs);
     QDir().mkpath(directory_);
 }
 
 void TileCache::set_url_template(const QString& url_template) {
-    if (url_template.trimmed().isEmpty()) {
+    const QString trimmed = url_template.trimmed();
+    if (trimmed.isEmpty() || trimmed == url_template_) {
         return;
     }
-    url_template_ = url_template.trimmed();
+    url_template_ = trimmed;
+    // What failed on the previous server says nothing about the new one; the queued tiles
+    // stay and are requested from the new server.
+    failures_.clear();
+    abort_running();
+    start_next();
 }
 
 void TileCache::set_online(bool online) {
+    if (online && !online_) {
+        // The operator switches downloads back on, typically after the network returned, so
+        // tiles that failed for a transient reason are tried again at once.
+        failures_.removeIf([](const auto& entry) { return !entry.value().permanent; });
+    }
     online_ = online;
     if (!online_) {
+        abort_running();
         queue_.clear();
         queued_.clear();
     }
+}
+
+void TileCache::abort_running() {
+    // Disconnect first: abort() emits finished synchronously, and an aborted download must
+    // neither cache its tile nor count as a failure.
+    for (auto it = running_.cbegin(); it != running_.cend(); ++it) {
+        disconnect(it.value(), nullptr, this, nullptr);
+        it.value()->abort();
+        it.value()->deleteLater();
+        queued_.remove(it.key());
+    }
+    running_.clear();
 }
 
 QString TileCache::path_of(const TileKey& key) const {
@@ -70,7 +123,7 @@ std::optional<QPixmap> TileCache::tile(const TileKey& key) {
         memory_.insert(id, new QPixmap(pixmap));
         return pixmap;
     }
-    if (online_) {
+    if (online_ && may_request(id)) {
         enqueue(key);
     }
     return std::nullopt;
@@ -81,7 +134,7 @@ bool TileCache::is_cached(const TileKey& key) const {
 }
 
 int TileCache::pending_downloads() const {
-    return static_cast<int>(queue_.size()) + active_;
+    return static_cast<int>(queue_.size() + static_cast<std::size_t>(running_.size()));
 }
 
 qint64 TileCache::disk_size() const {
@@ -95,9 +148,10 @@ qint64 TileCache::disk_size() const {
 }
 
 void TileCache::clear() {
-    memory_.clear();
+    abort_running();
     queue_.clear();
     queued_.clear();
+    memory_.clear();
     QDir(directory_).removeRecursively();
     QDir().mkpath(directory_);
 }
@@ -113,7 +167,7 @@ void TileCache::enqueue(const TileKey& key) {
 }
 
 void TileCache::start_next() {
-    while (active_ < kMaxConcurrentDownloads && !queue_.empty()) {
+    while (running_.size() < kMaxConcurrentDownloads && !queue_.empty()) {
         const TileKey key = queue_.front();
         queue_.pop_front();
         QString url = url_template_;
@@ -125,16 +179,18 @@ void TileCache::start_next() {
         request.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                              QNetworkRequest::NoLessSafeRedirectPolicy);
         auto* reply = network_.get(request);
-        ++active_;
+        running_.insert(memory_key(key), reply);
         connect(reply, &QNetworkReply::finished, this, [this, key, reply] { finish(key, reply); });
     }
 }
 
 void TileCache::finish(const TileKey& key, QNetworkReply* reply) {
     reply->deleteLater();
-    --active_;
-    queued_.remove(memory_key(key));
+    const QString id = memory_key(key);
+    running_.remove(id);
+    queued_.remove(id);
     if (reply->error() != QNetworkReply::NoError) {
+        record_failure(id, is_not_found(*reply));
         emit tile_failed(key, reply->errorString());
         start_next();
         return;
@@ -144,6 +200,7 @@ void TileCache::finish(const TileKey& key, QNetworkReply* reply) {
     // cached, so that the disk never holds a tile that cannot be drawn.
     QPixmap pixmap;
     if (!pixmap.loadFromData(bytes)) {
+        record_failure(id, false);
         emit tile_failed(key, tr("not an image"));
         start_next();
         return;
@@ -156,9 +213,30 @@ void TileCache::finish(const TileKey& key, QNetworkReply* reply) {
         file.write(bytes);
         file.commit();
     }
-    memory_.insert(memory_key(key), new QPixmap(pixmap));
+    failures_.remove(id);
+    memory_.insert(id, new QPixmap(pixmap));
     emit tile_ready(key);
     start_next();
+}
+
+void TileCache::record_failure(const QString& id, bool permanent) {
+    Failure& failure = failures_[id];
+    if (permanent) {
+        failure.permanent = true;
+        return;
+    }
+    failure.delay = failure.delay <= std::chrono::milliseconds::zero()
+                        ? retry_delay_
+                        : std::min(failure.delay * 2, std::max(kMaxRetryDelay, retry_delay_));
+    failure.retry_at = std::chrono::steady_clock::now() + failure.delay;
+}
+
+bool TileCache::may_request(const QString& id) const {
+    const auto found = failures_.constFind(id);
+    if (found == failures_.cend()) {
+        return true;
+    }
+    return !found->permanent && std::chrono::steady_clock::now() >= found->retry_at;
 }
 
 }  // namespace nmeasim::app::map
