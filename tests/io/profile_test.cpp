@@ -215,6 +215,89 @@ TEST_CASE("invalid profiles are rejected with a reason", "[io][profile]") {
     CHECK(error.contains(QStringLiteral("port_name")));
 }
 
+TEST_CASE("a destination needs a position and unknown GNSS qualities are rejected",
+          "[io][profile]") {
+    QString error;
+    const auto seed = [](const QJsonObject& keys) {
+        return QJsonObject{
+            {QStringLiteral("schema_version"), 3},
+            {QStringLiteral("simulation"), QJsonObject{{QStringLiteral("seed"), keys}}}};
+    };
+    const auto destination = [&seed](const QJsonObject& keys) {
+        return seed({{QStringLiteral("destination"), keys}});
+    };
+
+    CHECK_FALSE(
+        Profile::from_json(destination({{QStringLiteral("name"), QStringLiteral("X")}}), &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric latitude")));
+    CHECK_FALSE(
+        Profile::from_json(destination({{QStringLiteral("latitude"), 37.7}}), &error).has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric longitude")));
+    // A position given as text is not a position.
+    CHECK_FALSE(Profile::from_json(destination({{QStringLiteral("latitude"), QStringLiteral("37")},
+                                                {QStringLiteral("longitude"), 23.4}}),
+                                   &error)
+                    .has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric latitude")));
+    const auto complete = Profile::from_json(destination({{QStringLiteral("latitude"), 37.7466},
+                                                          {QStringLiteral("longitude"), 23.4275}}),
+                                             &error);
+    REQUIRE(complete.has_value());
+    REQUIRE(complete->delta.seed.destination.has_value());
+    CHECK(complete->delta.seed.destination->name == "WPT");
+    // `null` still means no destination.
+    const auto none =
+        Profile::from_json(seed({{QStringLiteral("destination"), QJsonValue::Null}}), &error);
+    REQUIRE(none.has_value());
+    CHECK_FALSE(none->delta.seed.destination.has_value());
+
+    const auto quality = [&seed](const QString& value) {
+        return seed({{QStringLiteral("gnss"), QJsonObject{{QStringLiteral("quality"), value}}}});
+    };
+    CHECK_FALSE(Profile::from_json(quality(QStringLiteral("rtk")), &error).has_value());
+    CHECK(error.contains(QStringLiteral("gnss.quality")));
+    CHECK(error.contains(QStringLiteral("rtk")));
+    const auto differential = Profile::from_json(quality(QStringLiteral("differential")), &error);
+    REQUIRE(differential.has_value());
+    CHECK(differential->delta.seed.gnss.quality == nmeasim::core::model::FixQuality::Differential);
+}
+
+TEST_CASE("sentence settings are validated", "[io][profile]") {
+    QString error;
+    const auto setting = [](const QJsonObject& keys) {
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("sentences"),
+                            QJsonObject{{QStringLiteral("settings"),
+                                         QJsonObject{{QStringLiteral("RMC"), keys}}}}}};
+    };
+    // Periods lie in [50, 3600000] ms, as for custom sentences and outputs.
+    for (const int period : {0, 49, 3'600'001}) {
+        INFO(period);
+        CHECK_FALSE(Profile::from_json(setting({{QStringLiteral("period_ms"), period}}), &error)
+                        .has_value());
+        CHECK(error.contains(QStringLiteral("RMC")));
+        CHECK(error.contains(QStringLiteral("period_ms")));
+    }
+    // A talker is two upper-case letters, or empty for the registry default.
+    for (const char* talker : {"G", "GPS", "gn", "G1", "$G"}) {
+        INFO(talker);
+        CHECK_FALSE(
+            Profile::from_json(setting({{QStringLiteral("talker"), QLatin1String(talker)}}), &error)
+                .has_value());
+        CHECK(error.contains(QStringLiteral("talker")));
+    }
+    const auto valid = Profile::from_json(setting({{QStringLiteral("talker"), QStringLiteral("GN")},
+                                                   {QStringLiteral("period_ms"), 50}}),
+                                          &error);
+    REQUIRE(valid.has_value());
+    CHECK(valid->sentences.at("RMC").talker == "GN");
+    CHECK(valid->sentences.at("RMC").period == 50ms);
+    const auto empty = Profile::from_json(setting({{QStringLiteral("talker"), QString()}}), &error);
+    REQUIRE(empty.has_value());
+    CHECK(empty->sentences.at("RMC").talker.empty());
+}
+
 TEST_CASE("profiles are saved to and loaded from disk", "[io][profile]") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
@@ -643,4 +726,48 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
             with(QStringLiteral("outputs"), output({{QStringLiteral("period_ms"), 10}})), &error)
             .has_value());
     CHECK(error.contains(QStringLiteral("period_ms")));
+}
+
+TEST_CASE("random seed, MMSI and IMO number outside their integer range are rejected",
+          "[io][profile]") {
+    QString error;
+    const auto simulation = [](const QJsonObject& keys) {
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("simulation"), keys}};
+    };
+    const auto ais = [&simulation](const char* key, double value) {
+        return simulation(
+            {{QStringLiteral("seed"),
+              QJsonObject{{QStringLiteral("ais"), QJsonObject{{QLatin1String(key), value}}}}}});
+    };
+
+    // 4294967295 is the largest `unsigned int` of 32 bits, 999999999 the largest nine-digit
+    // number.
+    for (const double bad : {-1.0, 4294967296.0, 5e9, 1.5}) {
+        INFO(bad);
+        CHECK_FALSE(Profile::from_json(simulation({{QStringLiteral("random_seed"), bad}}), &error)
+                        .has_value());
+        CHECK(error.contains(QStringLiteral("random_seed")));
+    }
+    for (const double bad : {-1.0, 1e9, 5e9, 211000123.5}) {
+        INFO(bad);
+        CHECK_FALSE(Profile::from_json(ais("mmsi", bad), &error).has_value());
+        CHECK(error.contains(QStringLiteral("mmsi")));
+        CHECK_FALSE(Profile::from_json(ais("imo_number", bad), &error).has_value());
+        CHECK(error.contains(QStringLiteral("imo_number")));
+    }
+
+    const auto seed =
+        Profile::from_json(simulation({{QStringLiteral("random_seed"), 4294967295.0}}), &error);
+    REQUIRE(seed.has_value());
+    CHECK(seed->delta.random_seed == 4294967295U);
+    const auto zero = Profile::from_json(simulation({{QStringLiteral("random_seed"), 0}}), &error);
+    REQUIRE(zero.has_value());
+    CHECK(zero->delta.random_seed == 0U);
+    const auto mmsi = Profile::from_json(ais("mmsi", 999999999.0), &error);
+    REQUIRE(mmsi.has_value());
+    CHECK(mmsi->delta.seed.ais.mmsi == 999999999U);
+    const auto imo = Profile::from_json(ais("imo_number", 9074729.0), &error);
+    REQUIRE(imo.has_value());
+    CHECK(imo->delta.seed.ais.imo_number == 9074729U);
 }
