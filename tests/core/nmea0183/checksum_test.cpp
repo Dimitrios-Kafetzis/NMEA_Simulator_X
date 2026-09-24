@@ -41,6 +41,12 @@ TEST_CASE("append_checksum matches sentences from real receivers", "[nmea0183][c
           "!AIVDM,1,1,,A,402E3Miv0r<BCPDAjjMdjuW000S:,0*26");
 }
 
+TEST_CASE("append_checksum frames a sentence of one character or none", "[nmea0183][checksum]") {
+    // Without a start delimiter the body is empty and its checksum is 0.
+    CHECK(nmea::append_checksum("") == "*00");
+    CHECK(nmea::append_checksum("$") == "$*00");
+}
+
 TEST_CASE("verify_checksum accepts valid sentences", "[nmea0183][checksum]") {
     CHECK(
         nmea::verify_checksum("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47"));

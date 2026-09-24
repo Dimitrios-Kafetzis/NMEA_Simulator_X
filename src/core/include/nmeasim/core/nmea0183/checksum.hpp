@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -20,6 +21,8 @@ namespace nmeasim::core::nmea0183 {
 
 /// Maximum length of a sentence in bytes, from NMEA 0183: 82, counting the start delimiter
 /// and the terminating CR LF.
+///
+/// The only definition of the limit: the checks derive their bound from it.
 ///
 /// @see kMaxSentenceLengthWithoutTerminator for the same limit without CR LF.
 inline constexpr std::size_t kMaxSentenceLength{82};
@@ -54,9 +57,8 @@ inline constexpr char kChecksumDelimiter{'*'};
 /// terminator; the caller adds CR LF when transmitting.
 ///
 /// @param sentence The sentence from its start delimiter to its last field, without `*hh`
-///                 and without CR LF.
+///                 and without CR LF. An empty `sentence` has an empty body and gives `*00`.
 /// @return `sentence` followed by `*` and the two checksum digits.
-/// @throws std::out_of_range if `sentence` is empty.
 /// @note A `sentence` that already contains a `*` gets a second checksum computed over the
 ///       first one, which is not a valid sentence.
 [[nodiscard]] std::string append_checksum(std::string_view sentence);

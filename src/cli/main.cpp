@@ -33,7 +33,9 @@
 
 #include <CLI/CLI.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <charconv>
 #include <chrono>
 #include <cmath>
 #include <csignal>
@@ -41,6 +43,9 @@
 #include <iostream>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -148,7 +153,8 @@ struct RunOptions {
     /// run starts. Empty records nothing.
     std::string record_path;
     /// Speed along untimed track legs, `--speed`; also the speed of a timed track with
-    /// `ignore_timestamps`. Zero or negative keeps the profile's `simulation.track.speed_kn`.
+    /// `ignore_timestamps`. Zero or negative keeps the profile's `simulation.track.speed_kn`;
+    /// `check_finite_options` refuses `nan` and `inf`.
     double track_speed_kn{0.0};
     /// `--ignore-timestamps`: sails a timed track at the track speed instead of on its own
     /// timing.
@@ -160,7 +166,7 @@ struct RunOptions {
     /// `simulation.replay.fixed_interval_ms`.
     int replay_interval_ms{0};
     /// Wall-clock run time, `-d` or `--duration`; truncated to whole milliseconds. Zero or
-    /// negative sets no limit.
+    /// negative sets no limit; `check_finite_options` refuses `nan` and `inf`.
     double duration_s{0.0};
     /// Period of every registry sentence in milliseconds, `-r` or `--rate`; overrides the
     /// profile's per-sentence periods. Zero or negative keeps them.
@@ -200,56 +206,90 @@ struct RunOptions {
     std::string destination;
 };
 
+/// Reads a whole string as a decimal number made of digits only.
+///
+/// Unlike `std::stoi`, it accepts no sign, no white space and no characters after the digits.
+///
+/// @param text The text to read, for example `10110`.
+/// @return The number, or `std::nullopt` when the text is empty, contains anything but the
+/// digits 0 to 9, or does not fit in an `int`.
+std::optional<int> parse_digits(std::string_view text) {
+    if (text.empty() || !std::ranges::all_of(text, [](char c) { return c >= '0' && c <= '9'; })) {
+        return std::nullopt;
+    }
+    int value = 0;
+    const auto* const end = text.data() + text.size();
+    const auto [stop, status] = std::from_chars(text.data(), end, value);
+    if (status != std::errc{} || stop != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 /// Splits a `--udp` argument of the form `host:port` into the host and the port.
 ///
-/// The split is at the last colon. The host is not checked and may be empty. The port is
-/// read with `std::stoi`, which skips leading white space and ignores characters after the
-/// digits.
+/// The split is at the last colon. The host must not be empty and is otherwise not checked;
+/// the port must be digits only (see `parse_digits`).
 ///
 /// @param value The argument, for example `192.168.1.20:10110`.
-/// @return The host and the port, or `std::nullopt` when there is no colon or the port is
-/// not a number in [1, 65535].
+/// @return The host and the port, or `std::nullopt` when there is no colon, the host is
+/// empty or the port is not a whole number in [1, 65535].
 std::optional<std::pair<QString, quint16>> split_host_port(const std::string& value) {
     const auto colon = value.rfind(':');
-    if (colon == std::string::npos) {
+    if (colon == std::string::npos || colon == 0) {
         return std::nullopt;
     }
-    try {
-        const int port = std::stoi(value.substr(colon + 1));
-        if (port < 1 || port > 65535) {
-            return std::nullopt;
-        }
-        return std::make_pair(QString::fromStdString(value.substr(0, colon)),
-                              static_cast<quint16>(port));
-    } catch (const std::exception&) {
+    const auto port = parse_digits(std::string_view{value}.substr(colon + 1));
+    if (!port || *port < 1 || *port > 65535) {
         return std::nullopt;
     }
+    return std::make_pair(QString::fromStdString(value.substr(0, colon)),
+                          static_cast<quint16>(*port));
 }
 
 /// Splits a `--serial` argument of the form `device[@baud]` into the device and the baud
 /// rate.
 ///
 /// The split is at the last `@`. Without one the whole argument is the device and the baud
-/// rate is 4800, the standard rate of NMEA 0183 (IEC 61162-1) talkers. The baud rate is read
-/// with `std::stoi` and is not checked against the rates the port supports.
+/// rate is 4800, the standard rate of NMEA 0183 (IEC 61162-1) talkers. The baud rate must be
+/// digits only (see `parse_digits`) and is not checked against the rates the port supports.
 ///
 /// @param value The argument, for example `/dev/ttyUSB0@38400` or `COM3`.
-/// @return The device and the baud rate, or `std::nullopt` when the part after the `@` is
-/// not a positive number.
+/// @return The device and the baud rate, or `std::nullopt` when the device is empty or the
+/// part after the `@` is not a positive whole number.
 std::optional<std::pair<QString, int>> split_serial(const std::string& value) {
     const auto at = value.rfind('@');
     if (at == std::string::npos) {
-        return std::make_pair(QString::fromStdString(value), 4800);
-    }
-    try {
-        const int baud = std::stoi(value.substr(at + 1));
-        if (baud <= 0) {
+        if (value.empty()) {
             return std::nullopt;
         }
-        return std::make_pair(QString::fromStdString(value.substr(0, at)), baud);
-    } catch (const std::exception&) {
+        return std::make_pair(QString::fromStdString(value), 4800);
+    }
+    const auto baud = parse_digits(std::string_view{value}.substr(at + 1));
+    if (at == 0 || !baud || *baud <= 0) {
         return std::nullopt;
     }
+    return std::make_pair(QString::fromStdString(value.substr(0, at)), *baud);
+}
+
+/// Refuses the non-finite values that CLI11 converts `nan` and `inf` to.
+///
+/// CLI11 reads `--duration` and `--speed` as floating-point numbers and accepts `nan`, `inf`
+/// and `infinity`, which would make a run endless or overflow the duration timer.
+///
+/// @param options The parsed `run` options; `duration_s` and `track_speed_kn` are read.
+/// @param[out] error Set to a message for the user when the function returns false.
+/// @return True when both values are finite numbers.
+bool check_finite_options(const RunOptions& options, std::string& error) {
+    if (!std::isfinite(options.duration_s)) {
+        error = "--duration must be a finite number of seconds";
+        return false;
+    }
+    if (!std::isfinite(options.track_speed_kn)) {
+        error = "--speed must be a finite number of knots";
+        return false;
+    }
+    return true;
 }
 
 /// Replaces the outputs of `profile` with the outputs given on the command line.
@@ -353,7 +393,7 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
 /// Sets the destination of the simulation seed from `--destination`.
 ///
 /// The argument is `LAT,LON[,NAME]`: latitude in [-90, 90] positive north and longitude in
-/// [-180, 180] positive east, both in decimal degrees, and an optional waypoint name. White
+/// [-180, 180] positive east, both finite decimal degrees, and an optional waypoint name. White
 /// space around each part is ignored, parts after the third are ignored, and an empty name
 /// keeps the default `WPT`. The leg starts at the seed position of the profile, also when
 /// the run follows a track. A destination makes the simulation send APB, RMB and XTE and the
@@ -363,8 +403,8 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
 /// @param[in,out] profile The profile whose `delta.seed.destination` is set.
 /// @param[out] error Set to a message for the user when the function returns false.
 /// @return True when `--destination` is empty or valid; false when it has fewer than two
-/// parts, a coordinate is not a number or a coordinate is out of range, in which case
-/// `profile` is unchanged.
+/// parts, a coordinate is not a number, is `nan` or infinite, or is out of range, in which
+/// case `profile` is unchanged.
 /// @see nmeasim::core::model::Destination
 bool apply_destination(const RunOptions& options, nmeasim::io::Profile& profile,
                        std::string& error) {
@@ -376,7 +416,9 @@ bool apply_destination(const RunOptions& options, nmeasim::io::Profile& profile,
     bool lon_ok = false;
     const double latitude = parts.size() >= 2 ? parts[0].trimmed().toDouble(&lat_ok) : 0.0;
     const double longitude = parts.size() >= 2 ? parts[1].trimmed().toDouble(&lon_ok) : 0.0;
-    if (!lat_ok || !lon_ok || std::fabs(latitude) > 90.0 || std::fabs(longitude) > 180.0) {
+    // QString::toDouble accepts nan and inf, which no range comparison refuses.
+    if (!lat_ok || !lon_ok || !std::isfinite(latitude) || !std::isfinite(longitude) ||
+        std::fabs(latitude) > 90.0 || std::fabs(longitude) > 180.0) {
         error = std::format("--destination expects LAT,LON[,NAME], got '{}'", options.destination);
         return false;
     }
@@ -496,9 +538,9 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
 
 /// Runs the `run` subcommand: builds the profile, streams it and returns the exit status.
 ///
-/// Loads the profile of `--profile`, or the built-in default, and applies
-/// `apply_output_overrides`, `apply_sentence_overrides`, `apply_destination` and
-/// `apply_mode_overrides` in this order. It then applies the profile to a
+/// Checks the numbers with `check_finite_options`, loads the profile of `--profile`, or the
+/// built-in default, and applies `apply_output_overrides`, `apply_sentence_overrides`,
+/// `apply_destination` and `apply_mode_overrides` in this order. It then applies the profile to a
 /// `nmeasim::io::SimulationRunner`, starts it and runs the Qt event loop until the runner
 /// emits `stopped`, which happens when:
 ///
@@ -516,12 +558,16 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
 /// A failure of one output while others work is printed as a warning and the run continues.
 ///
 /// @param options The parsed `run` options.
-/// @return 0 after a normal stop; 2 when the profile cannot be loaded or applied, an
-/// override is invalid or the run would have no outputs; 3 when none of the outputs could
-/// be opened.
+/// @return 0 after a normal stop; 2 when a number is not finite, the profile cannot be
+/// loaded or applied, an override is invalid or the run would have no outputs; 3 when none
+/// of the outputs could be opened.
 /// @pre A `QCoreApplication` exists.
 /// @note Installs `on_interrupt` for `SIGINT` and `SIGTERM` and leaves it installed.
 int run_simulation(const RunOptions& options) {
+    if (std::string error; !check_finite_options(options, error)) {
+        std::cerr << "error: " << error << '\n';
+        return 2;
+    }
     nmeasim::io::Profile profile = nmeasim::io::Profile::default_profile();
     if (!options.profile_path.empty()) {
         QString error;
@@ -687,12 +733,12 @@ int show_profile(const std::string& path) {
 /// @param argv The command-line arguments; `argv[0]` is the program name.
 /// @return The exit status:
 /// - 0 on success, after `--help` or `--version`, and when no subcommand is given;
-/// - 2 when `run` or `profile` rejects its input (see `run_simulation`,
+/// - 2 when the command line cannot be parsed (an unknown option or subcommand, a missing or
+///   malformed value, a missing file, a value outside the range an option accepts, options
+///   that exclude or need each other), after CLI11 printed the reason to standard error, and
+///   when `run` or `profile` rejects its input (see `run_simulation`,
 ///   `write_default_profile` and `show_profile`);
-/// - 3 when `run` could open none of its outputs;
-/// - the CLI11 error code, from 100 upwards, when the command line itself cannot be parsed:
-///   an unknown option, a missing or malformed value, a missing file, or a value outside the
-///   range an option accepts.
+/// - 3 when `run` could open none of its outputs.
 int main(int argc, char** argv) {
     // Qt's non-GUI modules expect an application object to exist, even in headless tools.
     QCoreApplication qt_application(argc, argv);
@@ -775,7 +821,15 @@ int main(int argc, char** argv) {
     auto* show = profile->add_subcommand("show", "Print a profile after validation and migration");
     show->add_option("path", show_path, "Profile file (default: built-in profile)");
 
-    CLI11_PARSE(cli, argc, argv);
+    try {
+        cli.parse(argc, argv);
+    } catch (const CLI::ParseError& parse_error) {
+        // CLI11 reports --help and --version as parse errors with its success code, and every
+        // real error with a code of its own from 100 upwards; the tool promises 2 for all of
+        // those. exit() prints the help, the version or the error message.
+        const int code = cli.exit(parse_error);
+        return code == static_cast<int>(CLI::ExitCodes::Success) ? 0 : 2;
+    }
 
     if (ports->parsed()) {
         return list_serial_ports();

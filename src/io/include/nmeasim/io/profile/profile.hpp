@@ -102,9 +102,10 @@ struct OutputConfig {
     Encoding encoding{Encoding::Nmea0183};
     /// The `filter` key: what this output sends; empty sends everything.
     ///
-    /// For an NMEA 0183 output the entries are registry ids and custom sentence ids, matched
-    /// exactly. For a Signal K output they are path prefixes such as `navigation` or
-    /// `environment.wind`, matched without regard to case. A ViewSync output ignores it.
+    /// For an NMEA 0183 output the entries are registry ids and custom sentence ids. For a
+    /// Signal K output they are paths or leading path segments such as `navigation` or
+    /// `environment.wind`, each admitting the paths below it. Both are matched without regard
+    /// to case. A ViewSync output ignores it.
     QStringList filter;
     /// Period of the messages of a Signal K or ViewSync output in milliseconds, the
     /// `period_ms` key; [50, 3600000].
@@ -129,22 +130,27 @@ struct OutputConfig {
     QString bind_address{QStringLiteral("0.0.0.0")};
     /// Port a server listens on or a TCP client connects to, the `port` key; [0, 65535].
     ///
-    /// A value outside the range is rejected when the profile is read, whatever the output
-    /// type. 0 lets a server pick a free port. The default 10110 is the port conventionally
+    /// Read only for the TCP server and client, UDP and WebSocket types, which reject a value
+    /// outside the range when the profile is read; the other types ignore the key and keep
+    /// the default. 0 lets a server pick a free port. The default 10110 is the port conventionally
     /// used for NMEA 0183 over IP. A UDP output uses `UdpConfig::port`, read from the same key.
     quint16 port{10110};
     // TCP client
     /// Host name or address a TCP client connects to, the `host` key.
     QString host{QStringLiteral("127.0.0.1")};
     /// Delay before a TCP client reconnects after the connection drops, in milliseconds; the
-    /// `reconnect_ms` key. Not validated when the profile is read.
+    /// `reconnect_ms` key, [1, 3600000].
+    ///
+    /// Read only for a TCP client, which rejects a value outside the range when the profile
+    /// is read.
     int reconnect_ms{2000};
     // UDP
     /// UDP settings, from the keys `mode` (`unicast`, `broadcast` or `multicast`, default
     /// `unicast`), `address` (default `127.0.0.1`), `port`, `interface` (default empty) and
-    /// `multicast_ttl` (default 1).
+    /// `multicast_ttl` (default 1, [1, 255]).
     ///
-    /// An unknown `mode` is an error when the profile is read, whatever the output type.
+    /// Read only for a UDP output, which rejects an unknown `mode` and a `multicast_ttl`
+    /// outside its range when the profile is read.
     UdpConfig udp;
     // Serial
     /// Serial port settings, from the keys `port_name` (required for a serial output),
@@ -152,8 +158,9 @@ struct OutputConfig {
     /// `odd`, `mark` or `space`), `stop_bits` (`1`, `1.5` or `2`) and `flow_control` (`none`,
     /// `hardware` or `software`).
     ///
-    /// An unknown `data_bits`, `parity`, `stop_bits` or `flow_control` value is read as the
-    /// default (8, `none`, `1`, `none`) without an error.
+    /// Read only for a serial output, which rejects a `baud_rate` that is not positive and
+    /// any other `data_bits`, `parity`, `stop_bits` or `flow_control` value when the profile
+    /// is read. Missing keys take the defaults (4800, 8, `none`, `1`, `none`).
     SerialConfig serial;
     // File and Log
     /// File a file or log output writes, the `path` key; required for those two types.
@@ -173,9 +180,9 @@ struct OutputConfig {
 [[nodiscard]] QString to_string(OutputConfig::Type type);
 /// Parses the profile name of an output type.
 ///
-/// @param text The name, matched exactly and case-sensitively, such as `udp` or `tcp-client`.
-/// @return The output type, or `std::nullopt` when `text` names none.
-[[nodiscard]] std::optional<OutputConfig::Type> output_type_from_string(const QString& text);
+/// @param value The name, matched exactly and case-sensitively, such as `udp` or `tcp-client`.
+/// @return The output type, or `std::nullopt` when `value` names none.
+[[nodiscard]] std::optional<OutputConfig::Type> output_type_from_string(const QString& value);
 /// Returns the profile name of an output encoding.
 ///
 /// @param encoding The encoding.
@@ -184,10 +191,10 @@ struct OutputConfig {
 [[nodiscard]] QString to_string(OutputConfig::Encoding encoding);
 /// Parses the profile name of an output encoding.
 ///
-/// @param text The name, matched exactly and case-sensitively.
-/// @return The encoding, or `std::nullopt` when `text` is not `nmea0183`, `signalk` or
+/// @param value The name, matched exactly and case-sensitively.
+/// @return The encoding, or `std::nullopt` when `value` is not `nmea0183`, `signalk` or
 ///     `viewsync`.
-[[nodiscard]] std::optional<OutputConfig::Encoding> encoding_from_string(const QString& text);
+[[nodiscard]] std::optional<OutputConfig::Encoding> encoding_from_string(const QString& value);
 
 /// What drives the vessel, the `simulation.mode` key of a profile.
 ///
@@ -210,9 +217,9 @@ enum class SimulationMode {
 [[nodiscard]] QString to_string(SimulationMode mode);
 /// Parses the profile name of a simulation mode.
 ///
-/// @param text The name, matched exactly and case-sensitively.
-/// @return The mode, or `std::nullopt` when `text` is not `delta`, `track` or `replay`.
-[[nodiscard]] std::optional<SimulationMode> simulation_mode_from_string(const QString& text);
+/// @param value The name, matched exactly and case-sensitively.
+/// @return The mode, or `std::nullopt` when `value` is not `delta`, `track` or `replay`.
+[[nodiscard]] std::optional<SimulationMode> simulation_mode_from_string(const QString& value);
 
 /// Settings of the track-following mode, the `simulation.track` object of a profile.
 ///
@@ -284,8 +291,10 @@ struct Profile {
     /// The delta simulation, and the seed values for every mode.
     ///
     /// Read from `simulation.random_seed`, `simulation.seed`, `simulation.variation` and
-    /// `simulation.steering`. In track and replay mode the seed supplies the values the file
-    /// does not carry and the variations are unused.
+    /// `simulation.steering`. When read, a `simulation.seed.gnss.quality` other than
+    /// `invalid`, `gps` or `differential` and a `simulation.seed.destination` object without
+    /// numeric `latitude` and `longitude` are rejected. In track and replay mode the seed supplies
+    /// the values the file does not carry and the variations are unused.
     core::simulation::DeltaConfig delta;
     /// Track-following settings, the `simulation.track` object; used in track mode.
     TrackSettings track;
@@ -298,13 +307,15 @@ struct Profile {
     /// `sentences.settings` object.
     ///
     /// Reading an id the registry does not know is an error. A key missing from an entry
-    /// takes the registry default; `period_ms` is not range-checked here.
+    /// takes the registry default. When read, a `talker` must be empty or two upper-case
+    /// letters and `period_ms` must lie in [50, 3600000].
     std::map<std::string, core::simulation::SentenceSetting> sentences;
     /// Sentences typed in by the operator, in emission order; the `sentences.custom` array.
     ///
-    /// When read, an `id` is trimmed and upper-cased and must not be a registry id; the
-    /// `body` must pass `core::simulation::validate_custom_sentence`; `period_ms` must lie in
-    /// [50, 3600000].
+    /// When read, an `id` is trimmed and upper-cased and must not be a registry id nor the
+    /// id of another entry, the `CUSTOM-n` an entry without id stands for included (see
+    /// `core::simulation::find_duplicate_custom_id`); the `body` must pass
+    /// `core::simulation::validate_custom_sentence`; `period_ms` must lie in [50, 3600000].
     std::vector<core::simulation::CustomSentence> custom_sentences;
     /// Output channels, the `outputs` array, in file order.
     QList<OutputConfig> outputs;
