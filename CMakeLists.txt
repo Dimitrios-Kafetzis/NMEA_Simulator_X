@@ -18,7 +18,7 @@ cmake_minimum_required(VERSION 3.25)
 # The single source of the version. Release Please rewrites the next line, which carries its
 # marker comment, when a release pull request is merged (release-please-config.json); the
 # release workflow and the documentation hook read the version from this line as well.
-set(NMEASIM_VERSION "1.1.0") # x-release-please-version
+set(NMEASIM_VERSION "1.1.1") # x-release-please-version
 
 project(NMEASimulatorX
     VERSION ${NMEASIM_VERSION}
