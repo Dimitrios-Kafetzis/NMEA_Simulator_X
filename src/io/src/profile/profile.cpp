@@ -184,21 +184,16 @@ QString parity_to_string(QSerialPort::Parity parity) {
 /// Parses the profile name of a serial parity.
 ///
 /// @param value `none`, `even`, `odd`, `mark` or `space`, matched exactly.
-/// @return The parity; `QSerialPort::NoParity` for any other text, without an error.
-QSerialPort::Parity parity_from_string(const QString& value) {
-    if (value == QLatin1String("even")) {
-        return QSerialPort::EvenParity;
+/// @return The parity, or `std::nullopt` for any other text, which the caller reports.
+std::optional<QSerialPort::Parity> parity_from_string(const QString& value) {
+    for (const auto parity :
+         {QSerialPort::NoParity, QSerialPort::EvenParity, QSerialPort::OddParity,
+          QSerialPort::MarkParity, QSerialPort::SpaceParity}) {
+        if (parity_to_string(parity) == value) {
+            return parity;
+        }
     }
-    if (value == QLatin1String("odd")) {
-        return QSerialPort::OddParity;
-    }
-    if (value == QLatin1String("mark")) {
-        return QSerialPort::MarkParity;
-    }
-    if (value == QLatin1String("space")) {
-        return QSerialPort::SpaceParity;
-    }
-    return QSerialPort::NoParity;
+    return std::nullopt;
 }
 
 /// Returns the profile name of a number of stop bits, the `stop_bits` key of a serial output.
@@ -220,15 +215,15 @@ QString stop_bits_to_string(QSerialPort::StopBits bits) {
 /// Parses the profile name of a number of stop bits.
 ///
 /// @param value `1`, `1.5` or `2`, matched exactly; the key holds a string, not a number.
-/// @return The stop bits; `QSerialPort::OneStop` for any other text, without an error.
-QSerialPort::StopBits stop_bits_from_string(const QString& value) {
-    if (value == QLatin1String("1.5")) {
-        return QSerialPort::OneAndHalfStop;
+/// @return The stop bits, or `std::nullopt` for any other text, which the caller reports.
+std::optional<QSerialPort::StopBits> stop_bits_from_string(const QString& value) {
+    for (const auto bits :
+         {QSerialPort::OneStop, QSerialPort::OneAndHalfStop, QSerialPort::TwoStop}) {
+        if (stop_bits_to_string(bits) == value) {
+            return bits;
+        }
     }
-    if (value == QLatin1String("2")) {
-        return QSerialPort::TwoStop;
-    }
-    return QSerialPort::OneStop;
+    return std::nullopt;
 }
 
 /// Returns the profile name of a serial flow control, the `flow_control` key.
@@ -251,24 +246,23 @@ QString flow_control_to_string(QSerialPort::FlowControl flow) {
 /// Parses the profile name of a serial flow control.
 ///
 /// @param value `none`, `hardware` or `software`, matched exactly.
-/// @return The flow control; `QSerialPort::NoFlowControl` for any other text, without an
-///     error.
-QSerialPort::FlowControl flow_control_from_string(const QString& value) {
-    if (value == QLatin1String("hardware")) {
-        return QSerialPort::HardwareControl;
+/// @return The flow control, or `std::nullopt` for any other text, which the caller reports.
+std::optional<QSerialPort::FlowControl> flow_control_from_string(const QString& value) {
+    for (const auto flow :
+         {QSerialPort::NoFlowControl, QSerialPort::HardwareControl, QSerialPort::SoftwareControl}) {
+        if (flow_control_to_string(flow) == value) {
+            return flow;
+        }
     }
-    if (value == QLatin1String("software")) {
-        return QSerialPort::SoftwareControl;
-    }
-    return QSerialPort::NoFlowControl;
+    return std::nullopt;
 }
 
 /// Converts the `data_bits` key of a serial output.
 ///
-/// @param bits Bits per character, 5 to 8.
-/// @return The matching data bits; `QSerialPort::Data8` for any value outside 5 to 7,
-///     without an error.
-QSerialPort::DataBits data_bits_from_int(int bits) {
+/// @param bits Bits per character.
+/// @return The matching data bits for 5 to 8, or `std::nullopt` for any other value, which
+///     the caller reports.
+std::optional<QSerialPort::DataBits> data_bits_from_int(int bits) {
     switch (bits) {
         case 5:
             return QSerialPort::Data5;
@@ -276,8 +270,10 @@ QSerialPort::DataBits data_bits_from_int(int bits) {
             return QSerialPort::Data6;
         case 7:
             return QSerialPort::Data7;
-        default:
+        case 8:
             return QSerialPort::Data8;
+        default:
+            return std::nullopt;
     }
 }
 
@@ -678,18 +674,22 @@ QJsonObject output_to_json(const OutputConfig& output) {
 
 /// Reads and validates one entry of the `outputs` array.
 ///
-/// Every key is read whatever the type and encoding, so a key of another type is still
-/// validated: an out-of-range `port` or an unknown UDP `mode` is rejected on any output.
-/// Missing keys take the defaults of `OutputConfig`.
+/// The keys of the encoding are read and validated whatever the encoding. The keys of the
+/// transport are read and validated only for the types that use them, so a stray key of
+/// another type, such as a `parity` on a TCP server, is ignored. Missing keys take the
+/// defaults of `OutputConfig`.
 ///
 /// @param object The entry; a non-object entry arrives as an empty object and fails for its
 ///     missing `type`.
 /// @param index Position of the entry in the array, used in the error message.
 /// @param error Receives a message starting with `outputs[index]:` when the entry is
 ///     invalid; must not be null.
-/// @return The output, or `std::nullopt` when the type, encoding or UDP mode is unknown,
-///     `period_ms` or `port` is out of range, or a serial output lacks `port_name` or a file
-///     or log output lacks `path`.
+/// @return The output, or `std::nullopt` when the type or encoding is unknown, `period_ms`
+///     is out of range, a TCP, UDP or WebSocket `port` is out of range, a TCP client's
+///     `reconnect_ms` is outside [1, 3600000], a UDP output has an unknown `mode` or a
+///     `multicast_ttl` outside [1, 255], a serial output lacks `port_name`, has a baud rate
+///     that is not positive or an unknown `data_bits`, `parity`, `stop_bits` or
+///     `flow_control`, or a file or log output lacks `path`.
 std::optional<OutputConfig> output_from_json(const QJsonObject& object, int index, QString* error) {
     OutputConfig output;
     const auto type = output_type_from_string(text(object, "type"));
@@ -732,39 +732,79 @@ std::optional<OutputConfig> output_from_json(const QJsonObject& object, int inde
     for (const auto& value : filter) {
         output.filter.append(value.toString());
     }
-    const int port = integer(object, "port", 10110);
-    if (port < 0 || port > 65535) {
-        *error = QStringLiteral("outputs[%1]: port %2 is out of range").arg(index).arg(port);
+    const auto fail = [index, error](const QString& message) {
+        *error = QStringLiteral("outputs[%1]: %2").arg(index).arg(message);
         return std::nullopt;
+    };
+    const bool uses_port = output.type == OutputConfig::Type::TcpServer ||
+                           output.type == OutputConfig::Type::TcpClient ||
+                           output.type == OutputConfig::Type::Udp ||
+                           output.type == OutputConfig::Type::WebSocketServer;
+    if (uses_port) {
+        const int port = integer(object, "port", 10110);
+        if (port < 0 || port > 65535) {
+            return fail(QStringLiteral("port %1 is out of range").arg(port));
+        }
+        output.port = static_cast<quint16>(port);
     }
-    output.port = static_cast<quint16>(port);
     output.bind_address = text(object, "bind_address", QStringLiteral("0.0.0.0"));
     output.host = text(object, "host", QStringLiteral("127.0.0.1"));
-    output.reconnect_ms = integer(object, "reconnect_ms", 2000);
-
-    const auto mode = udp_mode_from_string(text(object, "mode", QStringLiteral("unicast")));
-    if (!mode) {
-        *error = QStringLiteral("outputs[%1]: unknown UDP mode '%2'")
-                     .arg(index)
-                     .arg(text(object, "mode"));
-        return std::nullopt;
+    if (output.type == OutputConfig::Type::TcpClient) {
+        output.reconnect_ms = integer(object, "reconnect_ms", 2000);
+        if (output.reconnect_ms < 1 || output.reconnect_ms > 3'600'000) {
+            return fail(QStringLiteral("reconnect_ms must be between 1 and 3600000"));
+        }
     }
-    output.udp.mode = *mode;
-    output.udp.address = text(object, "address", QStringLiteral("127.0.0.1"));
-    output.udp.port = output.port;
-    output.udp.interface_name = text(object, "interface");
-    output.udp.multicast_ttl = integer(object, "multicast_ttl", 1);
 
-    output.serial.port_name = text(object, "port_name");
-    output.serial.baud_rate = integer(object, "baud_rate", 4800);
-    output.serial.data_bits = data_bits_from_int(integer(object, "data_bits", 8));
-    output.serial.parity = parity_from_string(text(object, "parity", QStringLiteral("none")));
-    output.serial.stop_bits = stop_bits_from_string(text(object, "stop_bits", QStringLiteral("1")));
-    output.serial.flow_control =
-        flow_control_from_string(text(object, "flow_control", QStringLiteral("none")));
-    if (output.type == OutputConfig::Type::Serial && output.serial.port_name.isEmpty()) {
-        *error = QStringLiteral("outputs[%1]: serial output needs a port_name").arg(index);
-        return std::nullopt;
+    output.udp.port = output.port;
+    if (output.type == OutputConfig::Type::Udp) {
+        const auto mode_text = text(object, "mode", QStringLiteral("unicast"));
+        const auto mode = udp_mode_from_string(mode_text);
+        if (!mode) {
+            return fail(QStringLiteral("unknown UDP mode '%1'").arg(mode_text));
+        }
+        output.udp.mode = *mode;
+        output.udp.address = text(object, "address", QStringLiteral("127.0.0.1"));
+        output.udp.interface_name = text(object, "interface");
+        output.udp.multicast_ttl = integer(object, "multicast_ttl", 1);
+        if (output.udp.multicast_ttl < 1 || output.udp.multicast_ttl > 255) {
+            return fail(QStringLiteral("multicast_ttl must be between 1 and 255"));
+        }
+    }
+
+    if (output.type == OutputConfig::Type::Serial) {
+        output.serial.port_name = text(object, "port_name");
+        if (output.serial.port_name.isEmpty()) {
+            return fail(QStringLiteral("serial output needs a port_name"));
+        }
+        output.serial.baud_rate = integer(object, "baud_rate", 4800);
+        if (output.serial.baud_rate <= 0) {
+            return fail(QStringLiteral("baud_rate must be positive"));
+        }
+        const int bits = integer(object, "data_bits", 8);
+        const auto data_bits = data_bits_from_int(bits);
+        if (!data_bits) {
+            return fail(QStringLiteral("data_bits %1 is not 5, 6, 7 or 8").arg(bits));
+        }
+        output.serial.data_bits = *data_bits;
+        const auto parity_text = text(object, "parity", QStringLiteral("none"));
+        const auto parity = parity_from_string(parity_text);
+        if (!parity) {
+            return fail(QStringLiteral("unknown parity '%1'").arg(parity_text));
+        }
+        output.serial.parity = *parity;
+        const auto stop_bits_text = text(object, "stop_bits", QStringLiteral("1"));
+        const auto stop_bits = stop_bits_from_string(stop_bits_text);
+        if (!stop_bits) {
+            return fail(QStringLiteral("unknown stop_bits '%1'").arg(stop_bits_text));
+        }
+        output.serial.stop_bits = *stop_bits;
+        const auto flow_text = text(object, "flow_control", QStringLiteral("none"));
+        const auto flow_control = flow_control_from_string(flow_text);
+        if (!flow_control) {
+            return fail(QStringLiteral("unknown flow_control '%1'").arg(flow_text));
+        }
+        output.serial.flow_control = *flow_control;
     }
 
     output.path = text(object, "path");
@@ -979,11 +1019,11 @@ QJsonObject Profile::to_json() const {
     };
 }
 
-std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* error) {
+std::optional<Profile> Profile::from_json(const QJsonObject& json, QString* error) {
     QString local_error;
     QString* err = error ? error : &local_error;
 
-    const int version = integer(input, "schema_version", 0);
+    const int version = integer(json, "schema_version", 0);
     if (version < 1) {
         *err = QStringLiteral("Missing or invalid schema_version");
         return std::nullopt;
@@ -994,13 +1034,13 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
                    .arg(kCurrentSchemaVersion);
         return std::nullopt;
     }
-    const QJsonObject json = version < kCurrentSchemaVersion ? migrate(input, version) : input;
+    const QJsonObject document = version < kCurrentSchemaVersion ? migrate(json, version) : json;
 
     Profile profile = default_profile();
     profile.outputs.clear();
-    profile.name = text(json, "name", profile.name);
+    profile.name = text(document, "name", profile.name);
 
-    const auto simulation = json.value(QStringLiteral("simulation")).toObject();
+    const auto simulation = document.value(QStringLiteral("simulation")).toObject();
     const auto mode_text = text(simulation, "mode", QStringLiteral("delta"));
     const auto mode = simulation_mode_from_string(mode_text);
     if (!mode) {
@@ -1089,7 +1129,7 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         return std::nullopt;
     }
 
-    const auto sentences = json.value(QStringLiteral("sentences")).toObject();
+    const auto sentences = document.value(QStringLiteral("sentences")).toObject();
     profile.encoder.position_decimals = integer(sentences, "position_decimals", 4);
     if (profile.encoder.position_decimals < 2 || profile.encoder.position_decimals > 8) {
         *err = QStringLiteral("position_decimals must be between 2 and 8");
@@ -1152,7 +1192,7 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         profile.custom_sentences.push_back(sentence);
     }
 
-    const auto outputs = json.value(QStringLiteral("outputs")).toArray();
+    const auto outputs = document.value(QStringLiteral("outputs")).toArray();
     for (qsizetype i = 0; i < outputs.size(); ++i) {
         auto output = output_from_json(outputs.at(i).toObject(), static_cast<int>(i), err);
         if (!output) {

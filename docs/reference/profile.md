@@ -228,15 +228,17 @@ decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.m
 | `viewsync.roll_deg` | number | `0` | Camera roll |
 | `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon` |
 
-The other keys depend on the type.
+The other keys depend on the type. Each type reads and checks only its own keys, so a key of
+another type is ignored; a value outside the range given below, or a name that is not listed,
+is rejected when the profile is loaded.
 
 | `type` | Keys |
 | --- | --- |
-| `tcp-server` | `bind_address` (default `0.0.0.0`), `port` (default `10110`) |
-| `tcp-client` | `host` (default `127.0.0.1`), `port`, `reconnect_ms` (default `2000`) |
-| `udp` | `mode` (`unicast`, `broadcast`, `multicast`), `address`, `port`, `interface`, `multicast_ttl` |
+| `tcp-server` | `bind_address` (default `0.0.0.0`), `port` (default `10110`, 0 to 65535) |
+| `tcp-client` | `host` (default `127.0.0.1`), `port`, `reconnect_ms` (default `2000`, 1 to 3600000) |
+| `udp` | `mode` (`unicast` (default), `broadcast`, `multicast`), `address`, `port`, `interface`, `multicast_ttl` (default `1`, 1 to 255) |
 | `websocket-server` | `bind_address`, `port` |
-| `serial` | `port_name` (required), `baud_rate` (default `4800`), `data_bits` (5 to 8), `parity` (`none`, `even`, `odd`, `mark`, `space`), `stop_bits` (`1`, `1.5`, `2`), `flow_control` (`none`, `hardware`, `software`) |
+| `serial` | `port_name` (required), `baud_rate` (default `4800`, positive), `data_bits` (5 to 8, default `8`), `parity` (`none` (default), `even`, `odd`, `mark`, `space`), `stop_bits` (`"1"` (default), `"1.5"`, `"2"`, as strings), `flow_control` (`none` (default), `hardware`, `software`) |
 | `file` | `path` (required), `append` (default `true`) |
 | `log` | `path` (required), `append` (default `true`); a timestamped recording in the [log format](log-format.md) |
 | `stdout` | none |
