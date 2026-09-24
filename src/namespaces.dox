@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Documentation of the namespaces that enclose the libraries and the desktop application.
+///
+/// These namespaces are opened in many files and have no header of their own, so they are
+/// documented here, once. Every nested namespace is documented in the header that declares
+/// its central type (see docs/development/coding-standards.md).
+
+/// @namespace nmeasim
+/// Everything in NMEA Simulator X: the `core` and `io` libraries, the desktop application
+/// and the test helpers.
+///
+/// The command-line tool keeps its code in an anonymous namespace of `src/cli/main.cpp`.
+
+/// @namespace nmeasim::core
+/// The simulation engine, a static library with no Qt dependency (CMake target
+/// `nmeasim::core`).
+///
+/// It models the vessel (`model`), produces its state over time (`simulation`), and encodes
+/// that state as NMEA 0183 sentences (`nmea0183`), AIS messages (`ais`), Signal K deltas
+/// (`signalk`) and ViewSync packets (`viewsync`). It also reads tracks (`track`) and log
+/// files (`log`). Nothing in it blocks, sleeps or performs network or serial I/O, so every
+/// part can be tested in isolation and driven by any host.
+
+/// @namespace nmeasim::io
+/// Profiles, transports and the simulation runner: a static library on Qt Core, Network,
+/// Serial Port and WebSockets (CMake target `nmeasim::io`).
+///
+/// A `Profile` is the persistent description of a simulation and its outputs;
+/// `SimulationRunner` drives a `core::simulation::Simulation` on a Qt timer and writes what
+/// it produces to `Transport` implementations. Both the desktop application and the
+/// command-line tool are built on it.
+
+/// @namespace nmeasim::app
+/// The Qt Widgets desktop application: the main window, its dock panels, the map, the
+/// instruments and the settings dialog, built on `nmeasim::io`.

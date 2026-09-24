@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Signal K delta and hello messages rendered as JSON text from the vessel state.
+///
+/// The documents are small and their shape is fixed, so they are assembled as strings
+/// without a JSON library; `json_string` and `json_number` do the escaping and formatting.
+
 #include <nmeasim/core/geo/route.hpp>
 #include <nmeasim/core/signalk/delta.hpp>
 #include <nmeasim/core/time/iso8601.hpp>
@@ -13,11 +20,21 @@ namespace nmeasim::core::signalk {
 
 namespace {
 
+/// Converts an angle from degrees to radians.
+///
+/// @param degrees Angle in degrees.
+/// @return The angle in radians.
 double radians(double degrees) noexcept {
     return degrees * std::numbers::pi / 180.0;
 }
 
-/// An angle in [0, 360) degrees as radians in (-pi, pi], positive to starboard.
+/// Converts a relative angle measured clockwise from the bow to signed radians.
+///
+/// Signal K reports relative angles in (-π, π], positive to starboard, where the model keeps
+/// them in [0, 360).
+///
+/// @param degrees Angle in degrees, clockwise from the bow; any finite value.
+/// @return The angle in radians in (-π, π], positive to starboard.
 double signed_radians(double degrees) noexcept {
     double angle = std::fmod(degrees, 360.0);
     if (angle > 180.0) {
@@ -28,15 +45,29 @@ double signed_radians(double degrees) noexcept {
     return radians(angle);
 }
 
+/// Renders a position as the Signal K position object.
+///
+/// @param position Position to render.
+/// @return A JSON object with `longitude` and `latitude` in degrees.
 std::string position_json(geo::Position position) {
     return "{\"longitude\":" + json_number(position.longitude_deg) +
            ",\"latitude\":" + json_number(position.latitude_deg) + "}";
 }
 
+/// Appends a path with a value already rendered as JSON.
+///
+/// @param[in,out] values Path list to append to.
+/// @param path Dotted Signal K path.
+/// @param json The value as a JSON literal.
 void add(std::vector<PathValue>& values, std::string path, std::string json) {
     values.push_back({std::move(path), std::move(json)});
 }
 
+/// Appends a path with a numeric value, formatted by `json_number`.
+///
+/// @param[in,out] values Path list to append to.
+/// @param path Dotted Signal K path.
+/// @param value The value in Signal K units; a non-finite value is sent as `null`.
 void add_number(std::vector<PathValue>& values, std::string path, double value) {
     add(values, std::move(path), json_number(value));
 }
@@ -121,6 +152,8 @@ std::vector<PathValue> path_values(const model::VesselState& state) {
 
     add(values, "navigation.datetime", json_string(time::format_iso8601(state.time_utc)));
     if (gnss.has_fix) {
+        // Unlike the course point positions, the vessel position carries the antenna
+        // altitude.
         add(values, "navigation.position",
             "{\"longitude\":" + json_number(navigation.position.longitude_deg) +
                 ",\"latitude\":" + json_number(navigation.position.latitude_deg) +
@@ -141,6 +174,8 @@ std::vector<PathValue> path_values(const model::VesselState& state) {
     add_number(values, "navigation.rateOfTurn",
                radians(navigation.rate_of_turn_deg_per_min) / 60.0);
     add(values, "navigation.gnss.type", json_string("GPS"));
+    // The strings are values of the enumeration in the specification, capitalisation
+    // included.
     add(values, "navigation.gnss.methodQuality",
         json_string(!gnss.has_fix                                     ? "no GPS"
                     : gnss.quality == model::FixQuality::Differential ? "DGNSS fix"

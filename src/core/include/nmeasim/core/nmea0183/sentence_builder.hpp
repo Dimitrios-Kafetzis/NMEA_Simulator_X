@@ -1,45 +1,108 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Assembly of one NMEA 0183 sentence field by field, framed with its checksum.
+///
+/// The encoders write their sentences with `SentenceBuilder`: it starts with the
+/// address, appends comma-separated fields formatted by the functions of `fields.hpp` and
+/// frames the result with `append_checksum`. `fits_limit` checks a sentence against the
+/// NMEA 0183 length limit.
+///
+/// @see NMEA 0183 (IEC 61162-1), sentence structure.
+
 #pragma once
 
 #include <cstddef>
 #include <string>
 #include <string_view>
 
-/// Assembles one NMEA 0183 sentence field by field and frames it with a checksum.
 namespace nmeasim::core::nmea0183 {
 
-/// Maximum length of a sentence excluding the terminating CR LF.
+/// Maximum length of a sentence in bytes without the terminating CR LF: 80, that is
+/// `kMaxSentenceLength` less the two terminator bytes.
 inline constexpr std::size_t kMaxSentenceLengthWithoutTerminator{80};
 
-/// Builder for one sentence: fields are appended in order, separated by commas.
+/// Builder for one sentence: the address, then fields appended in order and separated by
+/// commas.
+///
+/// Every `field` and `empty` overload returns the builder, so calls can be chained. The
+/// builder neither validates the address nor escapes field values, and it does not stop at
+/// the length limit; `fits_limit` tells whether the framed sentence will fit.
+///
+/// @see NMEA 0183, sentence structure.
 class SentenceBuilder {
 public:
-    /// Starts a sentence such as `$GPRMC`. `talker` is two characters, `formatter` three.
+    /// Starts a sentence with its start delimiter and address, such as `$GPRMC`.
+    ///
+    /// @param talker Talker identifier, two characters by convention, such as `GP`; not
+    ///               checked.
+    /// @param formatter Sentence formatter, three characters by convention, such as `RMC`;
+    ///                  not checked.
+    /// @param delimiter Start delimiter: `$` (`kStartDelimiter`) for a parametric sentence,
+    ///                  `!` (`kEncapsulationDelimiter`) for an encapsulated one such as AIS
+    ///                  VDM and VDO.
     SentenceBuilder(std::string_view talker, std::string_view formatter, char delimiter = '$');
 
     /// Appends a text field verbatim.
+    ///
+    /// @param value The field text; empty appends an empty field. A `,` or `*` in it would
+    ///              corrupt the sentence and is not checked.
+    /// @return This builder.
     SentenceBuilder& field(std::string_view value);
-    /// Appends a single-character field.
+    /// Appends a single-character field, such as a status or hemisphere letter.
+    ///
+    /// @param value The character to send.
+    /// @return This builder.
     SentenceBuilder& field(char value);
-    /// Appends a number with a fixed number of decimals.
+    /// Appends a number with a fixed number of decimals, formatted by `format_fixed`.
+    ///
+    /// @param value The number to send.
+    /// @param decimals Digits after the decimal point, 0 or more.
+    /// @return This builder.
+    /// @throws std::format_error if `decimals` is negative.
     SentenceBuilder& field(double value, int decimals);
-    /// Appends an integer, optionally zero-padded to `width`.
+    /// Appends an integer, formatted by `format_padded`.
+    ///
+    /// @param value The integer to send.
+    /// @param width Minimum number of characters, reached by adding leading zeros; 0 or a
+    ///              negative value means no padding.
+    /// @return This builder.
     SentenceBuilder& field(int value, int width = 0);
-    /// Appends an empty field, meaning "no data".
+    /// Appends an empty field, which means "no data" in NMEA 0183.
+    ///
+    /// @return This builder.
     SentenceBuilder& empty();
-    /// Appends `count` empty fields.
+    /// Appends several empty fields.
+    ///
+    /// @param count Number of empty fields to append; 0 appends nothing.
+    /// @return This builder.
     SentenceBuilder& empty(std::size_t count);
 
-    /// Returns the framed sentence with checksum and without line terminator.
+    /// Returns the framed sentence with its checksum.
+    ///
+    /// The builder is left unchanged, so further fields can still be appended.
+    ///
+    /// @return The address and fields followed by `*hh`, without line terminator; it may
+    ///         exceed the length limit.
     [[nodiscard]] std::string build() const;
 
-    /// True when the framed sentence fits the NMEA 0183 length limit.
+    /// Tells whether the framed sentence fits the NMEA 0183 length limit.
+    ///
+    /// @return `true` when the sentence from `build` has at most
+    ///         `kMaxSentenceLengthWithoutTerminator` characters.
     [[nodiscard]] bool fits_limit() const;
 
 private:
+    /// The sentence so far: the start delimiter, the address and every appended field with
+    /// its leading comma, without the `*hh` checksum.
     std::string body_;
 };
 
-/// True when `sentence` (without terminator) fits the NMEA 0183 length limit.
+/// Tells whether a framed sentence fits the NMEA 0183 length limit.
+///
+/// @param sentence The sentence from its start delimiter to its checksum, without line
+///                 terminator (which the limit already allows for) and without TAG block.
+/// @return `true` when `sentence` has at most `kMaxSentenceLengthWithoutTerminator`
+///         characters.
 [[nodiscard]] bool fits_limit(std::string_view sentence) noexcept;
 
 }  // namespace nmeasim::core::nmea0183

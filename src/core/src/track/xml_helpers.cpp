@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Locale-independent number parsing, trimming and document loading for the track readers.
+
 #include "xml_helpers.hpp"
 
 #include <cctype>
@@ -31,6 +35,7 @@ std::optional<double> parse_number(std::string_view text) {
         return std::nullopt;
     }
     std::istringstream stream{std::string{text}};
+    // The process locale may use a decimal comma; GPX and KML always use a point.
     stream.imbue(std::locale::classic());
     double value = 0.0;
     stream >> value;

@@ -1,23 +1,39 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Project name and version, filled in by CMake from the `project()` call.
+///
+/// CMake configures this template into `version.hpp` in the build tree at configure time;
+/// `version_description` is defined in the separately generated `version.cpp`, which is
+/// rewritten on every build so that it names the current commit.
 // Generated from version.hpp.in by CMake. Do not edit the generated file.
+
 #pragma once
 
 #include <string_view>
 
 namespace nmeasim::core {
 
-/// Human-readable project name.
+/// Human-readable project name, `PROJECT_NAME` of the top-level CMake project.
 inline constexpr std::string_view kProjectName{"@PROJECT_NAME@"};
 
-/// Semantic version string, e.g. "0.1.0".
+/// Semantic version string `MAJOR.MINOR.PATCH`, for example `1.1.0`.
 inline constexpr std::string_view kVersion{"@PROJECT_VERSION@"};
 
+/// Major version number, the first component of `kVersion`.
 inline constexpr int kVersionMajor{@PROJECT_VERSION_MAJOR@};
+/// Minor version number, the second component of `kVersion`.
 inline constexpr int kVersionMinor{@PROJECT_VERSION_MINOR@};
+/// Patch version number, the third component of `kVersion`.
 inline constexpr int kVersionPatch{@PROJECT_VERSION_PATCH@};
 
-/// Version shown to users. A build of the release tag `v<kVersion>`, or a build from a source
-/// archive without git metadata, returns `kVersion` alone; any other build appends the
-/// `git describe` string, e.g. `"1.0.0 (v1.0.0-3-g1a2b3c4-dirty)"`.
+/// Returns the version shown to users.
+///
+/// A build of the release tag `v<kVersion>`, or a build from a source archive without git
+/// metadata, returns `kVersion` alone; any other build appends the `git describe` string in
+/// parentheses, for example `1.0.0 (v1.0.0-3-g1a2b3c4-dirty)`.
+///
+/// @return The description; it refers to a string literal and stays valid for the lifetime
+///         of the program.
 [[nodiscard]] std::string_view version_description() noexcept;
 
 }  // namespace nmeasim::core

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `TrackSource`: the leg table, geodesic interpolation along a leg, and
+/// the end, seek and jump behaviour.
+
 #include <nmeasim/core/physics/wind.hpp>
 #include <nmeasim/core/simulation/track_source.hpp>
 #include <nmeasim/core/units.hpp>
@@ -11,11 +16,17 @@ namespace nmeasim::core::simulation {
 
 namespace {
 
-/// Slowest speed a leg is sailed at, so that a zero speed never makes a leg endless.
+/// Slowest speed an untimed leg is sailed at, in knots, so that a zero speed never makes a
+/// leg endless.
 constexpr double kMinSpeedKn{0.1};
-/// Legs shorter than this are treated as a stop at the same place.
+/// Length in metres below which a leg is treated as a stop at the same place, because its
+/// geodesic bearing between coincident points is undefined.
 constexpr double kZeroLengthM{1e-3};
 
+/// Converts a time in seconds to milliseconds, rounding to the nearest millisecond.
+///
+/// @param seconds The time in seconds.
+/// @return The rounded time.
 std::chrono::milliseconds to_milliseconds(double seconds) {
     return std::chrono::round<std::chrono::milliseconds>(std::chrono::duration<double>{seconds});
 }

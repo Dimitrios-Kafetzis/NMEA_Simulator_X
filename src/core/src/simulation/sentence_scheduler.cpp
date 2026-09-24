@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of the sentence schedule and of the `next_due_after` cadence rule.
+
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
 
 #include <chrono>
@@ -77,6 +81,11 @@ std::string_view SentenceScheduler::effective_talker(
 
 namespace {
 
+/// Appends encoded sentences to a step's output, tagging each with the id that produced it.
+///
+/// @param[in,out] sentences The output of the step, extended at the end.
+/// @param id The registry id to tag the sentences with.
+/// @param encoded The lines one encoder produced for one emission, moved into `sentences`.
 void append_encoded(std::vector<EmittedSentence>& sentences, std::string_view id,
                     std::vector<std::string> encoded) {
     for (auto& text : encoded) {

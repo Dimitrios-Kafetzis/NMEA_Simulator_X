@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Hand-written ISO 8601 date-time parser and formatter on `std::chrono` calendar types.
+
 #include <nmeasim/core/time/iso8601.hpp>
 
 #include <cctype>
@@ -10,7 +14,14 @@ namespace nmeasim::core::time {
 
 namespace {
 
-/// Reads exactly `digits` decimal digits at `offset`, advancing it. Returns nullopt otherwise.
+/// Reads a fixed number of decimal digits.
+///
+/// @param text Text being parsed.
+/// @param[in,out] offset Position of the first digit; advanced past the digits on success
+///        and left unchanged on failure.
+/// @param digits Number of digits to read, at most 9 so that the value fits an `int`.
+/// @return The value of the digits, or `std::nullopt` when `text` has fewer than `digits`
+///         characters left or one of them is not a digit.
 std::optional<int> read_digits(std::string_view text, std::size_t& offset, std::size_t digits) {
     if (offset + digits > text.size()) {
         return std::nullopt;
@@ -27,6 +38,12 @@ std::optional<int> read_digits(std::string_view text, std::size_t& offset, std::
     return value;
 }
 
+/// Consumes one expected character.
+///
+/// @param text Text being parsed.
+/// @param[in,out] offset Position to look at; advanced by one when the character matches.
+/// @param expected Character to accept.
+/// @return Whether the character at `offset` was `expected`.
 bool consume(std::string_view text, std::size_t& offset, char expected) {
     if (offset < text.size() && text[offset] == expected) {
         ++offset;
@@ -92,6 +109,8 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
             }
             second = *s;
             if (consume(text, offset, '.') || consume(text, offset, ',')) {
+                // Only milliseconds are kept: further digits are skipped, which truncates
+                // rather than rounds.
                 std::size_t digits = 0;
                 int fraction = 0;
                 while (offset < text.size() && text[offset] >= '0' && text[offset] <= '9') {
@@ -118,7 +137,7 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
     minutes offset_from_utc{0};
     if (offset < text.size()) {
         if (consume(text, offset, 'Z')) {
-            // UTC.
+            // Z designates UTC: the offset stays zero.
         } else if (text[offset] == '+' || text[offset] == '-') {
             const int sign = text[offset] == '-' ? -1 : 1;
             ++offset;
@@ -128,6 +147,7 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
             }
             int om = 0;
             if (offset < text.size()) {
+                // The colon is optional: both +hh:mm and +hhmm are accepted.
                 consume(text, offset, ':');
                 const auto parsed = read_digits(text, offset, 2);
                 if (!parsed) {

@@ -71,3 +71,14 @@ else()
 endif()
 
 target_compile_options(nmeasim_warnings INTERFACE ${NMEASIM_WARNINGS})
+
+# Defines nmeasim::documentation_warnings: Clang's -Wdocumentation, which checks every
+# documentation comment against the declaration it describes (@param names, no @return on void
+# functions). With NMEASIM_WARNINGS_AS_ERRORS it is an error, as in the macOS CI job. GCC and
+# MSVC have no equivalent, so the target is empty there. A target links it once its comments
+# follow docs/development/coding-standards.md.
+add_library(nmeasim_documentation_warnings INTERFACE)
+add_library(nmeasim::documentation_warnings ALIAS nmeasim_documentation_warnings)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(nmeasim_documentation_warnings INTERFACE -Wdocumentation)
+endif()

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Choice of the track reader from the file extension, and reading track files from disk.
+
 #include <nmeasim/core/track/gpx.hpp>
 #include <nmeasim/core/track/kml.hpp>
 #include <nmeasim/core/track/track_file.hpp>
@@ -11,6 +15,11 @@ namespace nmeasim::core::track {
 
 namespace {
 
+/// Returns the extension of a file name in lower case.
+///
+/// @param file_name A file name or path.
+/// @return The text after the last `.` of `file_name`, converted to lower case with
+///         `std::tolower` byte by byte; empty when there is no `.`.
 std::string lowercase_extension(std::string_view file_name) {
     const auto dot = file_name.rfind('.');
     if (dot == std::string_view::npos) {
@@ -23,6 +32,10 @@ std::string lowercase_extension(std::string_view file_name) {
     return extension;
 }
 
+/// Stores an error message when the caller asked for one.
+///
+/// @param error Destination of the message; nothing is stored when it is null.
+/// @param message The one-line reason.
 void set_error(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -59,6 +72,7 @@ std::optional<Track> load_track(const std::string& path, std::string* error) {
         return std::nullopt;
     }
     if (track->name.empty()) {
+        // Both separators, so that Windows paths give their file name on every platform.
         const auto slash = path.find_last_of("/\\");
         track->name = slash == std::string::npos ? path : path.substr(slash + 1);
     }

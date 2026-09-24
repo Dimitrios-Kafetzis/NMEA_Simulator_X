@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Field-by-field assembly and framing of NMEA 0183 sentences.
+///
+/// Implements `SentenceBuilder` and `fits_limit`, declared in `sentence_builder.hpp`.
+
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/fields.hpp>
 #include <nmeasim/core/nmea0183/sentence_builder.hpp>
@@ -49,6 +55,7 @@ std::string SentenceBuilder::build() const {
 }
 
 bool SentenceBuilder::fits_limit() const {
+    // The three characters are the `*hh` that build() appends.
     return body_.size() + 3 <= kMaxSentenceLengthWithoutTerminator;
 }
 

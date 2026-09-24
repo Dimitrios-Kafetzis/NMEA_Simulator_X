@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Derived quantities of the vessel state: magnetic heading and course, relative true wind.
+
 #include <nmeasim/core/model/vessel_state.hpp>
 
 namespace nmeasim::core::model {

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Display names of track kinds and the timing and length queries of `Track`.
+
 #include <nmeasim/core/track/track.hpp>
 
 #include <cstddef>
@@ -15,6 +19,7 @@ const char* to_string(TrackKind kind) noexcept {
         case TrackKind::KmlLineString:
             return "KML line";
     }
+    // Reached only for a value outside the enumeration, which a cast can produce.
     return "track";
 }
 

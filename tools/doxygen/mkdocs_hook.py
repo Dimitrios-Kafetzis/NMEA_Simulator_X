@@ -43,7 +43,7 @@ LEGACY_PAGES = Path(__file__).resolve().parent / "legacy-api-pages.txt"
 #: Directories whose documentation is complete. Every Doxygen warning and every missing file
 #: header in them fails the build. A directory is added in the pull request that completes
 #: its comments.
-ENFORCED: tuple[str, ...] = ()
+ENFORCED: tuple[str, ...] = ("src/core",)
 
 #: Public headers that keep the rules of the former reference until their directory is in
 #: `ENFORCED`: every public entity documented; parameters and private members not required.
