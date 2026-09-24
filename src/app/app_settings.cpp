@@ -13,6 +13,8 @@
 #include <QDir>
 #include <QStandardPaths>
 
+#include <cmath>
+
 namespace nmeasim::app {
 
 namespace {
@@ -100,11 +102,13 @@ void AppSettings::set_map_tile_attribution(const std::optional<QString>& attribu
     }
 }
 
-int AppSettings::map_zoom() const {
-    return settings_.value(kMapZoom, 12).toInt();
+double AppSettings::map_zoom() const {
+    bool ok = false;
+    const double zoom = settings_.value(kMapZoom, 12.0).toDouble(&ok);
+    return ok && std::isfinite(zoom) ? zoom : 12.0;
 }
 
-void AppSettings::set_map_zoom(int zoom) {
+void AppSettings::set_map_zoom(double zoom) {
     settings_.setValue(kMapZoom, zoom);
 }
 

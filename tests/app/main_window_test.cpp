@@ -4,14 +4,18 @@
 ///
 /// Covers the position and duration formatting, running a profile against a local TCP server,
 /// dashboard overrides and keyboard nudges reaching the delta simulation, loading and saving
-/// profiles, the about text, following a GPX track with step and seek, replaying a log to its
-/// end, recording a session to a log file, the engine tiles, and that the window's map uses
-/// the temporary tile cache of the test run, offline. The window is created on the
-/// offscreen platform (see `main.cpp`). The file reads the fixtures `tracks/timestamped.gpx`,
-/// `tracks/malformed.gpx` and `logs/plain.nmea` from `tests/fixtures`.
+/// profiles (a profile the runner rejects, a missing profile given on the command line, a
+/// failed save), the order of the menus, the fractional zoom level kept between sessions,
+/// steering mode and the arrow keys in track mode, the about text, following a GPX track with
+/// step and seek, replaying a log to its end, recording a session to a log file, the engine
+/// tiles, and that the window's map uses the temporary tile cache of the test run, offline.
+/// The window is created on the offscreen platform (see `main.cpp`). The file reads the
+/// fixtures `tracks/timestamped.gpx`, `tracks/malformed.gpx` and `logs/plain.nmea` from
+/// `tests/fixtures`.
 
 #include "main_window.hpp"
 
+#include "app_settings.hpp"
 #include "io/event_loop.hpp"
 #include "map/map_widget.hpp"
 #include "map/tile_cache.hpp"
@@ -26,6 +30,9 @@
 #include <QDir>
 #include <QFile>
 #include <QKeyEvent>
+#include <QMenuBar>
+#include <QPointF>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -168,6 +175,139 @@ TEST_CASE("the main window keeps map tiles in the test run's directory and downl
     CHECK(directory.startsWith(QDir::cleanPath(QDir::tempPath()) + QLatin1Char('/')));
     CHECK_FALSE(directory.startsWith(
         QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))));
+}
+
+TEST_CASE("a profile the runner rejects is reported and not loaded", "[app]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("missing-track.json"));
+    auto profile = quick_profile();
+    profile.name = QStringLiteral("Missing track");
+    profile.mode = nmeasim::io::SimulationMode::Track;
+    profile.track.path = directory.filePath(QStringLiteral("nowhere.gpx"));
+    QString error;
+    REQUIRE(profile.save(path, &error));
+
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    QSignalSpy errors(&window, &nmeasim::app::MainWindow::error_reported);
+    CHECK_FALSE(window.load_profile(path));
+    CHECK(errors.count() == 1);
+    CHECK(window.profile().mode == nmeasim::io::SimulationMode::Delta);
+    CHECK(window.profile_path().isEmpty());
+}
+
+TEST_CASE("a profile path on the command line that does not exist is reported", "[app]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString last = directory.filePath(QStringLiteral("last.json"));
+    auto profile = quick_profile();
+    profile.name = QStringLiteral("Last used");
+    QString error;
+    REQUIRE(profile.save(last, &error));
+    nmeasim::app::AppSettings settings;
+    settings.set_last_profile_path(last);
+
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    QSignalSpy errors(&window, &nmeasim::app::MainWindow::error_reported);
+    const QString missing = directory.filePath(QStringLiteral("missing.json"));
+    window.open_initial_profile(missing);
+    REQUIRE(errors.count() == 1);
+    CHECK(errors.first().at(1).toString().contains(missing));
+    // The last profile is opened instead.
+    CHECK(window.profile().name == QStringLiteral("Last used"));
+    CHECK(window.profile_path() == last);
+
+    // Without a path the last profile is opened silently.
+    nmeasim::app::MainWindow second;
+    second.map_view()->cache()->set_online(false);
+    QSignalSpy second_errors(&second, &nmeasim::app::MainWindow::error_reported);
+    second.open_initial_profile({});
+    CHECK(second_errors.count() == 0);
+    CHECK(second.profile().name == QStringLiteral("Last used"));
+    settings.set_last_profile_path({});
+}
+
+TEST_CASE("a profile becomes the file it is saved to only once written", "[app]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    const QString title = window.windowTitle();
+    QSignalSpy errors(&window, &nmeasim::app::MainWindow::error_reported);
+
+    // A directory that does not exist cannot be written to.
+    const QString unwritable = directory.filePath(QStringLiteral("no/such/dir/profile.json"));
+    CHECK_FALSE(window.save_profile_to(unwritable));
+    CHECK(errors.count() == 1);
+    CHECK(window.profile_path().isEmpty());
+    CHECK(window.windowTitle() == title);
+    CHECK(nmeasim::app::AppSettings{}.last_profile_path() != unwritable);
+
+    const QString path = directory.filePath(QStringLiteral("saved.json"));
+    CHECK(window.save_profile_to(path));
+    CHECK(window.profile_path() == path);
+    CHECK(window.windowTitle().startsWith(QStringLiteral("saved.json")));
+    CHECK(nmeasim::app::AppSettings{}.last_profile_path() == path);
+    CHECK(QFile::exists(path));
+    nmeasim::app::AppSettings{}.set_last_profile_path({});
+}
+
+TEST_CASE("the menus run File, Simulation, View and Help", "[app]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    QStringList titles;
+    for (const auto* action : window.menuBar()->actions()) {
+        titles.append(action->text());
+    }
+    CHECK(titles == QStringList{QStringLiteral("&File"), QStringLiteral("&Simulation"),
+                                QStringLiteral("&View"), QStringLiteral("&Help")});
+}
+
+TEST_CASE("the map zoom level is kept fractional between sessions", "[app]") {
+    nmeasim::app::AppSettings settings;
+    // Earlier versions stored a whole level.
+    QSettings{}.setValue(QStringLiteral("map/zoom"), 9);
+    CHECK(settings.map_zoom() == 9.0);
+    settings.set_map_zoom(13.25);
+    {
+        nmeasim::app::MainWindow window;
+        window.map_view()->cache()->set_online(false);
+        CHECK(window.map_view()->zoom_level() == Approx(13.25));
+        window.map_view()->zoom_to(11.5, QPointF(10, 10));
+        CHECK(settings.map_zoom() == Approx(11.5));
+    }
+    settings.set_map_zoom(12.0);
+}
+
+TEST_CASE("steering mode is switched off by a track and the arrow keys pass on", "[app][track]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    window.set_profile(quick_profile());
+    window.steering_action()->setChecked(true);
+    QKeyEvent left(QEvent::KeyPress, Qt::Key_Left, Qt::NoModifier);
+    QApplication::sendEvent(&window, &left);
+    // In delta mode the window uses the key.
+    CHECK(left.isAccepted());
+
+    REQUIRE(window.load_track(fixture("tracks/timestamped.gpx")));
+    CHECK_FALSE(window.steering_action()->isChecked());
+    CHECK_FALSE(window.steering_action()->isEnabled());
+    // In track mode there is nothing to nudge, so the key is left to the base class.
+    QKeyEvent up(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
+    QApplication::sendEvent(&window, &up);
+    CHECK_FALSE(up.isAccepted());
+
+    // The next delta profile starts with the heading controls, not in steering mode.
+    window.set_profile(quick_profile());
+    CHECK(window.steering_action()->isEnabled());
+    CHECK_FALSE(window.steering_action()->isChecked());
+    window.start();
+    auto* source = dynamic_cast<sim::DeltaSource*>(&window.runner().simulation()->source());
+    REQUIRE(source != nullptr);
+    CHECK_FALSE(source->steering_mode());
+    window.stop();
 }
 
 TEST_CASE("durations are formatted for the transport label", "[app]") {
