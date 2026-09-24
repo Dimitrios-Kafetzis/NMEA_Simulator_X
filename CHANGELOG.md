@@ -5,6 +5,59 @@ All notable changes to this project are documented in this file. The format is b
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Entries are generated from
 Conventional Commits by Release Please.
 
+## [1.1.1](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v1.1.0...v1.1.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **app:** instrument tiles follow the rudder limit and round coordinates ([#81](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/81)) ([b0c4728](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/b0c47281482e75e461757202481186010eeed8a9))
+* **app:** main window profile loading, menu order, saving and keys ([#75](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/75)) ([3e42787](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/3e42787a794be5cf74b06b6aef15740723bfbb40))
+* **app:** resolve the system colour scheme and skip unchanged themes ([#91](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/91)) ([c012496](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/c0124965f6e7e7b26123d1dc89cc45452ed55e9b))
+* **app:** settings dialog validation and full random seed range ([#88](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/88)) ([1d39b68](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/1d39b681467a69a4bf7d13538d2248660eb64bb7))
+* **app:** start file dialogs next to paths relative to the profile ([#94](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/94)) ([266e21d](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/266e21dcfc9f747dd49659a6da30567578f933bc))
+* **app:** stop re-requesting failed map tiles ([#65](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/65)) ([e229669](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/e22966975f669539b0a22206a7e939b35cc9f4fd))
+* **app:** wrap map longitudes and credit the configured tile server ([#69](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/69)) ([f627632](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/f627632c6ba290e5ff1f1b42cf0fa0c3c8b162b9))
+* **cli:** apply output options to profile outputs and keep profile loop settings ([#82](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/82)) ([338a650](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/338a6508909dd1668b93edccf0fa8b2b23c70821))
+* **cli:** exit with code 2 on every argument error and parse values strictly ([#77](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/77)) ([b729067](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/b729067daba5a2b2275b2a473af35ed423c4cc33))
+* **core:** advance the date when a time-only sentence crosses midnight ([#64](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/64)) ([ce7dcbd](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/ce7dcbd4d2af533d2e0b3df36ae057074d0957f2))
+* **core:** check log TAG checksums and intervals, fix time steps back ([#83](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/83)) ([b24a4c8](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/b24a4c8019c1e5ccadce0962bac43ab864ed1e0f))
+* **core:** clamp position decimals and enforce one sentence-length limit ([#73](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/73)) ([ba8e2b5](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/ba8e2b5d9822547bfe4e5bbcd35ec427f06a7546))
+* **core:** end empty replays, loop one-point tracks, align loop timing ([#66](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/66)) ([84d1b93](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/84d1b93ebdff1552b921b67055c38d5c2d1ec382))
+* **core:** exclude deviation from the magnetic heading in HDM and VHW ([#59](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/59)) ([eefa8fa](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/eefa8fa63fa622c16d86ae71856404235dbb31c4))
+* **core:** GPX and KML track names, point numbers and file type errors ([#78](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/78)) ([58a954e](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/58a954e9799cf6a1da8bf11f86a6640fa90ed1d9))
+* **core:** keep reserved characters out of sentence text fields ([#76](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/76)) ([c1d86eb](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/c1d86eb1958587f339a3636c11241f7a10b9784e))
+* **core:** keep the RMB leg origin when the waypoint name is empty ([#60](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/60)) ([9de7d33](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/9de7d332bd5961f4752277f4491792344c4d9ab4))
+* **core:** let a cleared override drift back and report the value in use ([#61](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/61)) ([36ee7a7](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/36ee7a74f82173e47869bca394ba8af7ca209e44))
+* **core:** read the time of GNS, GST, GBS and GRS in replay ([#67](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/67)) ([be6cd8f](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/be6cd8fa6a6b4f98ea4766c94f4858050d37e387))
+* **core:** reject a fractional second after 24:00:00 in ISO 8601 times ([#79](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/79)) ([64e742a](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/64e742a0421e77b6bbb32bf91e10204cc33884db))
+* **core:** reject invalid coordinates, dates, ZDA fields and ROT status ([#70](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/70)) ([88041af](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/88041afa7cc7f751b5cd1a626fe126a6f609c60c))
+* **core:** sanitise the ViewSync planet name ([#86](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/86)) ([75f3061](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/75f3061b941bd64059c75575b5a32b1f63f80ec8))
+* **core:** send the M.1371-5 AIS version, heading and ROT sentinels ([#84](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/84)) ([652b8ea](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/652b8ea010ba193c9fb638e9314878c7cf2ec65c))
+* **core:** validate custom sentence ids and talkers ([#72](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/72)) ([9127df4](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/9127df494ca925b6f5c82c9a85b8081104000e61))
+* **io:** build TAG blocks with prepend_tag_block ([#74](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/74)) ([393b4c6](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/393b4c675a61d032b7c3cf68247b04d4c9656608))
+* **io:** count sentences and state messages separately ([#87](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/87)) ([a51422f](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/a51422f883955e43ece6b7c1bae259410122b25d))
+* **io:** current Signal K hello, pause state on stop, failed recordings ([#80](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/80)) ([0cc244b](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/0cc244b3e79ef05f2e627890776c723e231ae9d2))
+* **io:** match Signal K paths by whole segment ([#85](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/85)) ([89cddcc](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/89cddcc447d0b94eda866551d636f17557819a1a))
+* **io:** one UDP interface lookup, reject IPv6, drop dead serial handler ([#92](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/92)) ([1b1fb27](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/1b1fb2729fa3dfa5f97c6cb7951a65abefb6399f))
+* **io:** range-check integer values in profiles ([#53](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/53)) ([1e3e8a4](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/1e3e8a484ec89fd23ed782fad9cd80219e454ded))
+* **io:** report refused TCP client connections ([#90](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/90)) ([64f6c37](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/64f6c37066af6e1fa2baf534b6e016140cf0641e))
+* **io:** resolve relative profile paths at use and save them as written ([#71](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/71)) ([eaa0517](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/eaa05178499676eba90761d17b4ccd6ed45c9e1e))
+* **io:** validate the output and serial settings of profiles ([#62](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/62)) ([7a6889a](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/7a6889a4c9f9bb85c0f022ea0b8a84f10cb57ba2))
+* **io:** validate the seed and sentence settings of profiles ([#56](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/56)) ([3e796a8](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/3e796a8af143a0ce7f9e494a0276d5c6b27f6ed3))
+* **io:** write output files in binary mode and truncate them once ([#89](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/89)) ([d343260](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/d3432602fcd0a4335c28177c7e556604e7cf17ce))
+* **tools:** report malformed AIS, Signal K and coverage input as failures ([#54](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/54)) ([612f4b4](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/612f4b4009c919f8d64e4e69cfbb9c004871a782))
+
+
+### Documentation
+
+* **app:** document every file of the desktop application and the command-line tool ([#48](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/48)) ([db0ed54](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/db0ed5470982893f32ac256c9aa2e9cab3913218))
+* **core:** document every file of the core library ([#46](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/46)) ([dacc2e0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/dacc2e003e10b6027c90cccf88027167e5e703f9))
+* correct reference pages that disagree with the code ([#51](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/51)) ([6a068b3](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/6a068b3228772add56cb14fc36d5aeaf7e283e3e))
+* **dev:** define the documentation-comment standard and record ADR 0017 ([#43](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/43)) ([aa3bea6](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/aa3bea63cc5073f549df2b33b8e8cad6746699b3))
+* **io:** document every file of the io library ([#47](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/47)) ([7171e5e](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/7171e5e600fde436c56a56d218744acde923ceef))
+* **tests:** document every test file, fixture and helper ([#49](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/49)) ([8b76962](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/8b76962f59a62479fa7b085de5b82aede69fa887))
+* **tools:** document the Python tools, CMake files and workflows; enforce everywhere ([#50](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/issues/50)) ([6f7aaf7](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/commit/6f7aaf7f7f09b1e2bad535d6ccc418baae8f4922))
+
 ## [1.1.0](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/compare/v1.0.1...v1.1.0) (2026-09-23)
 
 
