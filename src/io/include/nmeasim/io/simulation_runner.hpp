@@ -50,12 +50,13 @@ struct OutputChannel {
     /// Signal K channel they are paths or leading path segments, and a ViewSync channel
     /// ignores them. Both kinds are matched without regard to case.
     QSet<QString> filter;
-    /// Lines written to the transport since the profile was applied: sentences, Signal K
-    /// deltas or ViewSync packets.
+    /// Lines written to the transport since the profile was applied: NMEA 0183 sentences for
+    /// an NMEA 0183 channel, Signal K deltas or ViewSync packets for the others, as the
+    /// encoding decides.
     ///
     /// Counts only lines handed to an open transport, and keeps counting across stop and
     /// start.
-    qint64 sentences_sent{0};
+    qint64 lines_sent{0};
     /// Simulated time, as `core::simulation::Simulation::elapsed` counts it, at which the
     /// next state message of a Signal K or ViewSync channel is due.
     ///
@@ -296,13 +297,19 @@ public:
     /// @return The runner's copy, replaced by the next successful `apply_profile`; a
     ///   default-constructed profile before the first one.
     [[nodiscard]] const Profile& profile() const noexcept { return profile_; }
-    /// Returns the number of lines produced since the profile was applied.
+    /// Returns the number of NMEA 0183 sentences produced since the profile was applied.
     ///
     /// @return Every sentence the simulation emitted, before filtering and whether or not an
-    ///   output was open, plus every Signal K or ViewSync message sent, counted once per
-    ///   channel. Equal to the number of `sentence_emitted` signals since the profile was
-    ///   applied; kept across stop and start.
+    ///   output was open; Signal K and ViewSync messages are counted by
+    ///   `state_messages_sent`. Kept across stop and start.
     [[nodiscard]] qint64 sentences_emitted() const noexcept { return sentences_emitted_; }
+    /// Returns the number of Signal K deltas and ViewSync packets sent since the profile was
+    /// applied.
+    ///
+    /// @return The state messages sent, counted once per channel that sent one. Together
+    ///   with `sentences_emitted`, the number of `sentence_emitted` signals since the profile
+    ///   was applied. Kept across stop and start.
+    [[nodiscard]] qint64 state_messages_sent() const noexcept { return state_messages_sent_; }
 
 signals:
     /// Emitted when the outputs have been opened and ticking began, from `start` or from
@@ -413,8 +420,10 @@ private:
     std::chrono::nanoseconds wall_consumed_{0};
     /// True while a running simulation is paused.
     bool paused_{false};
-    /// Lines produced since the profile was applied, as `sentences_emitted` returns.
+    /// Sentences produced since the profile was applied, as `sentences_emitted` returns.
     qint64 sentences_emitted_{0};
+    /// State messages sent since the profile was applied, as `state_messages_sent` returns.
+    qint64 state_messages_sent_{0};
 };
 
 }  // namespace nmeasim::io

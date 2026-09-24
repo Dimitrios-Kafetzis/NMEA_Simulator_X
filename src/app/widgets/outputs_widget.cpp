@@ -27,8 +27,9 @@ enum Column {
     Status,
     /// Connected clients, as `io::Transport::client_count` reports them.
     Clients,
-    /// Lines handed to the open transport, `io::OutputChannel::sentences_sent`.
-    Sentences,
+    /// Lines handed to the open transport, sentences or state messages as the encoding
+    /// decides; `io::OutputChannel::lines_sent`.
+    Lines,
     /// Bytes written, summed over every consumer.
     Bytes,
     /// Message of the most recent failure; empty when none occurred.
@@ -71,8 +72,8 @@ QColor state_color(io::Transport::State state) {
 
 OutputsWidget::OutputsWidget(QWidget* parent) : QWidget(parent), table_(new QTableWidget(this)) {
     table_->setColumnCount(ColumnCount);
-    table_->setHorizontalHeaderLabels({tr("Output"), tr("Status"), tr("Clients"), tr("Sentences"),
-                                       tr("Bytes"), tr("Last error")});
+    table_->setHorizontalHeaderLabels(
+        {tr("Output"), tr("Status"), tr("Clients"), tr("Lines"), tr("Bytes"), tr("Last error")});
     table_->horizontalHeader()->setSectionResizeMode(Description, QHeaderView::Stretch);
     table_->horizontalHeader()->setSectionResizeMode(LastError, QHeaderView::Stretch);
     table_->verticalHeader()->setVisible(false);
@@ -121,7 +122,7 @@ void OutputsWidget::refresh() {
             transport->description(),
             io::to_string(transport->state()),
             QString::number(transport->client_count()),
-            QString::number(channel.sentences_sent),
+            QString::number(channel.lines_sent),
             QString::number(transport->bytes_written()),
             transport->last_error(),
         };
