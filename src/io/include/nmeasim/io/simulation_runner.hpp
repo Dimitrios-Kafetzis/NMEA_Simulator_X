@@ -390,13 +390,17 @@ private:
     void restart_wall_clock();
     /// Creates the transport for an output, closed.
     ///
+    /// The path of a file or log output is resolved with `Profile::resolve_path` of
+    /// `profile_`, so a relative path names a file next to the profile file.
+    ///
     /// @param config The output to build the transport for.
     /// @return A new transport without a Qt parent; null for an output type the runner does
     ///   not know.
     std::unique_ptr<Transport> make_transport(const OutputConfig& config) const;
     /// Creates the source of a profile's mode, seeded with the profile's start time.
     ///
-    /// @param profile The profile whose mode, seed, track or replay settings to use.
+    /// @param profile The profile whose mode, seed, track or replay settings to use; the
+    ///   track or log path is resolved with its `Profile::resolve_path`.
     /// @param[out] error Receives the reason when a track or log cannot be loaded; may be
     ///   null.
     /// @return The new source; null when the track or log cannot be loaded.

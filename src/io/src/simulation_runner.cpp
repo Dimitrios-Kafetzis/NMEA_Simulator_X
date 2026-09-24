@@ -117,11 +117,13 @@ std::unique_ptr<Transport> SimulationRunner::make_transport(const OutputConfig& 
         case OutputConfig::Type::Serial:
             return std::make_unique<SerialTransport>(config.serial);
         case OutputConfig::Type::File:
-            return std::make_unique<FileTransport>(config.path, config.append);
+            return std::make_unique<FileTransport>(profile_.resolve_path(config.path),
+                                                   config.append);
         case OutputConfig::Type::Stdout:
             return std::make_unique<StdoutTransport>();
         case OutputConfig::Type::Log: {
-            auto log = std::make_unique<LogTransport>(config.path, config.append);
+            auto log =
+                std::make_unique<LogTransport>(profile_.resolve_path(config.path), config.append);
             log->set_profile_name(profile_.name);
             return log;
         }
@@ -143,7 +145,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
         }
         case SimulationMode::Track: {
             std::string reason;
-            auto track = core::track::load_track(profile.track.path.toStdString(), &reason);
+            auto track = core::track::load_track(
+                profile.resolve_path(profile.track.path).toStdString(), &reason);
             if (!track) {
                 if (error) {
                     *error = QString::fromStdString(reason);
@@ -162,7 +165,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
             std::string reason;
             core::log::LogParseOptions options;
             options.fixed_interval = std::chrono::milliseconds{profile.replay.fixed_interval_ms};
-            auto log = core::log::load_log(profile.replay.path.toStdString(), options, &reason);
+            auto log = core::log::load_log(profile.resolve_path(profile.replay.path).toStdString(),
+                                           options, &reason);
             if (!log) {
                 if (error) {
                     *error = QString::fromStdString(reason);

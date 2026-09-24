@@ -141,7 +141,7 @@ value. See the [simulation model](../explanation/simulation-model.md).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | `""` | GPX or KML [track file](track-files.md). Required in `track` mode. A relative path is resolved against the directory of the profile file when the profile is loaded from disk. |
+| `path` | string | `""` | GPX or KML [track file](track-files.md). Required in `track` mode. A relative path is relative to the directory of the profile file, see [paths](#paths). |
 | `speed_kn` | number | `6` | Speed along legs whose points have neither timestamps nor a recorded speed; must be positive |
 | `use_timestamps` | boolean | `true` | `false` ignores the track's timestamps and sails every leg at `speed_kn` or the recorded point speed |
 | `loop` | boolean | `false` | Start again at the first point instead of stopping at the last |
@@ -150,7 +150,7 @@ value. See the [simulation model](../explanation/simulation-model.md).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | `""` | [Log file](log-format.md) to replay. Required in `replay` mode; relative paths are resolved like `track.path`. |
+| `path` | string | `""` | [Log file](log-format.md) to replay. Required in `replay` mode; a relative path is relative to the directory of the profile file. |
 | `loop` | boolean | `false` | Start again at the first entry instead of stopping at the last |
 | `fixed_interval_ms` | integer | `100` | Spacing of the entries when the log has no time information at all, 1 to 60000 |
 
@@ -253,4 +253,16 @@ is rejected when the profile is loaded.
 ]
 ```
 
-Behaviour of each transport is described on the [transports reference](transports.md).
+Behaviour of each transport is described on the [transports reference](transports.md). A
+relative `path` of a `file` or `log` output is relative to the directory of the profile file,
+see [paths](#paths).
+
+## Paths
+
+`simulation.track.path`, `simulation.replay.path` and the `path` of `file` and `log` outputs
+may be absolute or relative. A relative path is relative to the directory that holds the
+profile file, so a profile and the files it names can be moved together; it is resolved when
+the profile is run, not when it is loaded. Saving a profile writes the paths as
+they were written; saving it into another directory (*Save profile as...*) rewrites the
+relative paths so that they still name the same files. Paths given on the command line
+(`--track`, `--replay`, `--file`, `--record`) are relative to the working directory.

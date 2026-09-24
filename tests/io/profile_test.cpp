@@ -6,8 +6,8 @@
 /// `Profile::from_json` for every setting and output type, the defaults that fill in missing
 /// keys, the rejection of invalid documents with a reason that names the offending key, the
 /// migration of schema versions 1 and 2 to the current version 3, `Profile::save` and
-/// `Profile::load` with relative track and log paths, `Profile::make_scheduler`, and the
-/// string names of output types, simulation modes and encodings.
+/// `Profile::load` with relative paths and `Profile::resolve_path`, `Profile::make_scheduler`,
+/// and the string names of output types, simulation modes and encodings.
 ///
 /// The profiles are built in code or saved to temporary directories; the file reads no
 /// fixture. The track and log paths it sets are never opened.
@@ -15,6 +15,7 @@
 #include <nmeasim/io/profile/profile.hpp>
 
 #include <QDir>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -524,19 +525,78 @@ TEST_CASE("relative track and log paths are resolved against the profile file", 
     profile.mode = SimulationMode::Track;
     profile.track.path = QStringLiteral("../tracks/harbour.gpx");
     profile.replay.path = QStringLiteral("logs/yesterday.log");
+    OutputConfig file;
+    file.type = OutputConfig::Type::File;
+    file.path = QStringLiteral("out/sentences.nmea");
+    profile.outputs.append(file);
+    OutputConfig log = file;
+    log.type = OutputConfig::Type::Log;
+    log.path = QStringLiteral("record.log");
+    profile.outputs.append(log);
+    // A profile built in code has no directory; its relative paths are used as they are.
+    CHECK(profile.base_directory.isEmpty());
+    CHECK(profile.resolve_path(profile.track.path) == profile.track.path);
     QString error;
     REQUIRE(profile.save(path, &error));
 
     const auto loaded = Profile::load(path, &error);
     REQUIRE(loaded.has_value());
-    CHECK(loaded->track.path ==
+    CHECK(loaded->base_directory ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles"))));
+    // The paths stay as written; `resolve_path` makes them absolute against the directory of
+    // the profile file, for the track and the log as for the file and log outputs.
+    CHECK(loaded->track.path == QStringLiteral("../tracks/harbour.gpx"));
+    CHECK(loaded->resolve_path(loaded->track.path) ==
           QDir::cleanPath(directory.filePath(QStringLiteral("tracks/harbour.gpx"))));
-    CHECK(loaded->replay.path ==
+    CHECK(loaded->resolve_path(loaded->replay.path) ==
           QDir::cleanPath(directory.filePath(QStringLiteral("profiles/logs/yesterday.log"))));
+    REQUIRE(loaded->outputs.size() == 3);
+    CHECK(loaded->outputs[1].path == QStringLiteral("out/sentences.nmea"));
+    CHECK(loaded->resolve_path(loaded->outputs[1].path) ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles/out/sentences.nmea"))));
+    CHECK(loaded->resolve_path(loaded->outputs[2].path) ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles/record.log"))));
+    CHECK(loaded->resolve_path({}).isEmpty());
+
+    // Saving a loaded profile back writes the paths as the user wrote them.
+    REQUIRE(loaded->save(path, &error));
+    QFile saved(path);
+    REQUIRE(saved.open(QIODevice::ReadOnly));
+    const auto json = QJsonDocument::fromJson(saved.readAll()).object();
+    // Closed at once: Windows does not let the file be replaced by a later save while open.
+    saved.close();
+    const auto simulation = json.value(QStringLiteral("simulation")).toObject();
+    CHECK(simulation.value(QStringLiteral("track")).toObject().value(QStringLiteral("path")) ==
+          QStringLiteral("../tracks/harbour.gpx"));
+    CHECK(simulation.value(QStringLiteral("replay")).toObject().value(QStringLiteral("path")) ==
+          QStringLiteral("logs/yesterday.log"));
+    CHECK(json.value(QStringLiteral("outputs"))
+              .toArray()
+              .at(1)
+              .toObject()
+              .value(QStringLiteral("path")) == QStringLiteral("out/sentences.nmea"));
+
+    // Saving it in another directory rewrites the relative paths so that they still name the
+    // same files.
+    REQUIRE(QDir(directory.path()).mkpath(QStringLiteral("elsewhere/deeper")));
+    const QString moved = directory.filePath(QStringLiteral("elsewhere/deeper/moved.json"));
+    REQUIRE(loaded->save(moved, &error));
+    const auto reloaded = Profile::load(moved, &error);
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->track.path == QStringLiteral("../../tracks/harbour.gpx"));
+    CHECK(reloaded->resolve_path(reloaded->track.path) == loaded->resolve_path(loaded->track.path));
+    CHECK(reloaded->resolve_path(reloaded->outputs[1].path) ==
+          loaded->resolve_path(loaded->outputs[1].path));
+    // The profile that was saved is unchanged.
+    CHECK(loaded->track.path == QStringLiteral("../tracks/harbour.gpx"));
+
     // Absolute paths are left alone.
     profile.track.path = QDir::cleanPath(directory.filePath(QStringLiteral("abs.gpx")));
     REQUIRE(profile.save(path, &error));
-    CHECK(Profile::load(path, &error)->track.path == profile.track.path);
+    const auto absolute = Profile::load(path, &error);
+    REQUIRE(absolute.has_value());
+    CHECK(absolute->track.path == profile.track.path);
+    CHECK(absolute->resolve_path(absolute->track.path) == profile.track.path);
 }
 
 TEST_CASE("destination, AIS data, custom sentences and encodings round-trip", "[io][profile]") {

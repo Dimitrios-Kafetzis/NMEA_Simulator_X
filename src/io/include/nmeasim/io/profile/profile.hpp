@@ -165,8 +165,9 @@ struct OutputConfig {
     // File and Log
     /// File a file or log output writes, the `path` key; required for those two types.
     ///
-    /// Unlike the track and replay paths, a relative path is not resolved against the profile
-    /// file's directory when the profile is loaded.
+    /// Held as written. A relative path is relative to `Profile::base_directory`, and
+    /// `SimulationRunner` resolves it with `Profile::resolve_path` when it builds the
+    /// transport.
     QString path;
     /// The `append` key: true appends to an existing file, false truncates it when the run
     /// first opens it; stopping and starting the run again continues the file.
@@ -230,8 +231,8 @@ enum class SimulationMode {
 struct TrackSettings {
     /// GPX or KML track file, the `path` key; required in track mode.
     ///
-    /// `Profile::load` resolves a relative path against the directory of the profile file;
-    /// `Profile::from_json` leaves it as it is.
+    /// Held as written. A relative path is relative to `Profile::base_directory`, and
+    /// `SimulationRunner` resolves it with `Profile::resolve_path` when it loads the track.
     QString path;
     /// Speed along legs whose points carry neither timestamps nor a recorded speed, the
     /// `speed_kn` key; must be positive, otherwise the profile is rejected.
@@ -251,7 +252,7 @@ struct TrackSettings {
 struct ReplaySettings {
     /// Log file to replay, the `path` key; required in replay mode.
     ///
-    /// A relative path is resolved like `TrackSettings::path`.
+    /// Held as written; a relative path is resolved like `TrackSettings::path`.
     QString path;
     /// The `loop` key; true starts again at the first entry instead of stopping at the last.
     bool loop{false};
@@ -320,6 +321,14 @@ struct Profile {
     std::vector<core::simulation::CustomSentence> custom_sentences;
     /// Output channels, the `outputs` array, in file order.
     QList<OutputConfig> outputs;
+    /// Directory that the relative paths of the profile are relative to; not part of the
+    /// JSON document.
+    ///
+    /// `load` sets it to the absolute directory of the profile file, so that a profile can
+    /// name the track, the log to replay and the output files next to it. Empty for a profile
+    /// built in code or parsed with `from_json`: its relative paths are then used as they
+    /// are, relative to the working directory of the process.
+    QString base_directory;
 
     /// Returns a ready-to-run profile: a vessel off Athens, every default sentence and one TCP
     /// server on port 10110.
@@ -350,7 +359,7 @@ struct Profile {
     /// `schema_version`, an unknown simulation mode, output type, encoding, UDP mode or
     /// sentence id, a value outside its range, a missing required path or serial port name,
     /// or an invalid custom sentence or AIS value.
-    /// Relative track and replay paths are kept as they are; `load` resolves them.
+    /// Paths are kept as they are written, and `base_directory` stays empty.
     ///
     /// @param json The profile document.
     /// @param error Receives a message naming the offending key when parsing fails, such as
@@ -360,9 +369,8 @@ struct Profile {
 
     /// Reads and parses a profile file.
     ///
-    /// Relative `track.path` and `replay.path` values are made absolute against the directory
-    /// that contains the file, so a profile can refer to files next to it. Output file paths
-    /// are left as they are.
+    /// The paths are kept as written, and `base_directory` is set to the absolute directory
+    /// that contains the file, against which `resolve_path` resolves the relative ones.
     ///
     /// @param path The profile file.
     /// @param error Receives the reason when loading fails: `Cannot read` followed by the
@@ -377,13 +385,23 @@ struct Profile {
     /// The document is written to a temporary file that replaces `path` only when everything
     /// was written, so a failure leaves an existing file untouched. Line endings are those of
     /// the platform. The paths are written as they are held, so a profile read by `load` is
-    /// saved with absolute track and replay paths.
+    /// saved with its paths as the user wrote them. When `base_directory` is set and differs
+    /// from the directory of `path`, the relative paths are rewritten relative to the new
+    /// directory, so that they still name the same files; the profile itself is not changed.
     ///
     /// @param path The file to write.
     /// @param error Receives `Cannot write` followed by the path and the system's reason when
     ///     writing fails; left unchanged on success. May be null.
     /// @return True when the file was written.
     [[nodiscard]] bool save(const QString& path, QString* error) const;
+
+    /// Resolves a path of the profile against `base_directory`.
+    ///
+    /// @param path A track, replay or output file path, as held in the profile.
+    /// @return `path` made absolute against `base_directory` and cleaned when it is relative
+    ///     and `base_directory` is set; otherwise `path` unchanged, which includes an empty
+    ///     path.
+    [[nodiscard]] QString resolve_path(const QString& path) const;
 
     /// Builds a sentence scheduler with this profile's encoder options, sentence settings and
     /// custom sentences applied.
