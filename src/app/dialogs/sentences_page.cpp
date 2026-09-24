@@ -97,8 +97,9 @@ SentencesPage::SentencesPage(QWidget* parent)
         auto* talker = new QLineEdit(table);
         talker->setMaxLength(2);
         talker->setPlaceholderText(from_view(descriptor.default_talker));
+        // One letter is only a step while typing: validate refuses it.
         talker->setValidator(new QRegularExpressionValidator(
-            QRegularExpression(QStringLiteral("[A-Za-z]{0,2}")), talker));
+            QRegularExpression(QStringLiteral("([A-Za-z]{2})?")), talker));
         talker->setToolTip(tr("Two-letter talker; empty uses %1").arg(talker->placeholderText()));
         table->setCellWidget(row, Talker, talker);
 
@@ -145,7 +146,6 @@ void SentencesPage::add_custom(const QString& body) {
     custom_table->setItem(row, CustomEnabled, enabled);
     auto* id = new QLineEdit(custom_table);
     id->setMaxLength(12);
-    id->setPlaceholderText(QStringLiteral("CUSTOM-%1").arg(row + 1));
     id->setValidator(new QRegularExpressionValidator(
         QRegularExpression(QStringLiteral("[A-Za-z0-9-]{0,12}")), id));
     custom_table->setCellWidget(row, CustomId, id);
@@ -159,6 +159,7 @@ void SentencesPage::add_custom(const QString& body) {
     period->setValue(1000);
     period->setKeyboardTracking(false);
     custom_table->setCellWidget(row, CustomPeriod, period);
+    number_custom_placeholders();
     custom_table->selectRow(row);
 }
 
@@ -166,7 +167,19 @@ void SentencesPage::remove_current_custom() {
     const int row = custom_table->currentRow();
     if (row >= 0) {
         custom_table->removeRow(row);
+        number_custom_placeholders();
     }
+}
+
+void SentencesPage::number_custom_placeholders() {
+    for (int row = 0; row < custom_table->rowCount(); ++row) {
+        static_cast<QLineEdit*>(custom_table->cellWidget(row, CustomId))
+            ->setPlaceholderText(default_custom_id(row));
+    }
+}
+
+QString SentencesPage::default_custom_id(int row) {
+    return QStringLiteral("CUSTOM-%1").arg(row + 1);
 }
 
 int SentencesPage::custom_count() const {
@@ -189,7 +202,14 @@ core::simulation::CustomSentence SentencesPage::custom_at(int row) const {
 }
 
 QString SentencesPage::validate() const {
+    for (int row = 0; row < table->rowCount(); ++row) {
+        if (static_cast<QLineEdit*>(table->cellWidget(row, Talker))->text().size() == 1) {
+            return tr("Sentence %1: the talker must be two letters, or empty for the default.")
+                .arg(table->item(row, Id)->text());
+        }
+    }
     const auto& registry = core::nmea0183::SentenceRegistry::standard();
+    QStringList ids;
     for (int row = 0; row < custom_table->rowCount(); ++row) {
         const auto sentence = custom_at(row);
         if (const auto problem = core::simulation::validate_custom_sentence(sentence.body)) {
@@ -200,6 +220,16 @@ QString SentencesPage::validate() const {
                 .arg(row + 1)
                 .arg(QString::fromStdString(sentence.id));
         }
+        // An empty id is sent as CUSTOM-n, so it can collide with an id typed on another row.
+        const QString id =
+            sentence.id.empty() ? default_custom_id(row) : QString::fromStdString(sentence.id);
+        if (const auto first = ids.indexOf(id); first >= 0) {
+            return tr("Custom sentences %1 and %2 have the same id %3")
+                .arg(first + 1)
+                .arg(row + 1)
+                .arg(id);
+        }
+        ids.append(id);
     }
     return {};
 }
@@ -288,6 +318,8 @@ void SentencesPage::set_all(bool enabled) {
 void SentencesPage::reset_defaults() {
     io::Profile defaults;
     defaults.sentences.clear();
+    // The button resets the rows only; the position decimals are not a row.
+    defaults.encoder.position_decimals = position_decimals_spin->value();
     for (int row = 0; row < custom_table->rowCount(); ++row) {
         defaults.custom_sentences.push_back(custom_at(row));
     }

@@ -4,6 +4,7 @@
 
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <string>
@@ -70,10 +71,17 @@ void SentenceScheduler::set_period_for_all(std::chrono::milliseconds period) {
     }
 }
 
+bool is_valid_talker(std::string_view talker) noexcept {
+    return talker.empty() ||
+           (talker.size() == 2 &&
+            std::all_of(talker.begin(), talker.end(), [](char c) { return c >= 'A' && c <= 'Z'; }));
+}
+
 std::string_view SentenceScheduler::effective_talker(
     const nmea0183::SentenceDescriptor& descriptor) const {
     const auto it = entries_.find(descriptor.id);
-    if (it != entries_.end() && it->second.setting.talker.size() == 2) {
+    if (it != entries_.end() && !it->second.setting.talker.empty() &&
+        is_valid_talker(it->second.setting.talker)) {
         return it->second.setting.talker;
     }
     return descriptor.default_talker;
@@ -98,15 +106,14 @@ void append_encoded(std::vector<EmittedSentence>& sentences, std::string_view id
 void SentenceScheduler::set_custom_sentences(const std::vector<CustomSentence>& sentences) {
     custom_.clear();
     custom_entries_.clear();
-    std::size_t number = 0;
-    for (const auto& sentence : sentences) {
-        ++number;
-        CustomSentence accepted = sentence;
-        if (accepted.id.empty()) {
-            accepted.id = "CUSTOM-" + std::to_string(number);
-        }
+    for (std::size_t index = 0; index < sentences.size(); ++index) {
+        CustomSentence accepted = sentences[index];
+        accepted.id = effective_custom_id(accepted, index);
         const auto framed = frame_custom_sentence(accepted.body);
-        if (!framed || registry_->find(accepted.id) != nullptr) {
+        const bool taken =
+            std::any_of(custom_.begin(), custom_.end(),
+                        [&](const CustomSentence& c) { return c.id == accepted.id; });
+        if (!framed || taken || registry_->find(accepted.id) != nullptr) {
             continue;
         }
         if (accepted.period.count() <= 0) {

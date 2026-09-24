@@ -11,11 +11,24 @@ namespace nmeasim::core::ais {
 
 void BitPacker::append_unsigned(std::uint32_t value, int bits) {
     for (int bit = bits - 1; bit >= 0; --bit) {
-        bits_.push_back(((value >> static_cast<unsigned>(bit)) & 1U) != 0U);
+        // A 32-bit value has no bits from position 32 upwards: they are zero.
+        bits_.push_back(bit < 32 && ((value >> static_cast<unsigned>(bit)) & 1U) != 0U);
     }
 }
 
 void BitPacker::append_signed(std::int32_t value, int bits) {
+    if (bits <= 0) {
+        return;
+    }
+    if (bits >= 32) {
+        // Every value fits: copies of the sign bit fill the field above its 32 bits.
+        for (int bit = bits - 1; bit >= 32; --bit) {
+            bits_.push_back(value < 0);
+        }
+        append_unsigned(static_cast<std::uint32_t>(value), 32);
+        return;
+    }
+    // Below 32 bits the limits and the mask fit their types without overflow.
     const std::int32_t maximum = (std::int32_t{1} << (bits - 1)) - 1;
     const std::int32_t minimum = -maximum - 1;
     const std::int32_t clamped = std::clamp(value, minimum, maximum);

@@ -93,6 +93,39 @@ TEST_CASE("encode_within_limit lowers position precision only when needed",
     CHECK(nmeasim::test::body_of(high.front()).find("3759.028000") != std::string::npos);
 }
 
+TEST_CASE("encode_within_limit uses at least two decimals and sends what cannot fit",
+          "[nmea0183][registry]") {
+    const auto& registry = nmea::SentenceRegistry::standard();
+    const auto* rmc = registry.find("RMC");
+    REQUIRE(rmc != nullptr);
+    const auto state = nmeasim::test::fixture_state();
+
+    // Fewer than two decimals are raised to two, the least the limit handling goes down to.
+    for (const int decimals : {1, 0, -3}) {
+        INFO(decimals);
+        const auto low =
+            nmea::encode_within_limit(*rmc, state, "GP", {.position_decimals = decimals});
+        REQUIRE(low.size() == 1U);
+        CHECK(nmeasim::test::body_of(low.front()).find(",3759.03,N,02343.65,E,") !=
+              std::string::npos);
+    }
+
+    // A sentence still too long at two decimals, here because of an oversized talker, is
+    // sent with two decimals rather than dropped.
+    const std::string talker(40, 'X');
+    const auto oversized = nmea::encode_within_limit(*rmc, state, talker, {.position_decimals = 4});
+    REQUIRE(oversized.size() == 1U);
+    CHECK_FALSE(nmea::fits_limit(oversized.front()));
+    CHECK(nmeasim::test::body_of(oversized.front()).find(",3759.03,N,02343.65,E,") !=
+          std::string::npos);
+}
+
+TEST_CASE("the length limit without terminator derives from the NMEA 0183 limit",
+          "[nmea0183][registry]") {
+    CHECK(nmea::kMaxSentenceLength == 82U);
+    CHECK(nmea::kMaxSentenceLengthWithoutTerminator == nmea::kMaxSentenceLength - 2U);
+}
+
 TEST_CASE("sentence groups have display names", "[nmea0183][registry]") {
     CHECK(nmea::to_string(nmea::SentenceGroup::Gnss) == "GNSS");
     CHECK(nmea::to_string(nmea::SentenceGroup::Wind) == "Wind");

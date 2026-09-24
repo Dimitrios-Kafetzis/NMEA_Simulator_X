@@ -11,6 +11,19 @@ Lines are written exactly as produced by the encoder plus `<CR><LF>`, with an op
 never alter the payload. A recording ([log output](log-format.md)) always stores the plain
 sentences, without TAG block.
 
+## Filters
+
+Each output's filter lists what it sends; an empty filter sends everything. For an NMEA 0183
+output the entries are registry ids such as `RMC` and custom sentence ids such as `BARO`,
+each matching one sentence. For a Signal K output they are paths or leading path segments:
+`environment.wind` admits `environment.wind` and every path below it, such as
+`environment.wind.speedApparent`, but `navigation.speed` does not admit
+`navigation.speedThroughWater`, because an entry always ends at a dot between segments. Both
+kinds of entry are matched without regard to case, so `rmc` and `RMC` are the same entry,
+as `Navigation` and `navigation` are. A ViewSync output ignores its filter.
+
+## Transport types
+
 | Transport | Direction | Settings | Notes |
 | --- | --- | --- | --- |
 | TCP server | listens | bind address, port | Any number of clients; each receives every line. Port `0` picks a free port. Clients that disconnect or error are removed immediately. Data received from clients is discarded. |

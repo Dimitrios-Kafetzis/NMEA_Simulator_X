@@ -28,13 +28,23 @@ struct SentenceSetting {
     bool enabled{true};
     /// Talker identifier that replaces the registry default, such as `GN`.
     ///
-    /// Only a value of exactly two characters is used; empty or any other length means the
-    /// registry default. The characters themselves are not checked.
+    /// Empty means the registry default. Only a value that `is_valid_talker` accepts, two
+    /// upper-case letters, is used; the scheduler keeps any other value as given but sends
+    /// the sentence with the registry default.
     std::string talker;
     /// Interval between emissions in simulated time; `SentenceScheduler::configure` replaces
     /// zero or a negative value by the registry default.
     std::chrono::milliseconds period{1000};
 };
+
+/// Returns whether a text is acceptable as the talker of a `SentenceSetting`.
+///
+/// @param talker The talker as typed.
+/// @return True when `talker` is empty, which selects the registry default, or consists of
+///   exactly two upper-case ASCII letters `A` to `Z`; false otherwise, including for
+///   lower-case letters, digits and the user-configured `U0` to `U9`.
+/// @see NMEA 0183 (IEC 61162-1), talker identifier.
+[[nodiscard]] bool is_valid_talker(std::string_view talker) noexcept;
 
 /// Returns the next due time of a periodic message that was due at `due` and is sent at
 /// `now`.
@@ -112,10 +122,10 @@ public:
     /// Returns the talker a sentence is sent with after overrides.
     ///
     /// @param descriptor The registry descriptor of the sentence.
-    /// @return The talker of the sentence's setting when it has exactly two characters,
-    ///   otherwise the registry default. The view refers either to a string held by this
-    ///   scheduler, valid until that sentence's setting changes or the scheduler is
-    ///   destroyed, or to the registry's static text.
+    /// @return The talker of the sentence's setting when it is not empty and
+    ///   `is_valid_talker` accepts it, otherwise the registry default. The view refers either to a
+    ///   string held by this scheduler, valid until that sentence's setting changes or the
+    ///   scheduler is destroyed, or to the registry's static text.
     [[nodiscard]] std::string_view effective_talker(
         const nmea0183::SentenceDescriptor& descriptor) const;
 
@@ -131,9 +141,10 @@ public:
     /// Replaces the operator's custom sentences.
     ///
     /// Each sentence is taken over with these changes: an empty id becomes `CUSTOM-n`, where
-    /// `n` is its 1-based position in `sentences`; a zero or negative period becomes one
-    /// second. A sentence whose body `frame_custom_sentence` refuses, or whose id (after
-    /// filling in) is a registry id, is dropped. Disabled sentences are kept. The accepted
+    /// `n` is its 1-based position in `sentences` (`effective_custom_id`); a zero or
+    /// negative period becomes one second. A sentence whose body `frame_custom_sentence`
+    /// refuses, or whose id (after filling in) is a registry id or the id of a sentence
+    /// accepted before it, is dropped. Disabled sentences are kept. The accepted
     /// sentences are due at the next call to `due`; they are emitted after the registry
     /// ones, in list order.
     ///

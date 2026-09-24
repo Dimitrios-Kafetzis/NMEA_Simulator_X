@@ -31,7 +31,7 @@ DeltaSource::DeltaSource(DeltaConfig config)
 
 void DeltaSource::reset() {
     state_ = config_.seed;
-    overrides_.fill(std::nullopt);
+    overrides_.fill(false);
     generator_.seed(config_.random_seed);
 }
 
@@ -93,16 +93,21 @@ void DeltaSource::write(Parameter parameter, double value) noexcept {
 }
 
 void DeltaSource::set_override(Parameter parameter, double value) {
-    overrides_[index_of(parameter)] = value;
+    overrides_[index_of(parameter)] = true;
     write(parameter, value);
 }
 
 void DeltaSource::clear_override(Parameter parameter) {
-    overrides_[index_of(parameter)].reset();
+    overrides_[index_of(parameter)] = false;
 }
 
 std::optional<double> DeltaSource::override_value(Parameter parameter) const {
-    return overrides_[index_of(parameter)];
+    // An overridden value is held in the state as written, normalised and clamped; only the
+    // heading moves while pinned, when steering mode turns it with the rudder.
+    if (!overrides_[index_of(parameter)]) {
+        return std::nullopt;
+    }
+    return read(parameter);
 }
 
 void DeltaSource::nudge(Parameter parameter, double delta) {
@@ -149,8 +154,19 @@ double DeltaSource::drift(double current, double seed, const Variation& variatio
     }
     const double step = variation.step_per_second * seconds;
     std::uniform_real_distribution<double> distribution(-step, step);
-    const double next = current + distribution(generator_);
-    return std::clamp(next, seed - variation.amplitude, seed + variation.amplitude);
+    // Drawn in every case, so that a value outside its band does not change the random
+    // sequence of the values drifting after it.
+    const double random_step = distribution(generator_);
+    const double low = seed - variation.amplitude;
+    const double high = seed + variation.amplitude;
+    // A value left outside the band by a released override returns at the full step rate.
+    if (current > high) {
+        return std::max(high, current - step);
+    }
+    if (current < low) {
+        return std::min(low, current + step);
+    }
+    return std::clamp(current + random_step, low, high);
 }
 
 const model::VesselState& DeltaSource::advance(std::chrono::milliseconds dt) {

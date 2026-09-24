@@ -34,18 +34,18 @@ public:
     /// silently truncated; callers clamp first.
     ///
     /// @param value Field value.
-    /// @param bits Field width in bits, in [0, 32]; 0 or a negative width appends nothing.
-    /// @pre `bits` is at most 32; a wider field is undefined behaviour.
+    /// @param bits Field width in bits; 0 or a negative width appends nothing, and a field
+    ///        wider than 32 bits gets zeros above the value's 32 bits.
     void append_unsigned(std::uint32_t value, int bits);
 
     /// Appends a signed value in two's complement on `bits` bits.
     ///
     /// A value outside the range of the field, [-2^(bits-1), 2^(bits-1) - 1], is clamped to
-    /// its nearest end rather than wrapped.
+    /// its nearest end rather than wrapped. A field of 32 bits or more holds every value; a
+    /// field wider than 32 bits repeats the sign bit above the value's 32 bits.
     ///
     /// @param value Field value.
-    /// @param bits Field width in bits, in [1, 31].
-    /// @pre `bits` is in [1, 31]; any other width is undefined behaviour.
+    /// @param bits Field width in bits; 0 or a negative width appends nothing.
     void append_signed(std::int32_t value, int bits);
 
     /// Appends a text field of exactly `length` six-bit characters.

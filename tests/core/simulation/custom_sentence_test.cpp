@@ -48,8 +48,8 @@ TEST_CASE("invalid custom bodies are refused with a reason", "[simulation][custo
     CHECK(sim::validate_custom_sentence("$PXYZ,a$b")->find("printable") != std::string::npos);
     // With 75 characters of field the framed sentence has 84 characters, over the limit of
     // 80 without CR LF; with 71 it has exactly 80.
-    CHECK(sim::validate_custom_sentence("$PXYZ," + std::string(75, 'x'))->find("82") !=
-          std::string::npos);
+    CHECK(sim::validate_custom_sentence("$PXYZ," + std::string(75, 'x')) ==
+          "The sentence exceeds 80 characters with its checksum");
     CHECK_FALSE(sim::validate_custom_sentence("$PXYZ," + std::string(71, 'x')).has_value());
     CHECK_FALSE(sim::validate_custom_sentence("$PXYZ,1,2,3*17").has_value());
 }
@@ -109,4 +109,43 @@ TEST_CASE("the scheduler emits custom sentences on their own period", "[simulati
                       [](const sim::EmittedSentence& s) { return s.id == "BARO"; }));
     scheduler.set_custom_sentences({});
     CHECK(scheduler.custom_sentences().empty());
+}
+
+TEST_CASE("custom sentence ids are filled in and duplicates are found", "[simulation][custom]") {
+    const std::vector<sim::CustomSentence> sentences{
+        {"", "$PXYZ,1", 1000ms, true},
+        {"BARO", "$PXYZ,2", 1000ms, true},
+        {"", "$PXYZ,3", 1000ms, true},
+    };
+    CHECK(sim::effective_custom_id(sentences[0], 0) == "CUSTOM-1");
+    CHECK(sim::effective_custom_id(sentences[1], 1) == "BARO");
+    CHECK(sim::effective_custom_id(sentences[2], 2) == "CUSTOM-3");
+    CHECK_FALSE(sim::find_duplicate_custom_id(sentences).has_value());
+    CHECK_FALSE(sim::find_duplicate_custom_id({}).has_value());
+
+    // An explicit id repeated later, and an explicit id equal to an automatic one.
+    auto repeated = sentences;
+    repeated.push_back({"BARO", "$PXYZ,4", 1000ms, true});
+    CHECK(sim::find_duplicate_custom_id(repeated) == 3U);
+    auto collision = sentences;
+    collision[1].id = "CUSTOM-3";
+    CHECK(sim::find_duplicate_custom_id(collision) == 2U);
+}
+
+TEST_CASE("the scheduler drops a custom sentence whose id is already taken",
+          "[simulation][custom]") {
+    sim::SentenceScheduler scheduler;
+    scheduler.set_custom_sentences({
+        {"CUSTOM-2", "$PXYZ,1", 1000ms, true},
+        {"", "$PXYZ,2", 1000ms, true},
+        {"BARO", "$PXYZ,3", 1000ms, true},
+        {"BARO", "$PXYZ,4", 1000ms, true},
+    });
+    // The second sentence would be CUSTOM-2 and the fourth repeats BARO: the first sentence
+    // with an id keeps it.
+    REQUIRE(scheduler.custom_sentences().size() == 2);
+    CHECK(scheduler.custom_sentences()[0].id == "CUSTOM-2");
+    CHECK(scheduler.custom_sentences()[0].body == "$PXYZ,1");
+    CHECK(scheduler.custom_sentences()[1].id == "BARO");
+    CHECK(scheduler.custom_sentences()[1].body == "$PXYZ,3");
 }

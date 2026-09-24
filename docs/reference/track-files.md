@@ -7,12 +7,18 @@ in the [how-to guide](../how-to/follow-a-track.md).
 
 ## Common rules
 
-- The file type is chosen from the extension, `.gpx` or `.kml`, case-insensitively.
+- The file type is chosen from the extension of the file name, `.gpx` or `.kml`,
+  case-insensitively; a dot in a directory name does not count. A file name without an
+  extension, or with another one, is rejected with a message that says so.
 - Namespace prefixes are ignored: `trkpt` and `gpx:trkpt` are the same element.
 - All geometries of a file are concatenated in document order into one track. Nothing
   is reordered or deduplicated.
 - Latitude must be within ±90 and longitude within ±180 degrees; anything else is
-  rejected with the point number.
+  rejected with the point number. Points are numbered from 1 across the whole file, over
+  all segments, tracks or geometries, in GPX and KML alike.
+- Optional values that are not numbers, a GPX `<ele>`, `<course>` or `<speed>` or a KML
+  altitude such as `high`, are ignored without an error: the point is read as if the value
+  were absent.
 - A track is **timed** when every point has a time and the times never decrease. One
   missing or out-of-order time makes the whole track untimed, and it is then sailed at the
   configured speed.
@@ -34,7 +40,7 @@ GPX 1.0 and 1.1 are read the same way.
 | `<trkpt>/<course>` | Course over ground in degrees true (GPX 1.0) |
 | `<trkpt>/<speed>` | Speed over ground in metres per second (GPX 1.0), converted to knots |
 | `<extensions>/…/<speed>`, `<extensions>/…/<course>` | The same values in GPX 1.1 extensions, matched on the element name whatever the prefix, e.g. `gpxtpx:speed` |
-| `<metadata>/<name>`, `<name>`, `<trk>/<name>`, `<rte>/<name>` | Track name, first one found in that order; the file name when none. A `<name>` directly under `<gpx>` counts only when the file has no `<metadata>` element (GPX 1.0) |
+| `<metadata>/<name>`, `<name>`, `<trk>/<name>`, `<rte>/<name>` | Track name, the first non-empty one in that order; the file name when none. `<name>` is the one directly under `<gpx>`, as GPX 1.0 writes it |
 | `<wpt>` | Ignored |
 
 A recorded speed is reported as the vessel speed while sailing the leg that starts at that
@@ -51,10 +57,12 @@ KML 2.2 with the Google extension namespace `gx` is supported.
 | `<gx:MultiTrack>` | Its tracks, in order |
 | `<LineString>/<coordinates>` | Untimed points: `lon,lat[,alt]` tuples separated by whitespace |
 | `<MultiGeometry>`, `<Folder>`, `<Document>`, `<Placemark>` | Traversed; every track and line inside is used |
-| `<Placemark>/<name>`, `<Document>/<name>` | Track name: the name of the last named placemark met before the first track or line, which is usually the placemark holding it; else the name of the first document or folder |
+| `<Placemark>/<name>`, `<Document>/<name>`, `<Folder>/<name>` | Track name: the name of the placemark that holds the first track or line; else the name of the first named document or folder; while both are missing, the next track or line is tried, and the file name is used when none gives a name |
 | `<Point>`, `<Polygon>`, styles, `<TimeStamp>`, `<gx:angles>` | Ignored |
 
-The third coordinate, when present, is the altitude in metres. A `gx:Track` with fewer
+The file is a *KML track* when at least one `gx:Track` provides points, and a *KML line*
+otherwise, even when it holds an empty `gx:Track`. The third coordinate, when present, is
+the altitude in metres. A `gx:Track` with fewer
 `<when>` than `<gx:coord>` elements leaves the remaining points without a time, which makes
 the track untimed.
 
