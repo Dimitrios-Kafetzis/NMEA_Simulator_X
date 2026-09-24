@@ -43,11 +43,7 @@ LEGACY_PAGES = Path(__file__).resolve().parent / "legacy-api-pages.txt"
 #: Directories whose documentation is complete. Every Doxygen warning and every missing file
 #: header in them fails the build. A directory is added in the pull request that completes
 #: its comments.
-ENFORCED: tuple[str, ...] = ("src/core",)
-
-#: Public headers that keep the rules of the former reference until their directory is in
-#: `ENFORCED`: every public entity documented; parameters and private members not required.
-LEGACY_CHECKED = ("src/core/include", "src/io/include")
+ENFORCED: tuple[str, ...] = ("src/core", "src/io")
 
 #: First line of every C++ file.
 LICENCE_LINE = "// SPDX-License-Identifier: GPL-3.0-only"
@@ -168,15 +164,6 @@ def generate(config) -> cppreference.Reference | None:
     OUTPUT.mkdir(parents=True)
 
     errors = []
-    legacy = [d for d in LEGACY_CHECKED if not enforced(d)]
-    if legacy:
-        legacy_log = OUTPUT / "legacy-warnings.log"
-        run_doxygen(doxygen, "\n".join([
-            f"INPUT = {' '.join(legacy)}", "FILE_PATTERNS = *.hpp", "EXTRACT_PRIVATE = NO",
-            "EXTRACT_PRIV_VIRTUAL = NO", "EXTRACT_ANON_NSPACES = NO", "WARN_NO_PARAMDOC = NO",
-            "WARN_IF_UNDOC_ENUM_VAL = NO", "GENERATE_XML = NO",
-            f"OUTPUT_DIRECTORY = {OUTPUT / 'legacy'}", f"WARN_LOGFILE = {legacy_log}"]))
-        errors += [text for _, text in read_warnings(legacy_log)]
 
     run_doxygen(doxygen)
     warnings = read_warnings(WARNINGS)

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of the IPv4 interface enumeration on top of `QNetworkInterface`.
+
 #include <nmeasim/io/network_interfaces.hpp>
 
 #include <QNetworkInterface>

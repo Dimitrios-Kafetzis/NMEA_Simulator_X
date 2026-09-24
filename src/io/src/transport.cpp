@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of the `Transport` base class: state changes, failure reporting, byte
+/// counting and the names of the states.
+
 #include <nmeasim/io/transport.hpp>
 
 namespace nmeasim::io {
@@ -35,6 +40,8 @@ QString to_string(Transport::State state) {
         case Transport::State::Failed:
             return QStringLiteral("failed");
     }
+    // Unreachable for valid enumerators; keeps the function total for a value cast from an
+    // integer.
     return QStringLiteral("unknown");
 }
 

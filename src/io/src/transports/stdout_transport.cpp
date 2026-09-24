@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `StdoutTransport` on `std::cout`.
+
 #include <nmeasim/io/transports/stdout_transport.hpp>
 
 #include <iostream>

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `UdpTransport` on `QUdpSocket`: resolving the destination, binding to the
+/// chosen interface and sending datagrams.
+
 #include <nmeasim/io/network_interfaces.hpp>
 #include <nmeasim/io/transports/udp_transport.hpp>
 
@@ -69,6 +74,8 @@ bool UdpTransport::open() {
         }
         bind_address = info.address;
     }
+    // Binding to the interface's address makes it the source of the datagrams; port 0 lets
+    // the system pick the source port, which receivers do not care about.
     if (!socket_.bind(bind_address, 0, QUdpSocket::ShareAddress | QUdpSocket::ReuseAddressHint)) {
         fail(QStringLiteral("Cannot bind UDP socket to %1: %2")
                  .arg(bind_address.toString(), socket_.errorString()));

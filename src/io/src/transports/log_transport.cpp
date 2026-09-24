@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `LogTransport`: writing the header of a new log and timestamping every
+/// sentence with the wall clock.
+
 #include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/time/iso8601.hpp>
 #include <nmeasim/io/transports/log_transport.hpp>
@@ -11,6 +16,10 @@ namespace nmeasim::io {
 
 namespace {
 
+/// Returns the current wall-clock time, truncated to whole milliseconds.
+///
+/// @return The system clock's time since the Unix epoch, which is UTC, with the millisecond
+///   resolution that the log format records.
 std::chrono::system_clock::time_point now_utc() {
     return std::chrono::system_clock::time_point{
         std::chrono::milliseconds{QDateTime::currentMSecsSinceEpoch()}};
@@ -41,6 +50,8 @@ bool LogTransport::open() {
                  .arg(file_.fileName(), file_.errorString()));
         return false;
     }
+    // Only an empty file gets a header, so appending to an earlier recording continues it
+    // without a second one.
     if (file_.size() == 0) {
         const auto started = now_utc();
         std::string header{core::log::kHeaderLine};

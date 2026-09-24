@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `TcpClientTransport` on `QTcpSocket`, with a single-shot timer driving
+/// reconnection.
+
 #include <nmeasim/io/transports/tcp_client_transport.hpp>
 
 namespace nmeasim::io {
@@ -15,6 +20,8 @@ TcpClientTransport::TcpClientTransport(QString host, quint16 port, int reconnect
             schedule_reconnect();
         }
     });
+    // Errors never move the transport to Failed: a refused connection or a dropped peer is
+    // retried after the interval, until close() is called.
     connect(&socket_, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
         emit error_occurred(socket_.errorString());
         if (wanted_open_) {
@@ -22,6 +29,8 @@ TcpClientTransport::TcpClientTransport(QString host, quint16 port, int reconnect
             schedule_reconnect();
         }
     });
+    // Discard anything the server sends; the simulator only talks, and unread data would
+    // accumulate in the socket's read buffer.
     connect(&socket_, &QTcpSocket::readyRead, &socket_, [this] { socket_.readAll(); });
 }
 

@@ -41,5 +41,5 @@ target_include_directories(nmeasim_io
 
 target_link_libraries(nmeasim_io
     PUBLIC nmeasim::core Qt6::Core Qt6::Network Qt6::SerialPort Qt6::WebSockets
-    PRIVATE nmeasim::warnings nmeasim::sanitizers
+    PRIVATE nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
 )
