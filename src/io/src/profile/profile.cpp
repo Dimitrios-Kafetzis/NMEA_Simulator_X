@@ -15,6 +15,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -149,15 +150,15 @@ QString fix_quality_to_string(FixQuality quality) {
 /// Parses the profile name of a GNSS fix quality.
 ///
 /// @param value `invalid`, `gps` or `differential`, matched exactly.
-/// @return The fix quality; `FixQuality::Gps` for any other text, without an error.
-FixQuality fix_quality_from_string(const QString& value) {
-    if (value == QLatin1String("invalid")) {
-        return FixQuality::Invalid;
+/// @return The fix quality, or `std::nullopt` for any other text, which
+///     `validate_seed_keys` reports.
+std::optional<FixQuality> fix_quality_from_string(const QString& value) {
+    for (const auto quality : {FixQuality::Invalid, FixQuality::Gps, FixQuality::Differential}) {
+        if (fix_quality_to_string(quality) == value) {
+            return quality;
+        }
     }
-    if (value == QLatin1String("differential")) {
-        return FixQuality::Differential;
-    }
-    return FixQuality::Gps;
+    return std::nullopt;
 }
 
 /// Returns the profile name of a serial parity, the `parity` key of a serial output.
@@ -433,8 +434,9 @@ core::model::VesselState seed_from_json(const QJsonObject& object,
 
     const auto gnss = object.value(QStringLiteral("gnss")).toObject();
     seed.gnss.has_fix = boolean(gnss, "fix", fallback.gnss.has_fix);
-    seed.gnss.quality = fix_quality_from_string(
-        text(gnss, "quality", fix_quality_to_string(fallback.gnss.quality)));
+    seed.gnss.quality =
+        fix_quality_from_string(text(gnss, "quality", fix_quality_to_string(fallback.gnss.quality)))
+            .value_or(fallback.gnss.quality);
     seed.gnss.satellites_in_use =
         integer(gnss, "satellites_in_use", fallback.gnss.satellites_in_use);
     seed.gnss.satellites_in_view =
@@ -538,6 +540,53 @@ QString validate_ais(const core::model::AisStatic& ais) {
         return QStringLiteral("simulation.seed.ais.position_report_type must be 1, 2 or 3");
     }
     return {};
+}
+
+/// Checks the keys of the `simulation.seed` object that must hold one of a set of values.
+///
+/// A `gnss.quality` string must be `invalid`, `gps` or `differential`, and a `destination`
+/// object must hold `latitude` and `longitude` as numbers. A key of the wrong JSON type is
+/// left to `seed_from_json`, which treats it as missing, except that a destination that is
+/// an object always needs its position. `seed_from_json` does not check these keys itself:
+/// it keeps the fallback quality for an unknown name and puts a destination without a
+/// position at 0 degrees, so this check must pass first.
+///
+/// @param object The `simulation.seed` object as read from the profile.
+/// @return A message naming the first offending `simulation.seed` key, or an empty string when
+///     the keys are valid.
+QString validate_seed_keys(const QJsonObject& object) {
+    const auto quality =
+        object.value(QStringLiteral("gnss")).toObject().value(QStringLiteral("quality"));
+    if (quality.isString() && !fix_quality_from_string(quality.toString())) {
+        return QStringLiteral(
+                   "simulation.seed.gnss.quality '%1' is not invalid, gps or differential")
+            .arg(quality.toString());
+    }
+    const auto destination = object.value(QStringLiteral("destination"));
+    if (destination.isObject()) {
+        for (const char* key : {"latitude", "longitude"}) {
+            if (!destination.toObject().value(QLatin1String(key)).isDouble()) {
+                return QStringLiteral("simulation.seed.destination needs a numeric %1")
+                    .arg(QLatin1String(key));
+            }
+        }
+    }
+    return {};
+}
+
+/// Checks that a sentence talker is two upper-case letters or empty.
+///
+/// @param talker The `talker` key of a `sentences.settings` entry.
+/// @return True for an empty text, which keeps the registry default, and for two letters
+///     from `A` to `Z`; false otherwise.
+/// @see NMEA 0183, talker identifier mnemonics.
+bool valid_talker(const QString& talker) {
+    if (talker.isEmpty()) {
+        return true;
+    }
+    return talker.size() == 2 && std::all_of(talker.begin(), talker.end(), [](QChar character) {
+               return character >= QLatin1Char('A') && character <= QLatin1Char('Z');
+           });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -988,6 +1037,12 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         *err = problem;
         return std::nullopt;
     }
+    if (const auto problem =
+            validate_seed_keys(simulation.value(QStringLiteral("seed")).toObject());
+        !problem.isEmpty()) {
+        *err = problem;
+        return std::nullopt;
+    }
     const auto variation = simulation.value(QStringLiteral("variation")).toObject();
     profile.delta.heading =
         variation_from_json(variation.value(QStringLiteral("heading")), profile.delta.heading);
@@ -1055,6 +1110,17 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         setting.talker = text(object, "talker").toStdString();
         setting.period = std::chrono::milliseconds{
             integer(object, "period_ms", static_cast<int>(descriptor->default_period.count()))};
+        if (!valid_talker(QString::fromStdString(setting.talker))) {
+            *err =
+                QStringLiteral("sentences.settings.%1: talker '%2' is not two upper-case letters")
+                    .arg(it.key(), QString::fromStdString(setting.talker));
+            return std::nullopt;
+        }
+        if (setting.period.count() < 50 || setting.period.count() > 3'600'000) {
+            *err = QStringLiteral("sentences.settings.%1: period_ms must be between 50 and 3600000")
+                       .arg(it.key());
+            return std::nullopt;
+        }
         profile.sentences[id] = setting;
     }
 
