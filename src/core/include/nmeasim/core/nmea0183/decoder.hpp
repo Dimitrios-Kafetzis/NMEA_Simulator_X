@@ -80,9 +80,9 @@ struct SentenceTime {
     /// The date, for sentences that carry one (RMC and ZDA) and only when it parsed;
     /// `std::nullopt` otherwise.
     ///
-    /// The RMC date is range-checked by parse_date(); the ZDA day, month and year are taken
-    /// as sent (fractions truncated), so the date can be one that does not exist, which
-    /// apply_sentence() then ignores.
+    /// The date always exists in the calendar: parse_date() checks the RMC date, and the ZDA
+    /// day, month and year must be whole numbers of one or two, one or two and four digits
+    /// that form a date that exists.
     std::optional<DateParts> date;
 };
 
@@ -90,7 +90,8 @@ struct SentenceTime {
 ///
 /// The time of day is read from field 0 of RMC, GGA, ZDA, GNS, GST, GBS and GRS, and from
 /// field 4 of GLL. The date comes from the `ddmmyy` field 8 of RMC, or from the day, month
-/// and four-digit year in fields 1 to 3 of ZDA when all three are numbers.
+/// and four-digit year in fields 1 to 3 of ZDA when they form a date that exists; otherwise
+/// the time is returned without a date.
 ///
 /// @param sentence A parsed sentence of any formatter; the talker is ignored.
 /// @return The time, or `std::nullopt` for other formatters and when the time field is empty
@@ -108,15 +109,15 @@ struct SentenceTime {
 ///
 /// A time field updates `state.time_utc`: RMC and ZDA with a valid date set date and time;
 /// GGA, GLL, and RMC or ZDA without a valid date, set the time of day and keep the date of
-/// the current `state.time_utc`.
+/// the current `state.time_utc`. When keeping the date would move the time back by more than
+/// 12 hours, the time of day has wrapped past midnight and the date advances by one day, so a
+/// GGA just after midnight lands on the new date before the next RMC or ZDA arrives.
 ///
 /// @param sentence The parsed sentence to apply.
 /// @param[in,out] state The state to update; values the sentence does not carry are kept.
 /// @return True when the formatter is recognised, even if no field could be used; false for
 ///     an unknown formatter or an encapsulated (`!`) sentence, in which case `state` is
 ///     unchanged.
-/// @note The date is not advanced when a time of day wraps past midnight: until a sentence
-///     with a date arrives, a time just after midnight is placed on the previous date.
 bool apply_sentence(const ParsedSentence& sentence, model::VesselState& state);
 
 /// Parses a sentence and applies it to a vessel state in one call.
@@ -132,15 +133,17 @@ bool apply_sentence(std::string_view line, model::VesselState& state);
 ///
 /// The value is `ddmm.mmmm` for a latitude or `dddmm.mmmm` for a longitude: the digits before
 /// the last two integer digits are degrees, the rest are minutes. Any number of fractional
-/// digits is accepted. The hemisphere letter decides the sign and the valid range, not the
-/// number of degree digits.
+/// digits is accepted, and leading zeros of the degrees may be left out. The hemisphere
+/// letter decides the sign, the valid range and the largest number of degree digits: two
+/// for `N` and `S`, three for `E` and `W`.
 ///
-/// @param value The coordinate field; surrounding whitespace is ignored.
+/// @param value The coordinate field, unsigned digits with at most one full stop; surrounding
+///     whitespace is ignored.
 /// @param hemisphere Exactly one of `N`, `S`, `E` or `W`.
 /// @return Decimal degrees, positive north or east and negative south or west; or
-///     `std::nullopt` when either field is empty or malformed, when the minutes are 60 or
-///     more, or when the result exceeds 90 degrees for `N` and `S` or 180 degrees for `E`
-///     and `W`.
+///     `std::nullopt` when either field is empty or malformed, when the value has a sign or
+///     more degree digits than the hemisphere allows, when the minutes are 60 or more, or
+///     when the result exceeds 90 degrees for `N` and `S` or 180 degrees for `E` and `W`.
 [[nodiscard]] std::optional<double> parse_coordinate(std::string_view value,
                                                      std::string_view hemisphere);
 
@@ -163,8 +166,8 @@ bool apply_sentence(std::string_view line, model::VesselState& state);
 ///
 /// @param value The date field; surrounding whitespace is ignored.
 /// @return The date with a four-digit year, or `std::nullopt` when the field is not exactly
-///     six digits, the day is outside [1, 31] or the month outside [1, 12]. The day is not
-///     checked against the length of the month.
+///     six digits or the date does not exist: the month outside [1, 12], or the day outside
+///     the days of that month, with 29 February only in a leap year.
 [[nodiscard]] std::optional<DateParts> parse_date(std::string_view value);
 
 /// Parses a decimal field independently of the process locale.

@@ -7,8 +7,9 @@
 /// The cases cover the registry defaults, emission at time zero and after each period,
 /// per-sentence periods, enable flags and talkers, group switches, the fallback for a
 /// non-positive period, reset, and the rule that keeps a sentence on its cadence without
-/// bursts after a stall or drift from steps that do not divide the period. No fixture file
-/// is read; the sentences are encoded from `nmeasim::test::fixture_state`.
+/// bursts after a stall or drift from steps that do not divide the period, and a check that
+/// proprietary custom sentences are told apart from registry formatters when counting. No
+/// fixture file is read; the sentences are encoded from `nmeasim::test::fixture_state`.
 
 #include "core/fixtures.hpp"
 
@@ -29,20 +30,38 @@ namespace nmea = nmeasim::core::nmea0183;
 
 namespace {
 
+/// Returns the formatter of a framed sentence, read from its address field.
+///
+/// The address is the text between the start delimiter (`$` or `!`) and the first comma or
+/// `*`. A proprietary address, which starts with `P` and has no talker, is returned whole;
+/// any other address gives its last three characters, whatever the length of its talker.
+///
+/// @param text A framed sentence such as `$GPRMC,...*hh`, `!AIVDO,...*hh` or `$PXYZ,1*hh`.
+/// @return The formatter, such as `RMC` or `VDO`, or the whole proprietary address, such as
+///   `PXYZ`; empty when the text does not start with `$` or `!`.
+std::string_view formatter_of(std::string_view text) {
+    if (text.empty() || (text.front() != '$' && text.front() != '!')) {
+        return {};
+    }
+    const auto address = text.substr(1, text.find_first_of(",*") - 1);
+    if (address.starts_with('P') || address.size() <= 3) {
+        return address;
+    }
+    return address.substr(address.size() - 3);
+}
+
 /// Counts the sentences of one formatter.
 ///
-/// The formatter is read at characters 3 to 5 of the text, which assumes a delimiter and a
-/// two-letter talker, as every registry sentence has.
-///
 /// @param sentences Sentences returned by the scheduler.
-/// @param formatter Three-letter sentence formatter, such as `RMC`.
+/// @param formatter Three-letter sentence formatter, such as `RMC`, or the whole address of
+///   a proprietary sentence, such as `PXYZ`; compared with `formatter_of` of each text.
 /// @return The number of sentences whose formatter is `formatter`; a sentence split into
 ///   several lines, such as GSV, counts once per line.
 int count_formatter(const std::vector<sim::EmittedSentence>& sentences,
                     std::string_view formatter) {
     return static_cast<int>(std::count_if(
         sentences.begin(), sentences.end(),
-        [&](const sim::EmittedSentence& s) { return s.text.substr(3, 3) == formatter; }));
+        [&](const sim::EmittedSentence& s) { return formatter_of(s.text) == formatter; }));
 }
 
 }  // namespace
@@ -72,6 +91,19 @@ TEST_CASE("everything enabled is due at time zero, then again after its period",
     CHECK(scheduler.due(999ms, state).empty());
     const auto second = scheduler.due(1000ms, state);
     CHECK(count_formatter(second, "RMC") == 1);
+}
+
+TEST_CASE("proprietary custom sentences are counted by address and not as registry formatters",
+          "[simulation][scheduler]") {
+    sim::SentenceScheduler scheduler;
+    scheduler.set_custom_sentences({{"GARMIN", "$PGRME,15.0,M,45.0,M,25.0,M", 1000ms, true},
+                                    {"XYZ", "$PXYZ,1", 1000ms, true}});
+    const auto first = scheduler.due(0ms, nmeasim::test::fixture_state());
+    CHECK(count_formatter(first, "PGRME") == 1);
+    CHECK(count_formatter(first, "PXYZ") == 1);
+    // The characters after a two-letter talker's position are not a formatter here.
+    CHECK(count_formatter(first, "RME") == 0);
+    CHECK(count_formatter(first, "RMC") == 1);
 }
 
 TEST_CASE("per-sentence periods and enable flags are honoured", "[simulation][scheduler]") {

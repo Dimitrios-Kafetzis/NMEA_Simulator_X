@@ -34,6 +34,7 @@ PATTERNS = {
     "CMakeLists.txt": "#",
     "**/CMakeLists.txt": "#",
     ".github/workflows/*.yml": "#",
+    ".github/versions.env": "#",
     "packaging/linux/AppRun": "#",
 }
 

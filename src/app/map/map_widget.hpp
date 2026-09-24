@@ -58,13 +58,26 @@ struct ScaleBar {
 ///     label) when an argument is not positive or NaN, or when not even 10 m fits.
 [[nodiscard]] ScaleBar scale_bar(double metres_per_pixel, double max_length_px);
 
+/// Returns the attribution the map shows for a tile server when none is configured.
+///
+/// The OpenStreetMap tile servers require the credit `© OpenStreetMap contributors`; for any
+/// other server the map cannot know the terms, so it shows none unless one is configured
+/// with `MapWidget::set_attribution`.
+///
+/// @param url_template Tile URL template, as `TileCache::url_template` returns it.
+/// @return `© OpenStreetMap contributors` when the host of the URL is `openstreetmap.org` or
+///     one of its sub-domains, such as `tile.openstreetmap.org`; empty otherwise.
+[[nodiscard]] QString default_attribution(const QString& url_template);
+
 /// A slippy map: raster tiles from a `TileCache`, the vessel with its heading and a vector
 /// of its course and speed, the track it has sailed, and mouse, touchpad and keyboard
 /// navigation.
 ///
 /// Overlays show the zoom level and view state with a north arrow, zoom buttons and a follow
-/// button, a scale bar, the position under the pointer and the OpenStreetMap attribution. The
-/// chart is always north up. The zoom level is fractional in [`kMinZoom`, `kMaxZoom`], so
+/// button, a scale bar, the position under the pointer and the attribution of the tile
+/// server (see `attribution`). The chart is always north up. Longitudes are wrapped into
+/// [-180, 180), so the world repeats east and west and the view can pan across the
+/// antimeridian. The zoom level is fractional in [`kMinZoom`, `kMaxZoom`], so
 /// the wheel, the touchpad and pinch gestures zoom smoothly: tiles come from the nearest
 /// whole level and are scaled by the remaining factor. The keyboard and the buttons step to
 /// whole levels. In follow mode the centre tracks the vessel; dragging the map switches
@@ -100,9 +113,8 @@ public:
 
     /// Returns the position at the centre of the widget.
     ///
-    /// @return The centre. Its latitude lies within `kMaxLatitudeDeg` of the equator. Its
-    ///     longitude is in [-180, 180) after `set_center`, but panning or zooming across the
-    ///     antimeridian can leave it outside that range.
+    /// @return The centre. Its latitude lies within `kMaxLatitudeDeg` of the equator and its
+    ///     longitude in [-180, 180), also after panning or zooming across the antimeridian.
     [[nodiscard]] core::geo::Position center() const noexcept { return center_; }
     /// Moves the centre of the view to a position without changing the zoom.
     ///
@@ -140,8 +152,9 @@ public:
     /// Zooms to a fractional level, keeping the position under an anchor fixed.
     ///
     /// In follow mode the centre stays where it is, on the vessel once one is placed, and the
-    /// anchor is ignored. A change of less than 1e-9 levels is ignored; otherwise the view repaints
-    /// and `view_changed` is emitted.
+    /// anchor is ignored; otherwise the new centre's longitude is wrapped into [-180, 180). A
+    /// change of less than 1e-9 levels is ignored; otherwise the view repaints and
+    /// `view_changed` is emitted.
     ///
     /// @param level New zoom level; clamped to [`kMinZoom`, `kMaxZoom`].
     /// @param anchor Widget pixel, from the top-left corner, whose position stays in place.
@@ -168,7 +181,8 @@ public:
     /// from the segment's last point at the current zoom, so that a vessel at rest adds
     /// nothing; after `break_track`, or with no track, it starts a new segment. Once the
     /// track exceeds 5000 points the oldest are dropped. In follow mode the map recentres
-    /// on the vessel without emitting `view_changed`.
+    /// on the vessel, its longitude wrapped into [-180, 180), and emits `view_changed` when
+    /// the centre moved.
     ///
     /// @param position Position of the vessel.
     /// @param heading_true_deg Heading in degrees true, the direction the hull points.
@@ -238,17 +252,32 @@ public:
     ///
     /// @param position Position to locate.
     /// @return Fractional widget coordinates from the top-left corner, x to the right and y
-    ///     downwards; outside the widget when the position is not in view. The world is not
-    ///     repeated, so a position one world width away gives a point one world width off.
+    ///     downwards; outside the widget when the position is not in view. As the world
+    ///     repeats east and west, the copy of the position within half a world width of the
+    ///     centre is taken, so a position just across the antimeridian lies next to the centre.
     [[nodiscard]] QPointF point_of(core::geo::Position position) const;
     /// Returns the position under a widget pixel at the current view, the inverse of
     /// `point_of`.
     ///
     /// @param point Widget coordinates from the top-left corner; may lie outside the widget.
     /// @return The position. Its latitude is clamped to [-`kMaxLatitudeDeg`,
-    ///     `kMaxLatitudeDeg`]; its longitude is not wrapped and lies outside [-180, 180] when
-    ///     the point is beyond the antimeridian.
+    ///     `kMaxLatitudeDeg`] and its longitude wrapped into [-180, 180), also for a point
+    ///     beyond the antimeridian.
     [[nodiscard]] core::geo::Position position_at(QPointF point) const;
+
+    /// Returns the attribution drawn in the bottom-right corner.
+    ///
+    /// @return The text set with `set_attribution`; without one, `default_attribution` of the
+    ///     cache's tile URL template. Empty when nothing is drawn.
+    [[nodiscard]] QString attribution() const;
+    /// Sets the attribution drawn in the bottom-right corner and repaints.
+    ///
+    /// Set from the `map/tile_attribution` preference by the main window.
+    ///
+    /// @param attribution Text to draw, for example the credit a tile server's terms require;
+    ///     empty draws no attribution. `std::nullopt` returns to `default_attribution` of the
+    ///     cache's tile URL template.
+    void set_attribution(std::optional<QString> attribution);
 
     /// Returns the ground distance one pixel covers at the centre latitude.
     ///
@@ -303,8 +332,8 @@ signals:
     /// drag.
     ///
     /// Emitted by `set_center` (always), `set_zoom`, `zoom_by` and `zoom_to` (when the level
-    /// changes) and by every step of a drag; not emitted when follow mode recentres on a new
-    /// vessel position. The main window saves the zoom level on it.
+    /// changes), by every step of a drag and by `set_vessel` when follow mode moves the centre
+    /// to a new vessel position. The main window saves the zoom level on it.
     void view_changed();
     /// Emitted when follow mode is switched on or off, and only then.
     ///
@@ -427,8 +456,8 @@ private:
     /// @param painter Painter on the widget.
     void draw_vessel(QPainter& painter);
     /// Draws the overlays: the zoom level and view state with the north arrow (top left),
-    /// the scale bar (bottom left), and the pointer position and the OpenStreetMap
-    /// attribution (bottom right).
+    /// the scale bar (bottom left), and the pointer position and the attribution (bottom
+    /// right); an empty attribution draws no box and the pointer position takes its place.
     ///
     /// @param painter Painter on the widget.
     void draw_overlay(QPainter& painter);
@@ -464,13 +493,15 @@ private:
     ///
     /// @param pixel World pixel coordinates.
     /// @return The position, with the latitude clamped to [-`kMaxLatitudeDeg`,
-    ///     `kMaxLatitudeDeg`] and the longitude not wrapped.
+    ///     `kMaxLatitudeDeg`] and the longitude wrapped into [-180, 180).
     [[nodiscard]] core::geo::Position position_of_world(QPointF pixel) const;
     /// Returns the world pixel coordinates of the centre at the current fractional zoom.
     ///
     /// @return `world_pixel` of the centre.
     [[nodiscard]] QPointF center_pixel() const;
     /// Moves the map content by a distance on screen and emits `view_changed`.
+    ///
+    /// The new centre's longitude is wrapped into [-180, 180).
     ///
     /// @param delta_px Movement of the content in pixels, x to the right and y downwards;
     ///     the centre moves the opposite way.
@@ -501,13 +532,13 @@ private:
     /// Start of the leg to the destination, or `std::nullopt` for no leg line; always empty
     /// without a destination.
     std::optional<core::geo::Position> leg_origin_;
+    /// Attribution set with `set_attribution`, or `std::nullopt` for `default_attribution`.
+    std::optional<QString> attribution_;
     /// Position under the pointer, or `std::nullopt` while the pointer is not over the map.
     std::optional<core::geo::Position> pointer_;
     /// Pointer position in widget pixels at the last drag step, or `std::nullopt` when no
     /// drag is in progress.
     std::optional<QPoint> drag_last_;
-    /// Whether the current drag has moved the map; set but not read.
-    bool dragged_{false};
     /// The *+* button; a child of the widget.
     QToolButton* zoom_in_button_;
     /// The *−* button; a child of the widget.
