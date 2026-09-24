@@ -41,9 +41,16 @@ clamped to the configured maximum, 35 degrees by default.
 Every controllable parameter can be **overridden** (pinned to a value, drift stops) or
 **nudged** (moved by a delta and then pinned). Keyboard arrows in the desktop application
 are nudges: up and down nudge speed, left and right nudge heading, or the rudder when
-steering mode is on. Clearing an override lets the value drift again from where it is,
-within its drift band: a value pinned outside the seed plus or minus the amplitude moves back
-to the edge of the band on the next tick.
+steering mode is on. An override holds the value as the simulation uses it, normalised into
+[0, 360) for angles, raised to zero for speeds and depth, and clamped to the maximum rudder
+angle for the rudder. In steering mode the rudder takes precedence over a heading override:
+the heading keeps turning, and when steering mode is switched off the override holds it
+where the rudder left it.
+
+Clearing an override lets the value drift again from where it is. A value pinned outside
+the seed plus or minus the amplitude drifts back gradually: every tick moves it towards
+that band by the full `step_per_second × tick`, and once inside it performs its bounded
+walk again. A value whose variation is zero stays where it was pinned.
 
 ### Apparent wind
 
@@ -82,7 +89,11 @@ from the profile seed and do not drift; apparent wind is recomputed from the ves
 
 At the end of the track the source either **stops**, holding the last point with zero speed
 and reporting that it is finished so that the run ends, or **loops** back to the first point.
-A timed track that loops rewinds the clock to its first timestamp.
+A loop carries the time that ran past the end into the next lap, however many laps one tick
+spans, so the pace along the track has no hiccup. A timed track that loops rewinds the clock
+to its first timestamp. A track without duration, such as a single point, stops on the
+first tick when it does not loop; when it loops, the vessel stays at the point with zero
+speed and the run goes on.
 
 The operator can jump to any point and seek to any elapsed time; the state is recomputed at
 once from the leg table, so seeking is as cheap as a tick.
@@ -102,7 +113,10 @@ Pausing stops the clock. **Step** emits exactly the next recorded sentence and m
 clock to it. **Seek** moves the clock to any offset: the entries before the new position are
 applied to the state without being sent, so the instruments show the right values the
 moment the replay continues. At the end the replay stops and the run ends, or loops,
-carrying the surplus time into the next pass so that the cadence has no hiccup.
+carrying the surplus time into the next pass so that the cadence has no hiccup, exactly as a
+looping track does: when one tick spans several passes of a very short log, every pass is
+sent. A log whose entries all share one offset has no duration and is sent once per tick
+when it loops. A replay with no entries at all ends the run at once, looping or not.
 
 ## Destination
 

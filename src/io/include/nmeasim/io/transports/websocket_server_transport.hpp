@@ -16,15 +16,20 @@
 
 #include <QHostAddress>
 #include <QList>
+#include <QString>
 #include <QWebSocket>
 #include <QWebSocketServer>
+
+#include <functional>
+#include <utility>
 
 namespace nmeasim::io {
 
 /// Accepts WebSocket clients and sends every line to all of them as a text frame.
 ///
-/// The server speaks plain `ws://`, without TLS. A greeting can be configured; it is sent to
-/// each client as soon as it connects, before any line. `SimulationRunner` sets the Signal K
+/// The server speaks plain `ws://`, without TLS. A greeting can be configured, as a fixed text
+/// or as a function called for each client; it is sent to each client as soon as it
+/// connects, before any line. `SimulationRunner` sets a function that builds the Signal K
 /// `hello` message as the greeting of outputs with the `signalk` encoding. Clients that
 /// disconnect or report a socket error are removed at once, messages received from clients
 /// are ignored, and `client_count_changed` is emitted whenever a client is added or removed.
@@ -84,14 +89,32 @@ public:
     /// Sets the text sent to every client immediately after it connects.
     ///
     /// Applies to clients that connect afterwards; clients already connected do not receive
-    /// it.
+    /// it. Replaces a function set by `set_greeting_function`.
     ///
     /// @param greeting The greeting, sent as one text frame; empty disables it.
-    void set_greeting(QString greeting) { greeting_ = std::move(greeting); }
-    /// Returns the current greeting.
+    void set_greeting(QString greeting) {
+        greeting_ = std::move(greeting);
+        greeting_function_ = nullptr;
+    }
+    /// Sets a function that builds the greeting of each client when it connects.
     ///
-    /// @return The text set by `set_greeting`; empty when none is set.
-    [[nodiscard]] QString greeting() const { return greeting_; }
+    /// The function is called once per client, on the transport's thread, just before the
+    /// greeting is sent, so that a greeting carrying a time or a state is current. Applies to
+    /// clients that connect afterwards and replaces a text set by `set_greeting`.
+    ///
+    /// @param greeting Returns the greeting, sent as one text frame; an empty result sends
+    ///   none. An empty function disables the greeting.
+    void set_greeting_function(std::function<QString()> greeting) {
+        greeting_function_ = std::move(greeting);
+        greeting_.clear();
+    }
+    /// Returns the greeting a client connecting now would receive.
+    ///
+    /// @return The result of the function set by `set_greeting_function` when one is set,
+    ///   otherwise the text set by `set_greeting`; empty when neither is set.
+    [[nodiscard]] QString greeting() const {
+        return greeting_function_ ? greeting_function_() : greeting_;
+    }
 
 private:
     /// Takes every pending connection from the server, starts tracking it, sends it the
@@ -115,8 +138,11 @@ private:
     quint16 requested_port_;
     /// Local address to listen on.
     QHostAddress bind_address_;
-    /// Text sent to each client on connection; empty for none.
+    /// Text sent to each client on connection; empty for none, or when `greeting_function_`
+    /// is set.
     QString greeting_;
+    /// Builds the greeting of each client on connection; empty to use `greeting_` instead.
+    std::function<QString()> greeting_function_;
 };
 
 }  // namespace nmeasim::io

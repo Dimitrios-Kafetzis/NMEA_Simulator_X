@@ -88,6 +88,8 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
     int minute = 0;
     int second = 0;
     int millisecond = 0;
+    // True when the fraction has a non-zero digit, including one beyond the millisecond.
+    bool fraction_nonzero = false;
     if (offset < text.size()) {
         if (!consume(text, offset, 'T') && !consume(text, offset, ' ')) {
             return std::nullopt;
@@ -117,6 +119,7 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
                     if (digits < 3) {
                         fraction = fraction * 10 + (text[offset] - '0');
                     }
+                    fraction_nonzero = fraction_nonzero || text[offset] != '0';
                     ++digits;
                     ++offset;
                 }
@@ -130,7 +133,9 @@ std::optional<std::chrono::system_clock::time_point> parse_iso8601(std::string_v
             }
         }
     }
-    if (hour > 24 || minute > 59 || second > 60 || (hour == 24 && (minute != 0 || second != 0))) {
+    // Hour 24 is only the instant that ends the day: nothing may follow it.
+    if (hour > 24 || minute > 59 || second > 60 ||
+        (hour == 24 && (minute != 0 || second != 0 || fraction_nonzero))) {
         return std::nullopt;
     }
 

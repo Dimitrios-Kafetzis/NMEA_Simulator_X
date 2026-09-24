@@ -46,6 +46,14 @@ Units are part of the name: `speed_kn`, `depth_m`, `bearing_deg`, `period_ms`.
 - Test files mirror the source path: `src/core/src/geo/geodesic.cpp` is tested by
   `tests/core/geo/geodesic_test.cpp`.
 - Use Catch2 tags: `[nmea0183]`, `[geo]`, `[io]`, `[integration]`.
+- The Python tools in `tools/` are tested with the standard library's `unittest` in
+  `tools/tests/`, one `test_<subject>.py` file per subject. CI runs them on every platform,
+  after the stream cross-check that installs their dependencies:
+
+    ```bash
+    pip install pynmea2==1.19.0 pyais==2.9.4
+    python3 -m unittest discover -s tools/tests -v
+    ```
 
 ## Documentation comments
 
