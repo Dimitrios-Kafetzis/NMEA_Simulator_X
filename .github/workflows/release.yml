@@ -43,19 +43,20 @@ on:
       - ".github/workflows/release.yml"
       - "packaging/**"
       - "cmake/**"
-      - "CMakeLists.txt"
+      # Every CMakeLists.txt, the top-level one included: each can change what is packaged.
+      - "**/CMakeLists.txt"
       - "CMakePresets.json"
-      - "src/app/CMakeLists.txt"
-      - "src/cli/CMakeLists.txt"
 
 permissions:
   contents: read
 
 # One run per tag or branch at a time. A newer push to a branch cancels its older dry run;
-# another run for the same tag waits for the one in progress.
+# another run for the same tag waits for the one in progress, so a release is never cancelled.
+# Only a dry run has no tag input: in a run called from release-please.yml the event and ref
+# are the caller's (a push to the main branch), so they cannot tell a release from a dry run.
 concurrency:
   group: release-${{ inputs.tag || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+  cancel-in-progress: ${{ !inputs.tag && github.event_name == 'push' && github.ref_type == 'branch' }}
 
 env:
   # The tools that go into the packages are pinned to exact releases (ADR 0015). QT_VERSION
