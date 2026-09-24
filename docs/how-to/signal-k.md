@@ -55,5 +55,5 @@ follows the same setting.
 
 ## Send only some paths
 
-The output's sentence filter lists path prefixes for a Signal K output: `navigation`
+The output's sentence filter lists leading path segments for a Signal K output: `navigation`
 sends every navigation path, `environment.wind, propulsion` the wind and the engines.

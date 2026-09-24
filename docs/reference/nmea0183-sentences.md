@@ -14,13 +14,17 @@ a change to the output.
 - Fields are separated by commas. Empty fields are permitted and mean *no data*.
 - The checksum is the XOR of every byte between the start delimiter and `*`, written as two
   upper-case hexadecimal digits.
-- The total length including `$`, checksum and the terminating `<CR><LF>` never exceeds
+- The total length including `$`, checksum and the terminating `<CR><LF>` is at most
   82 bytes. When a sentence would exceed this, the number of decimals in latitude and
-  longitude is reduced, one digit at a time down to two, instead of emitting a non-compliant
-  line.
+  longitude is reduced, one digit at a time down to two. Every built-in sentence fits with
+  two decimals and its default talker; a sentence that still does not fit (possible only
+  with an unusually long talker) is sent as it is rather than dropped.
 - Numbers never carry a leading `+`, never render negative zero and use a fixed number of
   decimals per field. Positions use four decimal minutes by default (0.19 m resolution).
 - Talker IDs are configurable per sentence; the tables show the defaults.
+- Text fields, such as the waypoint name, never contain the characters NMEA 0183 reserves
+  (`,` `*` `$` `!` `\` `^` `~`), control characters or bytes outside ASCII: they are
+  removed before the sentence is framed.
 - When an output enables [TAG blocks](#tag-blocks) each sentence on that output is preceded
   by a TAG block of the form `\s:<source>,c:<unix time>*hh\`.
 
@@ -496,8 +500,10 @@ example `$PXYZ,1,2,3` or `!AIVDM,1,1,,A,13aEOK?P00PD2wVMdLDRhgvL289?,0`; the lea
 be left out, an old `*hh` and line terminator are ignored, and the checksum is computed
 when the sentence is sent. A body is refused when it is empty, carries characters outside
 printable ASCII or one of `$ ! \ ^ ~` inside, has no address of at least three letters or
-digits, or would exceed 82 characters.
+digits, or would exceed 80 characters with its checksum (82 with the line terminator).
 
 Custom sentences are emitted after the registry sentences of the same round, filtered by
-their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given) and
-recorded like them. An id equal to a registry id is refused.
+their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given, numbered
+by position in the list) and recorded like them. An id equal to a registry id is refused,
+and so is an id that another custom sentence already uses, including an explicit
+`CUSTOM-2` when the second sentence has no id.

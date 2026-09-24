@@ -460,7 +460,8 @@ bool MainWindow::load_log(const QString& path) {
 bool MainWindow::set_recording(const QString& path) {
     if (!runner_.set_recording(path)) {
         report_error(tr("Cannot record"), tr("The log file %1 cannot be written").arg(path));
-        // The runner keeps a failed recording set; clearing it unticks Record log.
+        // The runner sets no failed recording and emits no recording_changed for it; clearing
+        // the recording emits one with an empty path, which unticks Record log.
         runner_.set_recording({});
         return false;
     }

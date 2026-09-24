@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <string>
 
 namespace nmeasim::app {
@@ -199,7 +200,8 @@ OutputsPage::OutputsPage(QWidget* parent)
     client_port_spin = make_port(client_page);
     client->addRow(tr("Port"), client_port_spin);
     reconnect_spin = new QSpinBox(client_page);
-    reconnect_spin->setRange(100, 600000);
+    // The range the profile accepts, so that a loaded value is kept as it is.
+    reconnect_spin->setRange(1, 3600000);
     reconnect_spin->setSuffix(tr(" ms"));
     client->addRow(tr("Reconnect after"), reconnect_spin);
     editor_stack->addWidget(client_page);  // 1: TCP client
@@ -234,7 +236,8 @@ OutputsPage::OutputsPage(QWidget* parent)
     serial->addRow(tr("Port"), serial_port_combo);
     baud_combo = new QComboBox(serial_page);
     baud_combo->setEditable(true);
-    baud_combo->setValidator(new QIntValidator(1, 10000000, baud_combo));
+    // Any positive rate, as the profile accepts; the port decides what it supports.
+    baud_combo->setValidator(new QIntValidator(1, std::numeric_limits<int>::max(), baud_combo));
     for (const int rate : kBaudRates) {
         baud_combo->addItem(QString::number(rate));
     }
@@ -334,10 +337,8 @@ void OutputsPage::store(io::Profile& profile) const {
 QList<io::OutputConfig> OutputsPage::outputs() const {
     auto result = outputs_;
     if (editing_ >= 0 && editing_ < result.size()) {
-        // The widgets hold the latest values of the output being edited, so the copy is
-        // refreshed from them first; `validate` and `store` rely on that, hence the cast.
-        const_cast<OutputsPage*>(this)->commit_editor();
-        result = outputs_;
+        // The widgets hold the latest values of the output being edited.
+        result[editing_] = edited(result.at(editing_));
     }
     return result;
 }
@@ -355,6 +356,10 @@ QString OutputsPage::validate() const {
         }
         if (output.type == Type::TcpClient && output.host.trimmed().isEmpty()) {
             return tr("Output %1: the host is missing.").arg(index + 1);
+        }
+        // A cleared baud rate field reads as 0.
+        if (output.type == Type::Serial && output.serial.baud_rate <= 0) {
+            return tr("Output %1: the baud rate is missing.").arg(index + 1);
         }
     }
     return {};
@@ -529,7 +534,11 @@ void OutputsPage::commit_editor() {
     if (editing_ < 0 || editing_ >= outputs_.size()) {
         return;
     }
-    auto& output = outputs_[editing_];
+    outputs_[editing_] = edited(outputs_.at(editing_));
+    refresh_titles();
+}
+
+io::OutputConfig OutputsPage::edited(io::OutputConfig output) const {
     output.enabled = enabled_check->isChecked();
     output.encoding = static_cast<io::OutputConfig::Encoding>(encoding_combo->currentIndex());
     output.filter.clear();
@@ -612,7 +621,7 @@ void OutputsPage::commit_editor() {
         case Type::Stdout:
             break;
     }
-    refresh_titles();
+    return output;
 }
 
 void OutputsPage::refresh_titles() {

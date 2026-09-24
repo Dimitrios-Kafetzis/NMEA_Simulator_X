@@ -1191,6 +1191,16 @@ std::optional<Profile> Profile::from_json(const QJsonObject& json, QString* erro
         }
         profile.custom_sentences.push_back(sentence);
     }
+    if (const auto duplicate =
+            core::simulation::find_duplicate_custom_id(profile.custom_sentences)) {
+        *err = QStringLiteral(
+                   "sentences.custom[%1]: id '%2' is already used by another custom "
+                   "sentence")
+                   .arg(*duplicate)
+                   .arg(QString::fromStdString(core::simulation::effective_custom_id(
+                       profile.custom_sentences[*duplicate], *duplicate)));
+        return std::nullopt;
+    }
 
     const auto outputs = document.value(QStringLiteral("outputs")).toArray();
     for (qsizetype i = 0; i < outputs.size(); ++i) {
@@ -1219,17 +1229,35 @@ std::optional<Profile> Profile::load(const QString& path, QString* error) {
     }
     auto profile = from_json(document.object(), err);
     if (profile) {
-        const QDir directory = QFileInfo(path).absoluteDir();
-        for (QString* file_path : {&profile->track.path, &profile->replay.path}) {
-            if (!file_path->isEmpty() && QFileInfo(*file_path).isRelative()) {
-                *file_path = QDir::cleanPath(directory.absoluteFilePath(*file_path));
-            }
-        }
+        profile->base_directory = QDir::cleanPath(QFileInfo(path).absolutePath());
     }
     return profile;
 }
 
+QString Profile::resolve_path(const QString& path) const {
+    if (path.isEmpty() || base_directory.isEmpty() || !QFileInfo(path).isRelative()) {
+        return path;
+    }
+    return QDir::cleanPath(QDir(base_directory).absoluteFilePath(path));
+}
+
 bool Profile::save(const QString& path, QString* error) const {
+    Profile written = *this;
+    const QString target = QDir::cleanPath(QFileInfo(path).absolutePath());
+    if (!base_directory.isEmpty() && target != base_directory) {
+        // Relative paths are relative to the profile's directory, so a profile saved
+        // elsewhere must name the same files from its new place.
+        const QDir target_directory(target);
+        QList<QString*> paths{&written.track.path, &written.replay.path};
+        for (auto& output : written.outputs) {
+            paths.append(&output.path);
+        }
+        for (QString* file_path : paths) {
+            if (!file_path->isEmpty() && QFileInfo(*file_path).isRelative()) {
+                *file_path = target_directory.relativeFilePath(resolve_path(*file_path));
+            }
+        }
+    }
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         if (error) {
@@ -1237,7 +1265,7 @@ bool Profile::save(const QString& path, QString* error) const {
         }
         return false;
     }
-    file.write(QJsonDocument(to_json()).toJson(QJsonDocument::Indented));
+    file.write(QJsonDocument(written.to_json()).toJson(QJsonDocument::Indented));
     if (!file.commit()) {
         if (error) {
             *error = QStringLiteral("Cannot write %1: %2").arg(path, file.errorString());

@@ -52,6 +52,13 @@ bool UdpTransport::resolve_destination() {
         fail(QStringLiteral("Invalid UDP destination address '%1'").arg(config_.address));
         return false;
     }
+    // The socket is bound to an IPv4 address, from which an IPv6 destination is unreachable.
+    if (destination_.protocol() != QAbstractSocket::IPv4Protocol) {
+        const QString address = destination_.toString();
+        destination_.clear();
+        fail(QStringLiteral("UDP destination address '%1' is not an IPv4 address").arg(address));
+        return false;
+    }
     return true;
 }
 
@@ -65,14 +72,17 @@ bool UdpTransport::open() {
     }
 
     QHostAddress bind_address{QHostAddress::AnyIPv4};
+    // Looked up once, by system or descriptive name, for both the source address and the
+    // multicast egress.
+    NetworkInterfaceInfo interface_info;
     if (!config_.interface_name.isEmpty()) {
-        const auto info = find_ipv4_interface(config_.interface_name);
-        if (info.address.isNull()) {
-            fail(QStringLiteral("Network interface '%1' has no IPv4 address")
+        interface_info = find_ipv4_interface(config_.interface_name);
+        if (interface_info.address.isNull()) {
+            fail(QStringLiteral("Network interface '%1' is not running or has no IPv4 address")
                      .arg(config_.interface_name));
             return false;
         }
-        bind_address = info.address;
+        bind_address = interface_info.address;
     }
     // Binding to the interface's address makes it the source of the datagrams; port 0 lets
     // the system pick the source port, which receivers do not care about.
@@ -87,7 +97,7 @@ bool UdpTransport::open() {
                                 QVariant(config_.multicast_ttl));
         if (!config_.interface_name.isEmpty()) {
             socket_.setMulticastInterface(
-                QNetworkInterface::interfaceFromName(config_.interface_name));
+                QNetworkInterface::interfaceFromName(interface_info.name));
         }
     }
     set_state(State::Open);
