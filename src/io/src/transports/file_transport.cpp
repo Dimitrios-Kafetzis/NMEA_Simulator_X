@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `FileTransport`: opening the file in append or truncate mode and
+/// writing flushed lines.
+
 #include <nmeasim/io/transports/file_transport.hpp>
 
 namespace nmeasim::io {

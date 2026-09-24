@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `TcpServerTransport` on `QTcpServer`: accepting, tracking and dropping
+/// clients.
+
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
 
 #include <utility>
@@ -37,6 +42,8 @@ bool TcpServerTransport::open() {
 
 void TcpServerTransport::close() {
     for (auto* client : std::exchange(clients_, {})) {
+        // Detached first so that closing the client does not reach drop_client, which would
+        // emit a client count for every client.
         client->disconnect(this);
         client->close();
         client->deleteLater();

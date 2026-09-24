@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `SimulationRunner` and `OutputChannel`: building the source and the
+/// transports from a profile, the tick loop and the encoding of each output.
+
 #include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/nmea0183/tag_block.hpp>
 #include <nmeasim/core/signalk/delta.hpp>
@@ -29,14 +34,26 @@ namespace nmeasim::io {
 
 namespace {
 
-/// Longest simulated step taken for one tick, so that a suspended host does not teleport.
+/// Longest simulated step taken for one tick, so that a suspended or blocked host does not
+/// teleport the vessel.
+///
+/// Wall-clock time beyond this cap is dropped rather than caught up, as the runtime model in
+/// docs/explanation/architecture.md describes.
 constexpr std::chrono::milliseconds kMaxStep{1000};
 
+/// Converts a Qt date-time to a system-clock time point.
+///
+/// @param time The date-time to convert; its time zone is honoured.
+/// @return The same instant, with millisecond resolution.
 std::chrono::system_clock::time_point to_time_point(const QDateTime& time) {
     return std::chrono::system_clock::time_point{
         std::chrono::milliseconds{time.toMSecsSinceEpoch()}};
 }
 
+/// Maps the `loop` flag of a track or replay profile to the end behaviour of its source.
+///
+/// @param loop True when the source starts again at its end.
+/// @return `EndBehaviour::Loop` when `loop` is true, `EndBehaviour::Stop` otherwise.
 core::simulation::EndBehaviour end_behaviour(bool loop) {
     return loop ? core::simulation::EndBehaviour::Loop : core::simulation::EndBehaviour::Stop;
 }
@@ -89,6 +106,7 @@ std::unique_ptr<Transport> SimulationRunner::make_transport(const OutputConfig& 
             return log;
         }
     }
+    // Reached only for a value outside the enumeration; apply_profile rejects the profile.
     return nullptr;
 }
 
@@ -143,6 +161,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
 
 bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
     stop();
+    // Validate everything before touching the members, so that a rejected profile leaves the
+    // previous simulation and outputs in place.
     for (const auto& output : profile.outputs) {
         if (output.enabled && make_transport(output) == nullptr) {
             if (error) {
@@ -204,6 +224,8 @@ void SimulationRunner::start() {
         channel.next_due = simulation_->elapsed();
         channel.counter = 0;
         if (!channel.transport->is_open()) {
+            // A failure reaches output_error through the error_occurred connection; the run
+            // goes on with the other outputs.
             (void)channel.transport->open();
         }
     }

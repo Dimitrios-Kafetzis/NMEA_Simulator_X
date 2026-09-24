@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `available_serial_ports` on top of `QSerialPortInfo`.
+
 #include <nmeasim/io/serial_ports.hpp>
 
 #include <QSerialPortInfo>

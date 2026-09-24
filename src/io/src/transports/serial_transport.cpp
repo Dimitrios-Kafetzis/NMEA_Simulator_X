@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `SerialTransport` on `QSerialPort`: opening and configuring the port and
+/// detecting an unplugged device.
+
 #include <nmeasim/io/transports/serial_transport.hpp>
 
 namespace nmeasim::io {
@@ -10,13 +15,15 @@ SerialTransport::SerialTransport(SerialConfig config, QObject* parent)
             return;
         }
         if (error == QSerialPort::ResourceError && port_.isOpen()) {
-            // The device was unplugged.
+            // A resource error on an open port means the device went away, for example an
+            // unplugged USB adapter.
             port_.close();
             fail(QStringLiteral("Serial port %1 was disconnected").arg(config_.port_name));
             return;
         }
         emit error_occurred(port_.errorString());
     });
+    // Discard anything received; the simulator only talks.
     connect(&port_, &QSerialPort::readyRead, &port_, [this] { port_.readAll(); });
 }
 

@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Reading, writing, validation and schema migration of simulator profiles.
+///
+/// Implements `nmeasim::io::Profile` and the name conversions of its enumerations. The
+/// helpers in the anonymous namespace convert each section of the JSON document; reading
+/// starts from `Profile::default_profile` so that every missing key keeps its default.
+
 #include <nmeasim/io/profile/profile.hpp>
 
 #include <QDir>
@@ -20,27 +28,62 @@ using core::simulation::Variation;
 // ---------------------------------------------------------------------------------------------
 // Small JSON helpers
 
+/// Reads a number from a JSON object.
+///
+/// @param object The object to read from.
+/// @param key The key, a Latin-1 string literal.
+/// @param fallback The value returned when the key is missing or not a number.
+/// @return The number stored under `key`, or `fallback`.
 double number(const QJsonObject& object, const char* key, double fallback) {
     return object.value(QLatin1String(key)).toDouble(fallback);
 }
 
+/// Reads an integer from a JSON object.
+///
+/// @param object The object to read from.
+/// @param key The key, a Latin-1 string literal.
+/// @param fallback The value returned when the key is missing, not a number, or a number
+///     without an exact `int` representation such as `1.5`.
+/// @return The integer stored under `key`, or `fallback`.
 int integer(const QJsonObject& object, const char* key, int fallback) {
     return object.value(QLatin1String(key)).toInt(fallback);
 }
 
+/// Reads a boolean from a JSON object.
+///
+/// @param object The object to read from.
+/// @param key The key, a Latin-1 string literal.
+/// @param fallback The value returned when the key is missing or not a boolean.
+/// @return The boolean stored under `key`, or `fallback`.
 bool boolean(const QJsonObject& object, const char* key, bool fallback) {
     return object.value(QLatin1String(key)).toBool(fallback);
 }
 
+/// Reads a string from a JSON object.
+///
+/// @param object The object to read from.
+/// @param key The key, a Latin-1 string literal.
+/// @param fallback The value returned when the key is missing or not a string; empty by
+///     default.
+/// @return The string stored under `key`, or `fallback`.
 QString text(const QJsonObject& object, const char* key, const QString& fallback = {}) {
     return object.value(QLatin1String(key)).toString(fallback);
 }
 
+/// Serialises the drift of one value as an object with `amplitude` and `step_per_second`.
+///
+/// @param variation The drift, in the unit of the value it applies to.
+/// @return The JSON object.
 QJsonObject variation_to_json(const Variation& variation) {
     return {{QStringLiteral("amplitude"), variation.amplitude},
             {QStringLiteral("step_per_second"), variation.step_per_second}};
 }
 
+/// Reads the drift of one value from an object with `amplitude` and `step_per_second`.
+///
+/// @param value The JSON value; anything but an object yields `fallback` unchanged.
+/// @param fallback The drift used for the whole value or for a missing key.
+/// @return The drift read, completed from `fallback`.
 Variation variation_from_json(const QJsonValue& value, const Variation& fallback) {
     if (!value.isObject()) {
         return fallback;
@@ -50,6 +93,10 @@ Variation variation_from_json(const QJsonValue& value, const Variation& fallback
             number(object, "step_per_second", fallback.step_per_second)};
 }
 
+/// Returns the profile name of a GNSS fix quality, the `simulation.seed.gnss.quality` key.
+///
+/// @param quality The fix quality.
+/// @return `invalid`, `gps` or `differential`; `gps` for a value outside the enumeration.
 QString fix_quality_to_string(FixQuality quality) {
     switch (quality) {
         case FixQuality::Invalid:
@@ -62,6 +109,10 @@ QString fix_quality_to_string(FixQuality quality) {
     return QStringLiteral("gps");
 }
 
+/// Parses the profile name of a GNSS fix quality.
+///
+/// @param value `invalid`, `gps` or `differential`, matched exactly.
+/// @return The fix quality; `FixQuality::Gps` for any other text, without an error.
 FixQuality fix_quality_from_string(const QString& value) {
     if (value == QLatin1String("invalid")) {
         return FixQuality::Invalid;
@@ -72,6 +123,10 @@ FixQuality fix_quality_from_string(const QString& value) {
     return FixQuality::Gps;
 }
 
+/// Returns the profile name of a serial parity, the `parity` key of a serial output.
+///
+/// @param parity The parity.
+/// @return `none`, `even`, `odd`, `mark` or `space`; `none` for a value outside these.
 QString parity_to_string(QSerialPort::Parity parity) {
     switch (parity) {
         case QSerialPort::EvenParity:
@@ -88,6 +143,10 @@ QString parity_to_string(QSerialPort::Parity parity) {
     return QStringLiteral("none");
 }
 
+/// Parses the profile name of a serial parity.
+///
+/// @param value `none`, `even`, `odd`, `mark` or `space`, matched exactly.
+/// @return The parity; `QSerialPort::NoParity` for any other text, without an error.
 QSerialPort::Parity parity_from_string(const QString& value) {
     if (value == QLatin1String("even")) {
         return QSerialPort::EvenParity;
@@ -104,6 +163,10 @@ QSerialPort::Parity parity_from_string(const QString& value) {
     return QSerialPort::NoParity;
 }
 
+/// Returns the profile name of a number of stop bits, the `stop_bits` key of a serial output.
+///
+/// @param bits The stop bits.
+/// @return `1`, `1.5` or `2`; `1` for a value outside these.
 QString stop_bits_to_string(QSerialPort::StopBits bits) {
     switch (bits) {
         case QSerialPort::OneAndHalfStop:
@@ -116,6 +179,10 @@ QString stop_bits_to_string(QSerialPort::StopBits bits) {
     return QStringLiteral("1");
 }
 
+/// Parses the profile name of a number of stop bits.
+///
+/// @param value `1`, `1.5` or `2`, matched exactly; the key holds a string, not a number.
+/// @return The stop bits; `QSerialPort::OneStop` for any other text, without an error.
 QSerialPort::StopBits stop_bits_from_string(const QString& value) {
     if (value == QLatin1String("1.5")) {
         return QSerialPort::OneAndHalfStop;
@@ -126,6 +193,11 @@ QSerialPort::StopBits stop_bits_from_string(const QString& value) {
     return QSerialPort::OneStop;
 }
 
+/// Returns the profile name of a serial flow control, the `flow_control` key.
+///
+/// @param flow The flow control.
+/// @return `none`, `hardware` (RTS/CTS) or `software` (XON/XOFF); `none` for a value outside
+///     these.
 QString flow_control_to_string(QSerialPort::FlowControl flow) {
     switch (flow) {
         case QSerialPort::HardwareControl:
@@ -138,6 +210,11 @@ QString flow_control_to_string(QSerialPort::FlowControl flow) {
     return QStringLiteral("none");
 }
 
+/// Parses the profile name of a serial flow control.
+///
+/// @param value `none`, `hardware` or `software`, matched exactly.
+/// @return The flow control; `QSerialPort::NoFlowControl` for any other text, without an
+///     error.
 QSerialPort::FlowControl flow_control_from_string(const QString& value) {
     if (value == QLatin1String("hardware")) {
         return QSerialPort::HardwareControl;
@@ -148,6 +225,11 @@ QSerialPort::FlowControl flow_control_from_string(const QString& value) {
     return QSerialPort::NoFlowControl;
 }
 
+/// Converts the `data_bits` key of a serial output.
+///
+/// @param bits Bits per character, 5 to 8.
+/// @return The matching data bits; `QSerialPort::Data8` for any value outside 5 to 7,
+///     without an error.
 QSerialPort::DataBits data_bits_from_int(int bits) {
     switch (bits) {
         case 5:
@@ -161,10 +243,18 @@ QSerialPort::DataBits data_bits_from_int(int bits) {
     }
 }
 
+/// Returns the profile name of a UDP addressing mode, the `mode` key of a UDP output.
+///
+/// @param mode The addressing mode.
+/// @return `unicast`, `broadcast` or `multicast`, as `to_string(UdpConfig::Mode)` gives it.
 QString udp_mode_to_string(UdpConfig::Mode mode) {
     return to_string(mode);
 }
 
+/// Parses the profile name of a UDP addressing mode.
+///
+/// @param value `unicast`, `broadcast` or `multicast`, matched exactly.
+/// @return The mode, or `std::nullopt` for any other text, which the caller reports.
 std::optional<UdpConfig::Mode> udp_mode_from_string(const QString& value) {
     if (value == QLatin1String("unicast")) {
         return UdpConfig::Mode::Unicast;
@@ -181,6 +271,15 @@ std::optional<UdpConfig::Mode> udp_mode_from_string(const QString& value) {
 // ---------------------------------------------------------------------------------------------
 // Seed state
 
+/// Serialises the seed values of the vessel as the `simulation.seed` object.
+///
+/// Only the values a profile stores are written: position, altitude, heading, speed over
+/// ground, magnetic variation and deviation, rudder angle, depth, transducer offset, water
+/// temperature, true wind, GNSS, engines, destination (`null` when there is none) and AIS
+/// static data.
+///
+/// @param seed The seed state.
+/// @return The `simulation.seed` object.
 QJsonObject seed_to_json(const core::model::VesselState& seed) {
     const auto& navigation = seed.navigation;
     QJsonObject gnss{
@@ -250,6 +349,19 @@ QJsonObject seed_to_json(const core::model::VesselState& seed) {
     };
 }
 
+/// Reads the `simulation.seed` object on top of a fallback state.
+///
+/// Every missing key keeps the value of `fallback`. Course over ground is set to the heading
+/// and speed through water to the speed over ground, since a profile stores only the latter.
+/// A present `engines` key replaces all engines, each missing engine key defaulting to label
+/// `Engine`, not running, 0 rpm and 20 degrees Celsius. A present `destination` key sets the
+/// destination when it holds an object (latitude and longitude default to 0, the origin to
+/// the seed position, the name to `WPT` and the arrival radius to 100 m) and clears it
+/// otherwise. Nothing is validated here; see `validate_ais`.
+///
+/// @param object The `simulation.seed` object; empty keeps `fallback` entirely.
+/// @param fallback The state the values are read on top of.
+/// @return The seed state.
 core::model::VesselState seed_from_json(const QJsonObject& object,
                                         const core::model::VesselState& fallback) {
     core::model::VesselState seed = fallback;
@@ -349,7 +461,16 @@ core::model::VesselState seed_from_json(const QJsonObject& object,
     return seed;
 }
 
-/// A problem with the AIS static data, or an empty string.
+/// Checks the AIS static data of the own vessel against the ranges of its message fields.
+///
+/// Checks, in this order: an MMSI of at most nine digits, a ship type in [0, 255], a
+/// navigational status in [0, 15] and a position report type of 1, 2 or 3. The dimensions,
+/// draught and texts are not checked here.
+///
+/// @param ais The AIS static data read from the profile.
+/// @return A message naming the first offending `simulation.seed.ais` key, or an empty string
+///     when the data is valid.
+/// @see ITU-R M.1371-5, messages 1, 2, 3 and 5.
 QString validate_ais(const core::model::AisStatic& ais) {
     if (ais.mmsi > 999'999'999U) {
         return QStringLiteral("simulation.seed.ais.mmsi must have at most nine digits");
@@ -369,6 +490,14 @@ QString validate_ais(const core::model::AisStatic& ais) {
 // ---------------------------------------------------------------------------------------------
 // Outputs
 
+/// Serialises one output as an entry of the `outputs` array.
+///
+/// Writes `type`, `enabled`, `encoding` and `filter`, then the keys of the encoding
+/// (`tag_block` for NMEA 0183, `period_ms` with `signalk` or `viewsync` otherwise) and those
+/// of the transport type. Keys that the type and encoding do not use are not written.
+///
+/// @param output The output.
+/// @return The JSON object.
 QJsonObject output_to_json(const OutputConfig& output) {
     QJsonObject object{
         {QStringLiteral("type"), to_string(output.type)},
@@ -445,6 +574,20 @@ QJsonObject output_to_json(const OutputConfig& output) {
     return object;
 }
 
+/// Reads and validates one entry of the `outputs` array.
+///
+/// Every key is read whatever the type and encoding, so a key of another type is still
+/// validated: an out-of-range `port` or an unknown UDP `mode` is rejected on any output.
+/// Missing keys take the defaults of `OutputConfig`.
+///
+/// @param object The entry; a non-object entry arrives as an empty object and fails for its
+///     missing `type`.
+/// @param index Position of the entry in the array, used in the error message.
+/// @param error Receives a message starting with `outputs[index]:` when the entry is
+///     invalid; must not be null.
+/// @return The output, or `std::nullopt` when the type, encoding or UDP mode is unknown,
+///     `period_ms` or `port` is out of range, or a serial output lacks `port_name` or a file
+///     or log output lacks `path`.
 std::optional<OutputConfig> output_from_json(const QJsonObject& object, int index, QString* error) {
     OutputConfig output;
     const auto type = output_type_from_string(text(object, "type"));
@@ -535,8 +678,17 @@ std::optional<OutputConfig> output_from_json(const QJsonObject& object, int inde
 }
 
 // ---------------------------------------------------------------------------------------------
-// Migrations. Each function upgrades a document by exactly one schema version.
+// Migrations
 
+/// Upgrades a profile document from an older schema version to `Profile::kCurrentSchemaVersion`.
+///
+/// Applies, in order, the step of every version after `from_version`, then sets
+/// `schema_version` to the current version. No step so far changes the meaning of an
+/// existing key; they at most fill in keys that older files lack.
+///
+/// @param document The document as read, taken by value and returned modified.
+/// @param from_version The document's `schema_version`, 1 or 2.
+/// @return The document in the current schema.
 QJsonObject migrate(QJsonObject document, int from_version) {
     if (from_version < 2) {
         // Version 2 (milestone M3) added the "track" and "replay" simulation modes with their

@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `WebSocketServerTransport` on `QWebSocketServer`: accepting and greeting
+/// clients and sending text frames.
+
 #include <nmeasim/io/transports/websocket_server_transport.hpp>
 
 #include <utility>
@@ -42,6 +47,8 @@ bool WebSocketServerTransport::open() {
 
 void WebSocketServerTransport::close() {
     for (auto* client : std::exchange(clients_, {})) {
+        // Detached first so that closing the client does not reach drop_client, which would
+        // emit a client count for every client.
         client->disconnect(this);
         client->close();
         client->deleteLater();
