@@ -57,9 +57,8 @@ inline constexpr char kChecksumDelimiter{'*'};
 /// terminator; the caller adds CR LF when transmitting.
 ///
 /// @param sentence The sentence from its start delimiter to its last field, without `*hh`
-///                 and without CR LF.
+///                 and without CR LF. An empty `sentence` has an empty body and gives `*00`.
 /// @return `sentence` followed by `*` and the two checksum digits.
-/// @throws std::out_of_range if `sentence` is empty.
 /// @note A `sentence` that already contains a `*` gets a second checksum computed over the
 ///       first one, which is not a valid sentence.
 [[nodiscard]] std::string append_checksum(std::string_view sentence);

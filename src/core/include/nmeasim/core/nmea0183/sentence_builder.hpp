@@ -27,12 +27,26 @@ namespace nmeasim::core::nmea0183 {
 /// this value.
 inline constexpr std::size_t kMaxSentenceLengthWithoutTerminator{kMaxSentenceLength - 2};
 
+/// Tells whether a character may appear in a sentence field.
+///
+/// NMEA 0183 allows the printable ASCII characters, space included, in a field, except those
+/// it reserves for framing and encoding: `,` (field delimiter), `*` (checksum delimiter), `$`
+/// and `!` (start delimiters), `\` (TAG block delimiter), `^` (code delimiter of the
+/// hexadecimal escapes) and `~` (reserved). CR, LF, the other control characters, DEL and
+/// bytes outside ASCII are never allowed.
+///
+/// @param c The character to check.
+/// @return `true` for a printable ASCII character that NMEA 0183 does not reserve.
+/// @see NMEA 0183 (IEC 61162-1), reserved and valid characters.
+[[nodiscard]] bool is_text_field_character(char c) noexcept;
+
 /// Builder for one sentence: the address, then fields appended in order and separated by
 /// commas.
 ///
-/// Every `field` and `empty` overload returns the builder, so calls can be chained. The
-/// builder neither validates the address nor escapes field values, and it does not stop at
-/// the length limit; `fits_limit` tells whether the framed sentence will fit.
+/// Every `field` and `empty` overload returns the builder, so calls can be chained. Text
+/// fields are cleaned of the characters is_text_field_character() rejects, so a field value
+/// can never add a field or end the sentence; the address is not validated. The builder does
+/// not stop at the length limit; `fits_limit` tells whether the framed sentence will fit.
 ///
 /// @see NMEA 0183, sentence structure.
 class SentenceBuilder {
@@ -48,15 +62,19 @@ public:
     ///                  VDM and VDO.
     SentenceBuilder(std::string_view talker, std::string_view formatter, char delimiter = '$');
 
-    /// Appends a text field verbatim.
+    /// Appends a text field without the characters NMEA 0183 does not allow in it.
     ///
-    /// @param value The field text; empty appends an empty field. A `,` or `*` in it would
-    ///              corrupt the sentence and is not checked.
+    /// Every character for which is_text_field_character() is false, such as `,`, `*`, CR
+    /// or LF, is removed; the others are sent unchanged.
+    ///
+    /// @param value The field text; empty, or with no allowed character, appends an empty
+    ///              field.
     /// @return This builder.
     SentenceBuilder& field(std::string_view value);
     /// Appends a single-character field, such as a status or hemisphere letter.
     ///
-    /// @param value The character to send.
+    /// @param value The character to send; a character is_text_field_character() rejects
+    ///              appends an empty field instead.
     /// @return This builder.
     SentenceBuilder& field(char value);
     /// Appends a number with a fixed number of decimals, formatted by `format_fixed`.
