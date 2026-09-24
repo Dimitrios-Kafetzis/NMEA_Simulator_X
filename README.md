@@ -60,9 +60,9 @@ The full walkthrough for each platform is in
 ## Documentation
 
 The documentation lives in [`docs/`](docs/) and is organised as tutorials, how-to guides,
-reference material and explanations, with a Doxygen reference of the C++ API. Architecture
-decisions are recorded in [`docs/adr/`](docs/adr/). The site is published at
-<https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/>.
+reference material and explanations, with a C++ reference generated from the source
+comments. Architecture decisions are recorded in [`docs/adr/`](docs/adr/). The site is
+published at <https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/>.
 
 ## Contributing
 

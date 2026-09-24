@@ -1,69 +1,82 @@
-# Doxygen configuration of the C++ API reference. Run from the repository root:
-#   NMEASIM_VERSION=1.0.0 doxygen tools/doxygen/Doxyfile
-# The MkDocs hook docs/hooks/doxygen.py runs it during `mkdocs build` and publishes the HTML
-# under api/ in the documentation site. Warnings are errors.
+# SPDX-License-Identifier: GPL-3.0-only
+# Doxygen configuration of the C++ reference. Doxygen parses every C++ file of the libraries,
+# the applications and the tests and writes XML, which tools/doxygen/cppreference.py turns
+# into the reference pages of the documentation site (see ADR 0017). The MkDocs hook
+# tools/doxygen/mkdocs_hook.py runs it during `mkdocs build`; to run it on its own, from the
+# repository root:
+#   doxygen tools/doxygen/Doxyfile
+# Warnings go to build/doxygen/warnings.log; the hook turns them into build errors.
 
 PROJECT_NAME           = "NMEA Simulator X"
 PROJECT_NUMBER         = $(NMEASIM_VERSION)
-PROJECT_BRIEF          = "C++ API of the core and io libraries"
 OUTPUT_DIRECTORY       = build/doxygen
 CREATE_SUBDIRS         = NO
 
-INPUT                  = tools/doxygen/mainpage.md \
-                         src/core/include \
-                         src/io/include
-FILE_PATTERNS          = *.hpp
+# Every C++ file, including the headers and sources that CMake configures from .in templates
+# and the namespace comments in src/namespaces.dox. The Windows resource script is not C++.
+INPUT                  = src \
+                         tests
+FILE_PATTERNS          = *.hpp \
+                         *.cpp \
+                         *.hpp.in \
+                         *.cpp.in \
+                         *.dox
+EXTENSION_MAPPING      = in=C++
 RECURSIVE              = YES
-USE_MDFILE_AS_MAINPAGE = tools/doxygen/mainpage.md
-STRIP_FROM_PATH        = src/core/include \
-                         src/io/include
+EXCLUDE_PATTERNS       = */resources/*
+# Catch2 test cases are listed from the sources by the generator; they are not entities.
+EXCLUDE_SYMBOLS        = TEST_CASE
+STRIP_FROM_PATH        = .
 STRIP_FROM_INC_PATH    = src/core/include \
                          src/io/include
 FULL_PATH_NAMES        = YES
+CASE_SENSE_NAMES       = YES
 
 JAVADOC_AUTOBRIEF      = YES
 MARKDOWN_SUPPORT       = YES
 AUTOLINK_SUPPORT       = YES
 BUILTIN_STL_SUPPORT    = YES
+INHERIT_DOCS           = YES
 EXTRACT_ALL            = NO
-EXTRACT_PRIVATE        = NO
+EXTRACT_PRIVATE        = YES
+EXTRACT_PRIV_VIRTUAL   = YES
 EXTRACT_STATIC         = YES
-EXTRACT_ANON_NSPACES   = NO
+EXTRACT_LOCAL_CLASSES  = YES
+EXTRACT_ANON_NSPACES   = YES
 HIDE_UNDOC_MEMBERS     = NO
 HIDE_UNDOC_CLASSES     = NO
-HIDE_FRIEND_COMPOUNDS  = YES
+HIDE_FRIEND_COMPOUNDS  = NO
 SORT_MEMBER_DOCS       = NO
-SHOW_USED_FILES        = NO
-SHOW_FILES             = YES
-SHOW_NAMESPACES        = YES
 
-# Qt macros in the io headers.
+# Qt macros and keywords.
 ENABLE_PREPROCESSING   = YES
 MACRO_EXPANSION        = YES
 EXPAND_ONLY_PREDEF     = YES
 PREDEFINED             = Q_OBJECT= \
+                         Q_GADGET= \
+                         "Q_ENUM(x)=" \
+                         "Q_DECLARE_METATYPE(x)=" \
                          Q_SIGNALS=signals \
-                         Q_SLOTS=slots
+                         Q_SLOTS=slots \
+                         Q_EMIT=
 
 QUIET                  = YES
 WARNINGS               = YES
 WARN_IF_UNDOCUMENTED   = YES
 WARN_IF_DOC_ERROR      = YES
 WARN_IF_INCOMPLETE_DOC = YES
-WARN_NO_PARAMDOC       = NO
-WARN_IF_UNDOC_ENUM_VAL = NO
-WARN_AS_ERROR          = FAIL_ON_WARNINGS
+WARN_NO_PARAMDOC       = YES
+WARN_IF_UNDOC_ENUM_VAL = YES
+# The hook fails the build on warnings from the directories whose comments are complete.
+WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
+WARN_LOGFILE           = build/doxygen/warnings.log
 
-GENERATE_HTML          = YES
-HTML_OUTPUT            = api
-HTML_COLORSTYLE        = TOGGLE
-GENERATE_TREEVIEW      = YES
-FULL_SIDEBAR           = NO
-SEARCHENGINE           = YES
-SERVER_BASED_SEARCH    = NO
+GENERATE_HTML          = NO
 GENERATE_LATEX         = NO
-GENERATE_XML           = NO
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+XML_PROGRAMLISTING     = NO
+XML_NS_MEMB_FILE_SCOPE = YES
 HAVE_DOT               = NO
 SOURCE_BROWSER         = NO
-ALPHABETICAL_INDEX     = YES

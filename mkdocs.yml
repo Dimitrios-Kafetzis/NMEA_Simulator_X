@@ -4,6 +4,9 @@ site_url: https://dimitrios-kafetzis.github.io/NMEA_Simulator_X/
 repo_url: https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X
 repo_name: Dimitrios-Kafetzis/NMEA_Simulator_X
 edit_uri: edit/main/docs/
+validation:
+  anchors: warn
+
 copyright: Copyright &copy; 2026 Dimitrios Kafetzis. Licensed under GPL-3.0.
 
 theme:
@@ -33,6 +36,9 @@ theme:
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
