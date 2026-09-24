@@ -20,8 +20,8 @@ profile used is reopened, and if there is none the built-in default profile is u
 | Dashboard (central) | Compass rose and wind dial, then instrument tiles with override controls; scrolls when the window is small | No |
 | Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
-| Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
-| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the sentence counter. Errors appear here for ten seconds | No |
+| Outputs (dock, right) | One row per configured output: description, state, clients, lines sent (sentences, or Signal K or ViewSync messages), bytes, last error | Yes, *View* menu |
+| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the counter of NMEA 0183 sentences produced. Errors appear here for ten seconds | No |
 
 Docks can be moved to any edge, stacked, floated or closed. Geometry and dock layout are
 saved on exit and restored at the next start; the first start gives the map about 400 pixels,
@@ -139,9 +139,11 @@ The top row holds two round instruments and the position, time and GNSS tiles:
 
 An active override stops the random drift of that parameter, and the tile gets an amber
 border so that overridden values stand out. Clearing it lets the value drift again from where
-it is, within its drift band: a value pinned outside the seed plus or minus the amplitude
-moves back to the edge of the band on the next tick. In track and replay mode every override control is disabled, because
-the file drives the vessel.
+it is: a value pinned outside the seed plus or minus the amplitude drifts back towards that
+band at its normal step rate, one full step per tick, and then wanders within it. In steering
+mode the heading follows the rudder even when its override is set; switching steering off
+leaves the override holding the heading where the rudder left it. In track and replay mode every override control is disabled,
+because the file drives the vessel.
 
 ## Map
 
@@ -159,11 +161,12 @@ Overlays keep the chart readable:
 | Top left | Zoom level (with one decimal between whole levels) and *offline*, *free view* or *destination set*; below it a north arrow, as the chart is always north up |
 | Top right | Buttons *+* and *−* (zoom one level) and *Follow the vessel* (lit while following) |
 | Bottom left | Scale bar in round nautical miles (0.1 to 5000 nm), or metres below 0.1 nm |
-| Bottom right | The position under the pointer while it is over the map, and the OpenStreetMap attribution |
+| Bottom right | The position under the pointer while it is over the map, and the attribution of the tile server |
 
 The zoom level is continuous: the wheel, the touchpad and pinch gestures zoom smoothly, using
 the tiles of the nearest whole level scaled to fit, while the keys and buttons step to whole
-levels.
+levels. The map pans freely across the 180th meridian: the world repeats east and west, and
+positions picked on the map always have a longitude between -180° and 180°.
 
 | Input | Effect |
 | --- | --- |
@@ -193,20 +196,38 @@ Tiles follow the slippy map scheme and come from a tile server given as a URL te
 with `{z}`, `{x}` and `{y}` placeholders. The default is the OpenStreetMap server,
 `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, used under its
 [tile usage policy](https://operations.osmfoundation.org/policies/tiles/): requests carry
-a `User-Agent` naming this application, at most four downloads run at a time and every tile
-is cached. Set another server through the `map/tile_url` preference.
+a `User-Agent` naming this application and its version, at most four downloads run at a time,
+every tile is cached and a tile that failed is not requested over and over. Set another server
+through the `map/tile_url` preference.
+
+A tile the server does not have (HTTP 404 or 410) is not requested again until the
+application restarts. After any other failure, such as no network
+connection, a timeout or another HTTP error, the tile is requested again at the earliest 30
+seconds later, and each further failure of the same tile doubles that delay up to 10 minutes.
+Unticking and ticking *View → Download map tiles* again retries those tiles at once.
+
+The map credits *© OpenStreetMap contributors* in its bottom-right corner when the tiles come
+from an OpenStreetMap server (a host ending in `openstreetmap.org`). For any other server it
+draws no attribution, because it cannot know that server's terms: put the credit the server
+asks for in the `map/tile_attribution` preference, which replaces the default for every
+server (an empty value draws none).
 
 Every downloaded tile is written to the tile cache directory below, so once an area has
 been viewed it stays available without a network connection. When a tile is missing the map
 shows the matching part of the nearest cached lower zoom level, or a grey square when there
 is none. Untick *View → Download map tiles* to stop all network access; the map then uses
-the cache only and shows *offline*.
+the cache only and shows *offline*. Unticking it also cancels the downloads in progress, as does
+*View → Clear map tile cache*.
 
 | Platform | Tile cache directory |
 | --- | --- |
 | Windows | `%LOCALAPPDATA%\NMEASimulatorX\NMEASimulatorX\cache\tiles` |
 | macOS | `~/Library/Caches/NMEASimulatorX/NMEASimulatorX/tiles` |
 | Linux | `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles` |
+
+The `map/cache_directory` preference moves the cache: the tiles are then kept in its `tiles`
+sub-directory, which *Clear map tile cache* deletes, and the change takes effect at the next
+start.
 
 ## Console
 
@@ -260,15 +281,16 @@ every change. The profile on disk is not touched until you save it.
 | Mode | *Vessel driven by*: delta simulation, follow a track or replay a log |
 | Track | File (with *Browse...*), speed without timestamps, follow the track's own timestamps, start again at the end; enabled in track mode |
 | Log replay | File (with *Browse...*), interval without times, start again at the end; enabled in replay mode |
-| Profile and clock | Name, simulation step (10 to 10000 ms), fixed start time in UTC or the wall clock, random seed |
+| Profile and clock | Name, simulation step (10 to 10000 ms), fixed start time in UTC or the wall clock, random seed (0 to 4294967295) |
 | Initial vessel values | Latitude, longitude, altitude, heading, speed over ground, magnetic variation and deviation, depth, transducer offset, water temperature, true wind direction and speed |
 | GNSS receiver | Fix, fix quality, satellites in use and in view, HDOP, PDOP, VDOP, geoid separation |
 | Drift around the initial values | Amplitude and step per second for heading, speed, depth, water temperature, wind direction and wind speed; an amplitude of 0 freezes the value; enabled in delta mode |
-| Destination | *Steer for a waypoint*, its id, latitude, longitude and arrival circle radius; a new destination starts its leg at the initial position |
+| Destination | *Steer for a waypoint*, its id, latitude, longitude and arrival circle radius; a new destination starts its leg at the initial position, and one whose coordinates were not edited keeps its leg |
 | Steering | Turn rate per degree of rudder, maximum rudder angle |
 
 The fields map one to one onto the `simulation` object of the
-[profile file](profile.md#simulation).
+[profile file](profile.md#simulation). Latitudes and longitudes are shown with six decimals;
+a coordinate whose field is left unchanged keeps all the decimals it has in the profile.
 
 ### Vessel tab
 
@@ -280,17 +302,19 @@ The fields map one to one onto the `simulation` object of the
 ### Sentences tab
 
 One row per sentence in the registry with its enabled flag, id, description, group, talker
-and period in milliseconds. An empty talker uses the registry default shown as placeholder.
-*Enable all*, *Disable all* and *Reset to defaults* act on every row. *Position decimals*
-sets the fractional minute digits of latitude and longitude.
+and period in milliseconds. A talker is two letters; an empty talker uses the registry default
+shown as placeholder, and *OK* refuses a single letter. *Enable all*, *Disable all* and
+*Reset to defaults* act on every row, and leave *Position decimals* alone, which sets the
+fractional minute digits of latitude and longitude.
 
 Only rows that differ from the registry defaults are written to the profile, so a saved
 profile stays small and follows registry changes in later versions.
 
 Below the registry, the *Custom sentences* table holds the operator's own sentences
 ([reference](nmea0183-sentences.md#custom-sentences)): an enabled flag, an id (empty gives
-`CUSTOM-n`), the sentence without checksum and its period. *OK* refuses a body that cannot
-be framed or an id that belongs to a registry sentence, naming the row.
+`CUSTOM-n`, where `n` is the row number shown as placeholder), the sentence without checksum
+and its period. *OK* refuses a body that cannot be framed, an id that belongs to a registry
+sentence and an id used by two rows, naming the rows.
 
 ### Outputs tab
 
@@ -311,8 +335,9 @@ fields ([profile reference](profile.md#outputs)):
 | ViewSync packets | not used | *ViewSync camera*: height above the vessel, tilt, roll, planet; *Period* sets the packet rate |
 
 *OK* is refused, with the reason shown under the tabs, while the track or replay mode has no
-file, a serial output has no port, a file or log output has no path or a TCP client has no
-host.
+file, a serial output has no port or baud rate, a file or log output has no path or a TCP
+client has no host, a registry sentence has a one-letter talker, or two custom sentences
+share an id.
 
 ## Preferences
 
@@ -332,7 +357,9 @@ platform's native location:
 | `simulation/autostart` | Whether the simulation starts on launch |
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
+| `map/tile_attribution` | Attribution drawn on the map; unset credits OpenStreetMap for its own servers only |
 | `map/zoom` | Last map zoom level |
+| `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the

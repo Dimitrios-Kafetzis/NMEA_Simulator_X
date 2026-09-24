@@ -18,10 +18,11 @@ namespace {
 /// Tells whether a character is a hexadecimal digit, as used in NMEA 0183 checksums.
 ///
 /// @param c Character to test.
-/// @return True for a decimal digit and for `A` to `F` and `a` to `f`. Digits are tested
-///   with `QChar::isDigit`, which also accepts non-ASCII decimal digits.
+/// @return True for the ASCII digits `0` to `9` and for `A` to `F` and `a` to `f`; false
+///   for every other character, including non-ASCII decimal digits.
 bool is_hex(QChar c) {
-    return c.isDigit() || (c >= QLatin1Char('A') && c <= QLatin1Char('F')) ||
+    return (c >= QLatin1Char('0') && c <= QLatin1Char('9')) ||
+           (c >= QLatin1Char('A') && c <= QLatin1Char('F')) ||
            (c >= QLatin1Char('a') && c <= QLatin1Char('f'));
 }
 

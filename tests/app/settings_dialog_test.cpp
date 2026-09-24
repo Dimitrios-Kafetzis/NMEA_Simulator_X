@@ -8,7 +8,10 @@
 /// outputs with their transports and encodings, engines and AIS static data. It also checks
 /// that invalid input keeps the dialog open on the tab concerned with an error text, that an
 /// edited profile round-trips through JSON, and that `nmeasim::app::MainWindow` takes the
-/// dialog result as its profile. The dialogs are never shown; `accept` is called directly.
+/// dialog result as its profile, and that values an unchanged dialog cannot show exactly (the
+/// whole random seed range, coordinates with more than six decimals, output settings outside
+/// the old widget ranges) survive *OK*. The dialogs are never shown; `accept` is called
+/// directly.
 /// The file reads no fixtures.
 
 #include "dialogs/settings_dialog.hpp"
@@ -19,6 +22,7 @@
 #include "dialogs/vessel_page.hpp"
 #include "main_window.hpp"
 
+#include <QPushButton>
 #include <QSignalSpy>
 
 #include <catch2/catch_approx.hpp>
@@ -421,4 +425,145 @@ TEST_CASE("the outputs tab selects the encoding and its options", "[app][setting
           QStringLiteral("aircraft.urn:mrn:signalk:uuid:1"));
     again.outputs_page()->select(2);
     CHECK(again.outputs_page()->planet_combo->currentText() == QStringLiteral("mars"));
+}
+
+TEST_CASE("an unchanged dialog keeps the random seed and precise coordinates", "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    // Beyond the largest int, which the old spin box could not hold.
+    profile.delta.random_seed = 4000000000U;
+    profile.delta.seed.navigation.position = {37.98381234, 23.72751234};
+    nmeasim::core::model::Destination destination;
+    destination.name = "AEGINA";
+    destination.position = {37.74661234, 23.42751234};
+    destination.origin = {37.5, 23.5};
+    profile.delta.seed.destination = destination;
+
+    nmeasim::app::SettingsDialog dialog(profile);
+    dialog.accept();
+    REQUIRE(dialog.error_text().isEmpty());
+    const auto& result = dialog.profile();
+    CHECK(result.delta.random_seed == 4000000000U);
+    CHECK(result.delta.seed.navigation.position.latitude_deg == 37.98381234);
+    CHECK(result.delta.seed.navigation.position.longitude_deg == 23.72751234);
+    REQUIRE(result.delta.seed.destination.has_value());
+    CHECK(result.delta.seed.destination->position.latitude_deg == 37.74661234);
+    CHECK(result.delta.seed.destination->position.longitude_deg == 23.42751234);
+    // The leg keeps its origin, as the destination did not change.
+    CHECK(result.delta.seed.destination->origin.latitude_deg == 37.5);
+
+    // The largest seed survives as well, and an edited destination starts a new leg.
+    profile.delta.random_seed = 4294967295U;
+    nmeasim::app::SettingsDialog edited(profile);
+    edited.simulation_page()->destination_latitude_spin->setValue(37.8);
+    edited.accept();
+    REQUIRE(edited.error_text().isEmpty());
+    CHECK(edited.profile().delta.random_seed == 4294967295U);
+    CHECK(edited.profile().delta.seed.destination->position.latitude_deg == Approx(37.8));
+    CHECK(edited.profile().delta.seed.destination->origin.latitude_deg == 37.98381234);
+}
+
+TEST_CASE("the sentences tab refuses one-letter talkers and duplicate custom ids",
+          "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.sentences_page();
+    const int rmc = page->row_of(QStringLiteral("RMC"));
+    REQUIRE(rmc >= 0);
+    auto* talker =
+        static_cast<QLineEdit*>(page->table->cellWidget(rmc, nmeasim::app::SentencesPage::Talker));
+    talker->setText(QStringLiteral("G"));
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("RMC")));
+    CHECK(dialog.error_text().contains(QStringLiteral("talker")));
+    CHECK(dialog.result() != QDialog::Accepted);
+    talker->setText(QStringLiteral("GN"));
+
+    const auto set_id = [page](int row, const QString& id) {
+        static_cast<QLineEdit*>(
+            page->custom_table->cellWidget(row, nmeasim::app::SentencesPage::CustomId))
+            ->setText(id);
+    };
+    page->add_custom(QStringLiteral("$PXYZ,1"));
+    page->add_custom(QStringLiteral("$PXYZ,2"));
+    set_id(0, QStringLiteral("SAME"));
+    set_id(1, QStringLiteral("same"));
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("Custom sentences 1 and 2")));
+    // An empty id is sent as CUSTOM-n, so typing that id on another row collides as well.
+    set_id(0, QString{});
+    set_id(1, QStringLiteral("CUSTOM-1"));
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("CUSTOM-1")));
+    set_id(1, QString{});
+    dialog.accept();
+    CHECK(dialog.error_text().isEmpty());
+    CHECK(dialog.profile().sentences.at("RMC").talker == "GN");
+}
+
+TEST_CASE("custom sentence placeholders follow the rows and reset keeps the decimals",
+          "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    profile.encoder.position_decimals = 6;
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.sentences_page();
+    const auto placeholder = [page](int row) {
+        return static_cast<QLineEdit*>(
+                   page->custom_table->cellWidget(row, nmeasim::app::SentencesPage::CustomId))
+            ->placeholderText();
+    };
+    page->add_custom();
+    page->add_custom();
+    page->add_custom();
+    page->custom_table->selectRow(0);
+    page->remove_current_custom();
+    REQUIRE(page->custom_count() == 2);
+    CHECK(placeholder(0) == QStringLiteral("CUSTOM-1"));
+    CHECK(placeholder(1) == QStringLiteral("CUSTOM-2"));
+
+    const int gsv = page->row_of(QStringLiteral("GSV"));
+    page->set_enabled(gsv, !page->is_enabled(gsv));
+    const bool edited = page->is_enabled(gsv);
+    QPushButton* reset = nullptr;
+    for (auto* button : page->findChildren<QPushButton*>()) {
+        if (button->text() == QStringLiteral("Reset to defaults")) {
+            reset = button;
+        }
+    }
+    REQUIRE(reset != nullptr);
+    reset->click();
+    CHECK(page->is_enabled(gsv) != edited);
+    CHECK(page->position_decimals_spin->value() == 6);
+    CHECK(page->custom_count() == 2);
+}
+
+TEST_CASE("the outputs tab keeps loaded values and refuses a cleared baud rate",
+          "[app][settings]") {
+    auto profile = nmeasim::io::Profile::default_profile();
+    OutputConfig client;
+    client.type = OutputConfig::Type::TcpClient;
+    client.host = QStringLiteral("192.0.2.1");
+    // Valid in a profile, [1, 3600000], but outside the old widget range of [100, 600000].
+    client.reconnect_ms = 50;
+    profile.outputs.append(client);
+    client.reconnect_ms = 3600000;
+    profile.outputs.append(client);
+    OutputConfig serial;
+    serial.type = OutputConfig::Type::Serial;
+    serial.serial.port_name = QStringLiteral("/dev/ttyUSB9");
+    profile.outputs.append(serial);
+    nmeasim::app::SettingsDialog dialog(profile);
+    auto* page = dialog.outputs_page();
+    page->select(1);
+    page->select(2);
+    page->select(3);
+    dialog.accept();
+    REQUIRE(dialog.error_text().isEmpty());
+    CHECK(dialog.profile().outputs.at(1).reconnect_ms == 50);
+    CHECK(dialog.profile().outputs.at(2).reconnect_ms == 3600000);
+
+    page->baud_combo->setCurrentText(QString{});
+    // outputs() reads the editor without committing it into the page.
+    CHECK(page->outputs().at(3).serial.baud_rate == 0);
+    dialog.accept();
+    CHECK(dialog.error_text().contains(QStringLiteral("baud rate")));
 }

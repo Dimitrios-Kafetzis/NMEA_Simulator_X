@@ -11,15 +11,28 @@ Lines are written exactly as produced by the encoder plus `<CR><LF>`, with an op
 never alter the payload. A recording ([log output](log-format.md)) always stores the plain
 sentences, without TAG block.
 
+## Filters
+
+Each output's filter lists what it sends; an empty filter sends everything. For an NMEA 0183
+output the entries are registry ids such as `RMC` and custom sentence ids such as `BARO`,
+each matching one sentence. For a Signal K output they are paths or leading path segments:
+`environment.wind` admits `environment.wind` and every path below it, such as
+`environment.wind.speedApparent`, but `navigation.speed` does not admit
+`navigation.speedThroughWater`, because an entry always ends at a dot between segments. Both
+kinds of entry are matched without regard to case, so `rmc` and `RMC` are the same entry,
+as `Navigation` and `navigation` are. A ViewSync output ignores its filter.
+
+## Transport types
+
 | Transport | Direction | Settings | Notes |
 | --- | --- | --- | --- |
 | TCP server | listens | bind address, port | Any number of clients; each receives every line. Port `0` picks a free port. Clients that disconnect or error are removed immediately. Data received from clients is discarded. |
-| TCP client | connects | host, port, reconnect interval | Reconnects automatically after the peer drops the connection; lines are dropped while disconnected. |
+| TCP client | connects | host, port, reconnect interval | A refused or failed connection attempt moves the output to `failed` with the reason as its last error; the client keeps trying every reconnect interval and becomes `open` once the server accepts. Reconnects automatically after the peer drops the connection; lines are dropped while disconnected. |
 | UDP | sends | mode (unicast, broadcast, multicast), address, port, interface, multicast TTL | One datagram per line. In broadcast mode an empty address resolves to the subnet broadcast of the chosen interface, or `255.255.255.255` when no interface is chosen; an explicit address such as `255.255.255.255` can always be given. The interface, when set, is the source of the datagrams and the multicast egress. |
 | WebSocket server | listens | bind address, port | Each line is one text frame. With the `signalk` encoding every client receives the Signal K [hello message](signalk.md#hello-message) right after it connects. |
 | Serial port | writes | port, baud rate, data bits, parity, stop bits, flow control | Any positive baud rate is accepted. The port is opened write-only; an unplugged device moves the transport to `failed`. |
-| File | writes | path, append or truncate | Flushed after every line so the file can be tailed while the simulator runs. |
-| Log | writes | path, append or truncate | A recording: a `#` header when the file is new, then every line prefixed with the wall-clock UTC time, see the [log file reference](log-format.md). Flushed after every line. |
+| File | writes | path, append or truncate | Lines are written byte for byte, with `<CR><LF>` on every platform. Flushed after every line so the file can be tailed while the simulator runs. With truncate, the file is emptied when the output first opens; stopping and starting the run continues it. |
+| Log | writes | path, append or truncate | A recording: a `#` header when the file is new, then every line prefixed with the wall-clock UTC time, see the [log file reference](log-format.md). Flushed after every line. With truncate, the file is emptied when the output first opens; stopping and starting the run continues it. |
 
 ## Network interfaces
 

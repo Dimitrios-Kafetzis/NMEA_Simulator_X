@@ -3,10 +3,12 @@
 /// Tests of the sentence log reader and writer of `nmeasim/core/log/log_file.hpp`.
 ///
 /// Covers nmeasim::core::log::parse_log() with each timing source (recorder timestamps, Unix
-/// time prefixes, TAG block times, sentence time fields and the fixed interval), its tolerance
-/// of junk lines, its rejection of logs without sentences, nmeasim::core::log::load_log(),
-/// and the round trip through nmeasim::core::log::format_log_line(),
-/// nmeasim::core::log::format_header_line() and nmeasim::core::log::kHeaderLine.
+/// time prefixes, TAG block times, sentence time fields and the fixed interval), steps back
+/// in the sentence times, its tolerance of junk lines, TAG blocks with a wrong checksum, its
+/// rejection of logs without sentences and of a negative interval,
+/// nmeasim::core::log::load_log(), and the round trip through
+/// nmeasim::core::log::format_log_line(), nmeasim::core::log::format_header_line() and
+/// nmeasim::core::log::kHeaderLine.
 ///
 /// Reads the fixtures `tests/fixtures/logs/recorded.log`, `plain.nmea`, `midnight.nmea`,
 /// `untimed.nmea`, `unix_prefix.log`, `tagblock.log`, `mixed.log`, `garbage.txt` and
@@ -95,6 +97,63 @@ TEST_CASE("sentence times wrap correctly at midnight", "[log]") {
     CHECK(log.entries[5].offset == 3500ms);
 }
 
+TEST_CASE("a step back in the sentence times is made up without doubling time", "[log]") {
+    // RMC times 10:00:00, 10:00:10, 10:00:05 and 10:00:15: the step back holds the replay,
+    // and 10:00:15 is 15 seconds after the start, not 10 + (15 - 5).
+    std::string error;
+    const auto log = logfile::parse_log(
+        "$GPRMC,100000.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*0F\n"
+        "$GPRMC,100010.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*0E\n"
+        "$GPRMC,100005.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*0A\n"
+        "$GPRMC,100015.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*0B\n",
+        {}, &error);
+    REQUIRE(log.has_value());
+    CHECK(log->timing == logfile::TimingSource::SentenceTimes);
+    REQUIRE(log->entries.size() == 4);
+    CHECK(log->entries[1].offset == 10s);
+    CHECK(log->entries[2].offset == 10s);
+    CHECK(log->entries[3].offset == 15s);
+
+    // 23:59:50, 23:59:45 and 00:00:05: after the step back, midnight is still crossed once.
+    const auto midnight = logfile::parse_log(
+        "$GPRMC,235950.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*06\n"
+        "$GPRMC,235945.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*02\n"
+        "$GPRMC,000005.00,A,3759.0280,N,02343.6500,E,6.5,45.0,230926,4.6,E,A*0B\n",
+        {}, &error);
+    REQUIRE(midnight.has_value());
+    REQUIRE(midnight->entries.size() == 3);
+    CHECK(midnight->entries[1].offset == 0s);
+    CHECK(midnight->entries[2].offset == 15s);
+}
+
+TEST_CASE("a negative fixed interval is rejected", "[log]") {
+    std::string error;
+    CHECK_FALSE(logfile::parse_log("$HEHDT,45.0,T\n", {-100ms}, &error).has_value());
+    CHECK(error == "The fixed interval must not be negative");
+    // Zero puts every entry at offset zero.
+    const auto zero = logfile::parse_log("$HEHDT,45.0,T\n$HEHDT,46.0,T\n", {0ms}, &error);
+    REQUIRE(zero.has_value());
+    CHECK(zero->duration() == 0ms);
+}
+
+TEST_CASE("a line whose TAG block checksum is wrong is skipped and counted", "[log]") {
+    // Checksums of the TAG blocks computed in Python: 2E for `s:GP0001,c:1790416800`.
+    std::string error;
+    const auto log = logfile::parse_log(
+        "\\s:GP0001,c:1790416800*2E\\$HEHDT,45.0,T\n"
+        "\\s:GP0001,c:1790416801*00\\$HEHDT,46.0,T\n"
+        "\\s:GP0001,c:1790416801*G1\\$HEHDT,47.0,T\n"
+        "\\s:GP0001,c:1790416802\\$HEHDT,48.0,T\n",
+        {}, &error);
+    REQUIRE(log.has_value());
+    // The wrong and the malformed checksum; a block without checksum is accepted.
+    CHECK(log->skipped_lines == 2);
+    REQUIRE(log->entries.size() == 2);
+    CHECK(log->entries[0].sentence == "$HEHDT,45.0,T");
+    CHECK(log->entries[1].sentence == "$HEHDT,48.0,T");
+    CHECK(log->entries[1].offset == 2s);
+}
+
 TEST_CASE("a log without any time is spaced at a fixed interval", "[log]") {
     const auto log = parse_fixture("logs/untimed.nmea", 250ms);
     CHECK(log.timing == logfile::TimingSource::FixedInterval);
@@ -112,6 +171,9 @@ TEST_CASE("Unix time prefixes and TAG block times are understood", "[log]") {
     CHECK(unix.entries[0].recorded_at == parse_iso8601("2026-09-26T10:00:00Z"));
     CHECK(unix.entries[9].offset == 520ms);
     CHECK(unix.duration() == 1640ms);
+    // The RMC sentences carry the date of their prefixes, 26 September 2026.
+    CHECK(unix.entries[0].sentence.find(",260926,") != std::string::npos);
+    CHECK(unix.entries[24].sentence.find(",260926,") != std::string::npos);
 
     const auto tagged = parse_fixture("logs/tagblock.log");
     CHECK(tagged.timing == logfile::TimingSource::Timestamps);

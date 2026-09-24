@@ -58,8 +58,8 @@ enum class TrackKind {
     /// GPX `<rtept>` points of `<rte>` elements, used when the file has no track point.
     /// Display name `GPX route`.
     GpxRoute,
-    /// KML file with at least one `<gx:Track>` element, whether or not it also holds
-    /// `<LineString>` elements. Display name `KML track`.
+    /// KML file with at least one `<gx:Track>` element that provides points, whether or not
+    /// it also holds `<LineString>` elements. Display name `KML track`.
     KmlTrack,
     /// KML file whose points all come from `<LineString>` elements. Display name `KML line`.
     KmlLineString,

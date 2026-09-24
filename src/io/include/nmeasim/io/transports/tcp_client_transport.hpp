@@ -19,12 +19,14 @@ namespace nmeasim::io {
 /// Connects to a TCP server, sends it every line, and reconnects automatically after a failed
 /// attempt or a dropped connection.
 ///
-/// The transport stays in `State::Opening` while it is not connected and moves to
-/// `State::Open` when the connection is established; it never moves to `State::Failed`.
-/// Every socket error, a refused connection or a peer closing the connection included, is
+/// The transport is in `State::Opening` during the first attempt and after the server
+/// dropped the connection, and moves to `State::Open` when a connection is established. An
+/// attempt that fails (the connection is refused, the host is not found, the attempt times
+/// out) moves it to `State::Failed`, with `last_error` saying why; it stays there, retrying,
+/// until an attempt succeeds. Every error, a peer closing the connection included, is
 /// reported through `error_occurred` and followed by a new attempt after the reconnect
-/// interval, until `close` is called. `last_error` therefore stays empty. Lines written while
-/// disconnected are dropped, and data received from the server is discarded.
+/// interval, until `close` is called. Lines written while disconnected are dropped, and data
+/// received from the server is discarded.
 class TcpClientTransport final : public Transport {
     Q_OBJECT
 
@@ -53,8 +55,8 @@ public:
     /// `State::Opening` and starts a connection attempt; the move to `State::Open` follows
     /// asynchronously once the server accepts.
     ///
-    /// @return Always true: connection failures are asynchronous and trigger a reconnection
-    ///   rather than a failure.
+    /// @return Always true: connection failures are asynchronous; they are reported through
+    ///   `state_changed` and `error_occurred`, and trigger a new attempt.
     bool open() override;
     /// Stops reconnecting, aborts the connection and moves to `State::Closed`.
     ///

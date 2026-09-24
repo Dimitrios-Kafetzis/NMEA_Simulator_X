@@ -76,9 +76,12 @@ public:
     /// *Fixed start time* resets `io::Profile::start_time` and an unticked destination resets
     /// the seed destination.
     ///
-    /// A ticked destination is written with the id `WPT` when the id field is empty. Its leg
-    /// origin is kept when the profile already has a destination at exactly the same latitude
-    /// and longitude; otherwise the leg starts at the seed position written by this call.
+    /// A ticked destination is written with the id `WPT` when the id field is empty. When the
+    /// latitude and longitude fields still show the profile's destination, rounded to their
+    /// six decimals, the destination keeps its stored coordinates, with all their decimals,
+    /// and its leg origin; otherwise the leg starts at the seed position written by this call.
+    /// The seed latitude and longitude likewise keep their stored values when their fields
+    /// were not changed.
     ///
     /// @param profile The profile to update, normally the dialog's copy.
     /// @note `store` does not validate: it writes an empty track or replay path as it is.
@@ -141,12 +144,12 @@ public:
     /// `yyyy-MM-dd HH:mm:ss`; enabled only while `fixed_start_check` is ticked.
     QDateTimeEdit* start_time_edit;
     /// Seed of the pseudo-random generator of the drift,
-    /// `core::simulation::DeltaConfig::random_seed`; [0, 1000000000].
+    /// `core::simulation::DeltaConfig::random_seed`; a whole number in [0, 4294967295], the
+    /// whole range of the 32-bit seed, so every seed a profile can hold survives the page.
     ///
-    /// A larger seed, which a profile file can hold, does not survive the page: `load` shows
-    /// it as the maximum, or as 0 when it exceeds the largest `int`, and `store` writes that
-    /// value back.
-    QSpinBox* random_seed_spin;
+    /// A double spin box without decimals, because a `QSpinBox` holds an `int` only; a
+    /// `double` represents every 32-bit value exactly.
+    QDoubleSpinBox* random_seed_spin;
 
     /// Seed latitude, positive north, the latitude of `core::model::Navigation::position`;
     /// [-90, 90] degrees with six decimals.

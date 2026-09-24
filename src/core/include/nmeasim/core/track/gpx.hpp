@@ -28,11 +28,10 @@ namespace nmeasim::core::track {
 /// - `<ele>` (metres), `<course>` (degrees true) and `<speed>` (metres per second, converted
 ///   to knots) are read as direct children, as in GPX 1.0, or from `<extensions>` or one of
 ///   its child elements (for example `gpxtpx:TrackPointExtension`), as GPX 1.1 writers
-///   store them. A value that is not a number is treated as absent.
+///   store them. A value that is not a number is treated as absent, without an error.
 ///
-/// The track name is `<metadata>/<name>` when the file has `<metadata>`, otherwise
-/// `<gpx>/<name>`; when that is empty, the first non-empty `<trk>/<name>` (or `<rte>/<name>`
-/// for a route).
+/// The track name is the first non-empty one of `<metadata>/<name>`, `<gpx>/<name>` and the
+/// `<trk>/<name>` of the tracks in order (or `<rte>/<name>` for a route).
 ///
 /// The file is rejected, with `error` set to a one-line reason, when:
 /// - it is not well-formed XML: `Invalid XML at offset N: <pugixml description>`, where `N`

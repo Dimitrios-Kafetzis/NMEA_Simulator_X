@@ -69,8 +69,9 @@ struct GnssFix {
 
 /// Position, motion and heading of the vessel.
 ///
-/// Magnetic quantities are derived, not stored: true = magnetic + variation + deviation for
-/// the heading, and true = magnetic + variation for the course over ground.
+/// Magnetic quantities are derived, not stored: true = magnetic + variation for the heading
+/// and the course over ground, and magnetic = compass + deviation for the heading read from
+/// the ship's compass.
 struct Navigation {
     /// Position of the GNSS antenna, the reference point of the AIS dimensions.
     geo::Position position;
@@ -84,18 +85,27 @@ struct Navigation {
     double heading_true_deg{0.0};
     /// Magnetic variation of the chart position, positive east, sent in RMC and HDG.
     double magnetic_variation_deg{0.0};
-    /// Deviation of the ship's compass, positive east, sent in HDG.
+    /// Deviation of the ship's compass, positive east, sent in HDG; it applies to the
+    /// compass heading only.
     double magnetic_deviation_deg{0.0};
     /// Speed through the water along the heading, not negative; sent in VHW and VBW.
     double speed_through_water_kn{0.0};
     /// Rate of turn, positive to starboard (heading increasing), sent in ROT and AIS.
     double rate_of_turn_deg_per_min{0.0};
 
-    /// Returns the magnetic heading as a compass sensor would report it.
+    /// Returns the heading referenced to magnetic north, as HDM, VHW and Signal K send it.
+    ///
+    /// Deviation does not apply: it is an error of the ship's compass, which
+    /// heading_compass_deg() includes.
+    ///
+    /// @return `heading_true_deg - magnetic_variation_deg`, normalised to [0, 360).
+    [[nodiscard]] double heading_magnetic_deg() const noexcept;
+
+    /// Returns the heading as the ship's compass reports it, as HDG sends it.
     ///
     /// @return `heading_true_deg - magnetic_variation_deg - magnetic_deviation_deg`,
     ///         normalised to [0, 360).
-    [[nodiscard]] double heading_magnetic_deg() const noexcept;
+    [[nodiscard]] double heading_compass_deg() const noexcept;
 
     /// Returns the course over ground referenced to magnetic north.
     ///

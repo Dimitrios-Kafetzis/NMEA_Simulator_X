@@ -6,8 +6,8 @@
 /// `Profile::from_json` for every setting and output type, the defaults that fill in missing
 /// keys, the rejection of invalid documents with a reason that names the offending key, the
 /// migration of schema versions 1 and 2 to the current version 3, `Profile::save` and
-/// `Profile::load` with relative track and log paths, `Profile::make_scheduler`, and the
-/// string names of output types, simulation modes and encodings.
+/// `Profile::load` with relative paths and `Profile::resolve_path`, `Profile::make_scheduler`,
+/// and the string names of output types, simulation modes and encodings.
 ///
 /// The profiles are built in code or saved to temporary directories; the file reads no
 /// fixture. The track and log paths it sets are never opened.
@@ -15,6 +15,7 @@
 #include <nmeasim/io/profile/profile.hpp>
 
 #include <QDir>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -215,6 +216,89 @@ TEST_CASE("invalid profiles are rejected with a reason", "[io][profile]") {
     CHECK(error.contains(QStringLiteral("port_name")));
 }
 
+TEST_CASE("a destination needs a position and unknown GNSS qualities are rejected",
+          "[io][profile]") {
+    QString error;
+    const auto seed = [](const QJsonObject& keys) {
+        return QJsonObject{
+            {QStringLiteral("schema_version"), 3},
+            {QStringLiteral("simulation"), QJsonObject{{QStringLiteral("seed"), keys}}}};
+    };
+    const auto destination = [&seed](const QJsonObject& keys) {
+        return seed({{QStringLiteral("destination"), keys}});
+    };
+
+    CHECK_FALSE(
+        Profile::from_json(destination({{QStringLiteral("name"), QStringLiteral("X")}}), &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric latitude")));
+    CHECK_FALSE(
+        Profile::from_json(destination({{QStringLiteral("latitude"), 37.7}}), &error).has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric longitude")));
+    // A position given as text is not a position.
+    CHECK_FALSE(Profile::from_json(destination({{QStringLiteral("latitude"), QStringLiteral("37")},
+                                                {QStringLiteral("longitude"), 23.4}}),
+                                   &error)
+                    .has_value());
+    CHECK(error.contains(QStringLiteral("destination needs a numeric latitude")));
+    const auto complete = Profile::from_json(destination({{QStringLiteral("latitude"), 37.7466},
+                                                          {QStringLiteral("longitude"), 23.4275}}),
+                                             &error);
+    REQUIRE(complete.has_value());
+    REQUIRE(complete->delta.seed.destination.has_value());
+    CHECK(complete->delta.seed.destination->name == "WPT");
+    // `null` still means no destination.
+    const auto none =
+        Profile::from_json(seed({{QStringLiteral("destination"), QJsonValue::Null}}), &error);
+    REQUIRE(none.has_value());
+    CHECK_FALSE(none->delta.seed.destination.has_value());
+
+    const auto quality = [&seed](const QString& value) {
+        return seed({{QStringLiteral("gnss"), QJsonObject{{QStringLiteral("quality"), value}}}});
+    };
+    CHECK_FALSE(Profile::from_json(quality(QStringLiteral("rtk")), &error).has_value());
+    CHECK(error.contains(QStringLiteral("gnss.quality")));
+    CHECK(error.contains(QStringLiteral("rtk")));
+    const auto differential = Profile::from_json(quality(QStringLiteral("differential")), &error);
+    REQUIRE(differential.has_value());
+    CHECK(differential->delta.seed.gnss.quality == nmeasim::core::model::FixQuality::Differential);
+}
+
+TEST_CASE("sentence settings are validated", "[io][profile]") {
+    QString error;
+    const auto setting = [](const QJsonObject& keys) {
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("sentences"),
+                            QJsonObject{{QStringLiteral("settings"),
+                                         QJsonObject{{QStringLiteral("RMC"), keys}}}}}};
+    };
+    // Periods lie in [50, 3600000] ms, as for custom sentences and outputs.
+    for (const int period : {0, 49, 3'600'001}) {
+        INFO(period);
+        CHECK_FALSE(Profile::from_json(setting({{QStringLiteral("period_ms"), period}}), &error)
+                        .has_value());
+        CHECK(error.contains(QStringLiteral("RMC")));
+        CHECK(error.contains(QStringLiteral("period_ms")));
+    }
+    // A talker is two upper-case letters, or empty for the registry default.
+    for (const char* talker : {"G", "GPS", "gn", "G1", "$G"}) {
+        INFO(talker);
+        CHECK_FALSE(
+            Profile::from_json(setting({{QStringLiteral("talker"), QLatin1String(talker)}}), &error)
+                .has_value());
+        CHECK(error.contains(QStringLiteral("talker")));
+    }
+    const auto valid = Profile::from_json(setting({{QStringLiteral("talker"), QStringLiteral("GN")},
+                                                   {QStringLiteral("period_ms"), 50}}),
+                                          &error);
+    REQUIRE(valid.has_value());
+    CHECK(valid->sentences.at("RMC").talker == "GN");
+    CHECK(valid->sentences.at("RMC").period == 50ms);
+    const auto empty = Profile::from_json(setting({{QStringLiteral("talker"), QString()}}), &error);
+    REQUIRE(empty.has_value());
+    CHECK(empty->sentences.at("RMC").talker.empty());
+}
+
 TEST_CASE("profiles are saved to and loaded from disk", "[io][profile]") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
@@ -356,6 +440,82 @@ TEST_CASE("mode settings are validated", "[io][profile]") {
     CHECK(error.contains(QStringLiteral("log output needs a path")));
 }
 
+TEST_CASE("output settings are validated for the types that use them", "[io][profile]") {
+    QString error;
+    const auto output = [](const QString& type, const QJsonObject& extra) {
+        QJsonObject object{{QStringLiteral("type"), type}};
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            object.insert(it.key(), it.value());
+        }
+        if (type == QLatin1String("serial") && !object.contains(QStringLiteral("port_name"))) {
+            object.insert(QStringLiteral("port_name"), QStringLiteral("/dev/ttyUSB0"));
+        }
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("outputs"), QJsonArray{object}}};
+    };
+    const auto rejected = [&error, &output](const QString& type, const QJsonObject& extra,
+                                            const QString& key) {
+        const bool parsed = Profile::from_json(output(type, extra), &error).has_value();
+        return !parsed && error.contains(key);
+    };
+    const auto accepted = [&error, &output](const QString& type, const QJsonObject& extra) {
+        return Profile::from_json(output(type, extra), &error).has_value();
+    };
+    const QString udp = QStringLiteral("udp");
+    const QString serial = QStringLiteral("serial");
+
+    // The UDP mode and the port belong to the types that use them; other types ignore them.
+    CHECK(rejected(udp, {{QStringLiteral("mode"), QStringLiteral("anycast")}},
+                   QStringLiteral("UDP mode")));
+    CHECK(accepted(QStringLiteral("file"), {{QStringLiteral("path"), QStringLiteral("x.nmea")},
+                                            {QStringLiteral("mode"), QStringLiteral("anycast")},
+                                            {QStringLiteral("port"), 70000}}));
+    CHECK(accepted(QStringLiteral("stdout"), {{QStringLiteral("port"), -1}}));
+    CHECK(rejected(udp, {{QStringLiteral("port"), 70000}}, QStringLiteral("port")));
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("port"), -1}},
+                   QStringLiteral("port")));
+    CHECK(rejected(QStringLiteral("websocket-server"), {{QStringLiteral("port"), 65536}},
+                   QStringLiteral("port")));
+
+    // Reconnect interval in [1, 3600000] ms, TTL in [1, 255], a positive baud rate.
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 0}},
+                   QStringLiteral("reconnect_ms")));
+    CHECK(rejected(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 3'600'001}},
+                   QStringLiteral("reconnect_ms")));
+    CHECK(accepted(QStringLiteral("tcp-client"), {{QStringLiteral("reconnect_ms"), 1}}));
+    CHECK(rejected(udp, {{QStringLiteral("multicast_ttl"), 0}}, QStringLiteral("multicast_ttl")));
+    CHECK(rejected(udp, {{QStringLiteral("multicast_ttl"), 256}}, QStringLiteral("multicast_ttl")));
+    CHECK(accepted(udp, {{QStringLiteral("multicast_ttl"), 255}}));
+    CHECK(rejected(serial, {{QStringLiteral("baud_rate"), 0}}, QStringLiteral("baud_rate")));
+    CHECK(rejected(serial, {{QStringLiteral("baud_rate"), -4800}}, QStringLiteral("baud_rate")));
+
+    // Serial line settings must be names the transport knows.
+    CHECK(rejected(serial, {{QStringLiteral("data_bits"), 9}}, QStringLiteral("data_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("data_bits"), 4}}, QStringLiteral("data_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("parity"), QStringLiteral("Even")}},
+                   QStringLiteral("parity")));
+    CHECK(rejected(serial, {{QStringLiteral("stop_bits"), QStringLiteral("3")}},
+                   QStringLiteral("stop_bits")));
+    CHECK(rejected(serial, {{QStringLiteral("flow_control"), QStringLiteral("rts")}},
+                   QStringLiteral("flow_control")));
+    // Keys of another type are not checked: a TCP server has no serial line.
+    CHECK(accepted(QStringLiteral("tcp-server"), {{QStringLiteral("parity"), QStringLiteral("x")},
+                                                  {QStringLiteral("baud_rate"), 0},
+                                                  {QStringLiteral("multicast_ttl"), 0},
+                                                  {QStringLiteral("reconnect_ms"), 0}}));
+    const auto parsed = Profile::from_json(
+        output(serial, {{QStringLiteral("data_bits"), 5},
+                        {QStringLiteral("parity"), QStringLiteral("space")},
+                        {QStringLiteral("stop_bits"), QStringLiteral("1.5")},
+                        {QStringLiteral("flow_control"), QStringLiteral("software")}}),
+        &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->outputs[0].serial.data_bits == QSerialPort::Data5);
+    CHECK(parsed->outputs[0].serial.parity == QSerialPort::SpaceParity);
+    CHECK(parsed->outputs[0].serial.stop_bits == QSerialPort::OneAndHalfStop);
+    CHECK(parsed->outputs[0].serial.flow_control == QSerialPort::SoftwareControl);
+}
+
 TEST_CASE("relative track and log paths are resolved against the profile file", "[io][profile]") {
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
@@ -365,19 +525,78 @@ TEST_CASE("relative track and log paths are resolved against the profile file", 
     profile.mode = SimulationMode::Track;
     profile.track.path = QStringLiteral("../tracks/harbour.gpx");
     profile.replay.path = QStringLiteral("logs/yesterday.log");
+    OutputConfig file;
+    file.type = OutputConfig::Type::File;
+    file.path = QStringLiteral("out/sentences.nmea");
+    profile.outputs.append(file);
+    OutputConfig log = file;
+    log.type = OutputConfig::Type::Log;
+    log.path = QStringLiteral("record.log");
+    profile.outputs.append(log);
+    // A profile built in code has no directory; its relative paths are used as they are.
+    CHECK(profile.base_directory.isEmpty());
+    CHECK(profile.resolve_path(profile.track.path) == profile.track.path);
     QString error;
     REQUIRE(profile.save(path, &error));
 
     const auto loaded = Profile::load(path, &error);
     REQUIRE(loaded.has_value());
-    CHECK(loaded->track.path ==
+    CHECK(loaded->base_directory ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles"))));
+    // The paths stay as written; `resolve_path` makes them absolute against the directory of
+    // the profile file, for the track and the log as for the file and log outputs.
+    CHECK(loaded->track.path == QStringLiteral("../tracks/harbour.gpx"));
+    CHECK(loaded->resolve_path(loaded->track.path) ==
           QDir::cleanPath(directory.filePath(QStringLiteral("tracks/harbour.gpx"))));
-    CHECK(loaded->replay.path ==
+    CHECK(loaded->resolve_path(loaded->replay.path) ==
           QDir::cleanPath(directory.filePath(QStringLiteral("profiles/logs/yesterday.log"))));
+    REQUIRE(loaded->outputs.size() == 3);
+    CHECK(loaded->outputs[1].path == QStringLiteral("out/sentences.nmea"));
+    CHECK(loaded->resolve_path(loaded->outputs[1].path) ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles/out/sentences.nmea"))));
+    CHECK(loaded->resolve_path(loaded->outputs[2].path) ==
+          QDir::cleanPath(directory.filePath(QStringLiteral("profiles/record.log"))));
+    CHECK(loaded->resolve_path({}).isEmpty());
+
+    // Saving a loaded profile back writes the paths as the user wrote them.
+    REQUIRE(loaded->save(path, &error));
+    QFile saved(path);
+    REQUIRE(saved.open(QIODevice::ReadOnly));
+    const auto json = QJsonDocument::fromJson(saved.readAll()).object();
+    // Closed at once: Windows does not let the file be replaced by a later save while open.
+    saved.close();
+    const auto simulation = json.value(QStringLiteral("simulation")).toObject();
+    CHECK(simulation.value(QStringLiteral("track")).toObject().value(QStringLiteral("path")) ==
+          QStringLiteral("../tracks/harbour.gpx"));
+    CHECK(simulation.value(QStringLiteral("replay")).toObject().value(QStringLiteral("path")) ==
+          QStringLiteral("logs/yesterday.log"));
+    CHECK(json.value(QStringLiteral("outputs"))
+              .toArray()
+              .at(1)
+              .toObject()
+              .value(QStringLiteral("path")) == QStringLiteral("out/sentences.nmea"));
+
+    // Saving it in another directory rewrites the relative paths so that they still name the
+    // same files.
+    REQUIRE(QDir(directory.path()).mkpath(QStringLiteral("elsewhere/deeper")));
+    const QString moved = directory.filePath(QStringLiteral("elsewhere/deeper/moved.json"));
+    REQUIRE(loaded->save(moved, &error));
+    const auto reloaded = Profile::load(moved, &error);
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->track.path == QStringLiteral("../../tracks/harbour.gpx"));
+    CHECK(reloaded->resolve_path(reloaded->track.path) == loaded->resolve_path(loaded->track.path));
+    CHECK(reloaded->resolve_path(reloaded->outputs[1].path) ==
+          loaded->resolve_path(loaded->outputs[1].path));
+    // The profile that was saved is unchanged.
+    CHECK(loaded->track.path == QStringLiteral("../tracks/harbour.gpx"));
+
     // Absolute paths are left alone.
     profile.track.path = QDir::cleanPath(directory.filePath(QStringLiteral("abs.gpx")));
     REQUIRE(profile.save(path, &error));
-    CHECK(Profile::load(path, &error)->track.path == profile.track.path);
+    const auto absolute = Profile::load(path, &error);
+    REQUIRE(absolute.has_value());
+    CHECK(absolute->track.path == profile.track.path);
+    CHECK(absolute->resolve_path(absolute->track.path) == profile.track.path);
 }
 
 TEST_CASE("destination, AIS data, custom sentences and encodings round-trip", "[io][profile]") {
@@ -567,6 +786,40 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
             with(QStringLiteral("outputs"), output({{QStringLiteral("period_ms"), 10}})), &error)
             .has_value());
     CHECK(error.contains(QStringLiteral("period_ms")));
+}
+
+TEST_CASE("custom sentence ids must be unique", "[io][profile]") {
+    QString error;
+    const auto custom = [](const QJsonArray& sentences) {
+        return QJsonObject{
+            {QStringLiteral("schema_version"), 3},
+            {QStringLiteral("sentences"), QJsonObject{{QStringLiteral("custom"), sentences}}}};
+    };
+    const auto sentence = [](const QString& id, const QString& body) {
+        return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("body"), body}};
+    };
+    // The second entry has no id and becomes CUSTOM-2, the id the first entry gives itself;
+    // ids are upper-cased before the comparison.
+    CHECK_FALSE(
+        Profile::from_json(custom({sentence(QStringLiteral("custom-2"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QString{}, QStringLiteral("$PXYZ,2"))}),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("custom[1]")));
+    CHECK(error.contains(QStringLiteral("CUSTOM-2")));
+    CHECK_FALSE(
+        Profile::from_json(custom({sentence(QStringLiteral("BARO"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QStringLiteral("baro"), QStringLiteral("$PXYZ,2"))}),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("custom[1]")));
+    CHECK(error.contains(QStringLiteral("BARO")));
+    const auto distinct =
+        Profile::from_json(custom({sentence(QStringLiteral("BARO"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QString{}, QStringLiteral("$PXYZ,2"))}),
+                           &error);
+    REQUIRE(distinct.has_value());
+    CHECK(distinct->custom_sentences.size() == 2);
 }
 
 TEST_CASE("random seed, MMSI and IMO number outside their integer range are rejected",
