@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /// @file
-/// Derived quantities of the vessel state: magnetic heading and course, relative true wind.
+/// Derived quantities of the vessel state: magnetic and compass heading, magnetic course,
+/// relative true wind.
 
 #include <nmeasim/core/model/vessel_state.hpp>
 
 namespace nmeasim::core::model {
 
 double Navigation::heading_magnetic_deg() const noexcept {
+    return geo::normalize_bearing(heading_true_deg - magnetic_variation_deg);
+}
+
+double Navigation::heading_compass_deg() const noexcept {
     return geo::normalize_bearing(heading_true_deg - magnetic_variation_deg -
                                   magnetic_deviation_deg);
 }

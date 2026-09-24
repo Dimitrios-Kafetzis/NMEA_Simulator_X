@@ -109,6 +109,20 @@ TEST_CASE("heading and speed sentences", "[nmea0183][encoders][heading]") {
     CHECK(single_body(&nmea::encode_rot, state, "TI") == "TIROT,-2.5,A");
 }
 
+TEST_CASE("only HDG applies the compass deviation", "[nmea0183][encoders][heading]") {
+    auto state = nmeasim::test::fixture_state();
+    state.navigation.magnetic_deviation_deg = 1.5;
+    // HDG sends the compass (sensor) heading 45.0 - 4.6 - 1.5 = 38.9 with the deviation; HDM
+    // and VHW send the magnetic heading 45.0 - 4.6 = 40.4, which does not depend on it.
+    CHECK(single_body(&nmea::encode_hdg, state, "HC") == "HCHDG,38.9,1.5,E,4.6,E");
+    CHECK(single_body(&nmea::encode_hdm, state, "HC") == "HCHDM,40.4,M");
+    CHECK(single_body(&nmea::encode_vhw, state, "VW") == "VWVHW,45.0,T,40.4,M,6.2,N,11.5,K");
+
+    state.navigation.magnetic_deviation_deg = -2.0;
+    CHECK(single_body(&nmea::encode_hdg, state, "HC") == "HCHDG,42.4,2.0,W,4.6,E");
+    CHECK(single_body(&nmea::encode_hdm, state, "HC") == "HCHDM,40.4,M");
+}
+
 TEST_CASE("depth and water sentences", "[nmea0183][encoders][depth]") {
     const auto state = nmeasim::test::fixture_state();
     // 12.4 m is 40.7 feet (0.3048 m) and 6.8 fathoms (1.8288 m).
