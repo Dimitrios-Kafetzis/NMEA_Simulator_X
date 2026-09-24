@@ -55,7 +55,7 @@ public:
     /// Columns of `custom_table`, the custom sentences.
     enum CustomColumn {
         CustomEnabled = 0,  ///< Checkable item: whether the sentence is sent.
-        CustomId,           ///< `QLineEdit` cell widget with the id; empty gives `CUSTOM-n`.
+        CustomId,           ///< `QLineEdit` cell widget with the id; empty gives `CUSTOM-<row>`.
         CustomBody,         ///< `QLineEdit` cell widget with the sentence without checksum.
         CustomPeriod,       ///< `QSpinBox` cell widget with the period in milliseconds.
         CustomColumnCount   ///< Number of columns, not a column.
@@ -95,14 +95,17 @@ public:
     /// @note `store` does not validate the custom sentences. `SettingsDialog` calls it only
     ///     after `validate` returned an empty string.
     void store(io::Profile& profile) const;
-    /// Checks the custom sentences, row by row.
+    /// Checks the talkers of the registry rows and the custom sentences, row by row.
     ///
-    /// A row is refused when `core::simulation::validate_custom_sentence` refuses its body or
-    /// when its id, as `custom_at` returns it, is a registry id. Duplicate custom ids are not
-    /// checked.
+    /// A registry row is refused when its talker has one letter: a talker is two letters, or
+    /// empty for the default. A custom row is refused when
+    /// `core::simulation::validate_custom_sentence` refuses its body, when its id, as
+    /// `custom_at` returns it, is a registry id, or when an earlier custom row has the same
+    /// id; an empty id counts as the `CUSTOM-n` it is sent as.
     ///
-    /// @return For the first refused row, `Custom sentence n:` followed by the reason, where
-    ///     `n` is the 1-based row number; an empty string when every row is valid.
+    /// @return For the first refused row, `Sentence <id>:` or `Custom sentence n:` followed
+    ///     by the reason, or `Custom sentences m and n have the same id <id>`, where `m` and
+    ///     `n` are 1-based row numbers; an empty string when every row is valid.
     [[nodiscard]] QString validate() const;
 
     /// Returns the row of a registry id in the table.
@@ -126,15 +129,18 @@ public:
     /// Appends a custom sentence row and selects it.
     ///
     /// The new row is enabled, has an empty id with `CUSTOM-n` as placeholder, where `n` is
-    /// the new row count, and a period of 1000 ms. The id field accepts at most 12 letters,
-    /// digits and hyphens; the sentence field accepts at most 80 characters, and `validate`
-    /// applies the exact length limit to the framed sentence. The period spin box accepts [50,
-    /// 3600000] ms, the range the profile accepts for custom sentences. The *Add custom sentence*
-    /// button calls it with an empty body.
+    /// the new row count, and a period of 1000 ms. The placeholders of the custom rows always
+    /// show the id an empty field is sent as, also after a row is removed. The id field accepts at
+    /// most 12 letters, digits and hyphens; the sentence field accepts at most 80 characters, and
+    /// `validate` applies the exact length limit to the framed sentence. The period spin box
+    /// accepts [50, 3600000] ms, the range the profile accepts for custom sentences. The *Add
+    /// custom sentence* button calls it with an empty body.
     ///
     /// @param body The sentence text to start with, unchecked; empty for none.
     void add_custom(const QString& body = {});
     /// Removes the current row of the custom table; does nothing when there is none.
+    ///
+    /// The `CUSTOM-n` placeholders of the rows below it are renumbered.
     ///
     /// Connected to the *Remove* button.
     void remove_current_custom();
@@ -162,7 +168,8 @@ public:
     /// The registry sentences, one row per descriptor in catalogue order, with the columns of
     /// `Column`.
     ///
-    /// The talker cell accepts zero to two letters. The period cell accepts [50, 3600000] ms,
+    /// The talker cell accepts two letters or none; a single letter can be typed on the way
+    /// to two, and `validate` refuses it. The period cell accepts [50, 3600000] ms,
     /// the range the profile accepts for custom sentences, in steps of 100 ms.
     QTableWidget* table;
     /// The custom sentences in emission order, with the columns of `CustomColumn`; rows are
@@ -181,12 +188,21 @@ private:
     ///
     /// @param enabled Whether every registry sentence is sent.
     void set_all(bool enabled);
-    /// Returns every registry row and the position decimals to their defaults.
+    /// Returns every registry row to its defaults.
     ///
     /// Loads a default-constructed `io::Profile`, which has no sentence settings, with the
-    /// current custom sentences copied into it, so the custom table keeps its rows; their ids
-    /// come back trimmed and upper-cased. Connected to the *Reset to defaults* button.
+    /// current custom sentences and position decimals copied into it, so the custom table
+    /// keeps its rows and the decimals stay; the custom ids come back trimmed and
+    /// upper-cased. Connected to the *Reset to defaults* button.
     void reset_defaults();
+    /// Sets the placeholder of every custom id field to the id an empty field is sent as.
+    void number_custom_placeholders();
+    /// Returns the id the scheduler gives a custom sentence without one.
+    ///
+    /// @param row The row index in the custom table, from 0.
+    /// @return `CUSTOM-n`, where `n` is `row` + 1.
+    /// @see core::simulation::SentenceScheduler
+    [[nodiscard]] static QString default_custom_id(int row);
 };
 
 }  // namespace nmeasim::app
