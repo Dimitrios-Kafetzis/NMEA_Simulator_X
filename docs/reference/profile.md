@@ -209,8 +209,8 @@ decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.m
 
 | `encoding` | Carries | `filter` matches | Extra keys |
 | --- | --- | --- | --- |
-| `nmea0183` (default) | The sentences the simulation emits | Registry ids and custom sentence ids; empty sends everything | `tag_block` |
-| `signalk` | One [Signal K delta](signalk.md) built from the state every `period_ms` | Path prefixes such as `navigation` or `environment.wind`; empty sends every path | `period_ms`, `signalk` |
+| `nmea0183` (default) | The sentences the simulation emits | Registry ids and custom sentence ids, ignoring case; empty sends everything | `tag_block` |
+| `signalk` | One [Signal K delta](signalk.md) built from the state every `period_ms` | Paths or leading path segments such as `navigation` or `environment.wind`, ignoring case; empty sends every path | `period_ms`, `signalk` |
 | `viewsync` | One [ViewSync packet](viewsync.md) built from the state every `period_ms` | not used | `period_ms`, `viewsync` |
 
 | Key | Type | Default | Meaning |

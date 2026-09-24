@@ -24,6 +24,7 @@
 
 #include <QDateTime>
 #include <QHostAddress>
+#include <QStringView>
 
 #include <algorithm>
 #include <chrono>
@@ -60,16 +61,33 @@ core::simulation::EndBehaviour end_behaviour(bool loop) {
 
 }  // namespace
 
+bool OutputChannel::admits(const QString& id) const {
+    if (filter.isEmpty()) {
+        return true;
+    }
+    return std::any_of(filter.begin(), filter.end(), [&id](const QString& entry) {
+        return entry.compare(id, Qt::CaseInsensitive) == 0;
+    });
+}
+
 bool OutputChannel::admits_path(const QString& path) const {
     if (filter.isEmpty()) {
         return true;
     }
-    for (const auto& prefix : filter) {
-        if (path.startsWith(prefix, Qt::CaseInsensitive)) {
+    return std::any_of(filter.begin(), filter.end(), [&path](const QString& entry) {
+        QStringView prefix{entry};
+        while (prefix.endsWith(QLatin1Char('.'))) {
+            prefix.chop(1);
+        }
+        // An empty entry keeps admitting every path, as the plain prefix match it replaces
+        // did. Otherwise the prefix must end at a segment boundary of the path: at its end or
+        // at a dot.
+        if (prefix.isEmpty()) {
             return true;
         }
-    }
-    return false;
+        return path.startsWith(prefix, Qt::CaseInsensitive) &&
+               (path.size() == prefix.size() || path.at(prefix.size()) == QLatin1Char('.'));
+    });
 }
 
 SimulationRunner::SimulationRunner(QObject* parent) : QObject(parent) {

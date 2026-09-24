@@ -47,7 +47,8 @@ struct OutputChannel {
     /// Entries of the output's `filter`; empty admits everything.
     ///
     /// For an NMEA 0183 channel the entries are registry or custom sentence ids, for a
-    /// Signal K channel they are path prefixes, and a ViewSync channel ignores them.
+    /// Signal K channel they are paths or leading path segments, and a ViewSync channel
+    /// ignores them. Both kinds are matched without regard to case.
     QSet<QString> filter;
     /// Lines written to the transport since the profile was applied: sentences, Signal K
     /// deltas or ViewSync packets.
@@ -70,20 +71,23 @@ struct OutputChannel {
 
     /// Returns whether the filter admits an NMEA 0183 sentence.
     ///
-    /// @param id Registry or custom sentence id, such as `RMC` or `BARO`, compared exactly
-    ///   (case-sensitive) with the filter entries.
-    /// @return True when the filter is empty or contains `id`.
-    [[nodiscard]] bool admits(const QString& id) const {
-        return filter.isEmpty() || filter.contains(id);
-    }
+    /// Ids are compared without regard to case, like the paths of `admits_path`: registry
+    /// and custom sentence ids are upper case, so an entry such as `rmc` means `RMC`.
+    ///
+    /// @param id Registry or custom sentence id, such as `RMC` or `BARO`.
+    /// @return True when the filter is empty or one of its entries equals `id`, ignoring
+    ///   case.
+    [[nodiscard]] bool admits(const QString& id) const;
     /// Returns whether the filter admits a Signal K path.
     ///
-    /// The comparison is a case-insensitive string prefix match, not aligned to the dots
-    /// between path segments: the entry `navigation.speed` also admits
-    /// `navigation.speedThroughWater`.
+    /// An entry names whole path segments: it admits the path equal to it and every path
+    /// below it, so `environment.wind` admits `environment.wind.speedApparent` and
+    /// `navigation.speed` does not admit `navigation.speedThroughWater`. A trailing dot of
+    /// an entry is ignored, an empty entry admits every path, and case is ignored.
     ///
     /// @param path Full Signal K path, such as `environment.wind.speedApparent`.
-    /// @return True when the filter is empty or `path` starts with one of its entries.
+    /// @return True when the filter is empty or one of its entries is `path` or a leading run
+    ///   of its segments.
     [[nodiscard]] bool admits_path(const QString& path) const;
     /// Returns whether this channel carries NMEA 0183 sentences.
     ///
