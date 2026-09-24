@@ -78,7 +78,7 @@ the state as it is.
 | VTG | Course and speed over ground |
 | ZDA | Time and date |
 | HDT, HDG, HDM | True heading; HDG also sets deviation and variation |
-| ROT | Rate of turn |
+| ROT | Rate of turn, when its status is `A` |
 | VHW | Heading and speed through water |
 | VBW | Speed through water |
 | DPT, DBT | Depth below transducer, DPT also the transducer offset |
