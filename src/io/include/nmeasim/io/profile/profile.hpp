@@ -284,8 +284,10 @@ struct Profile {
     /// The delta simulation, and the seed values for every mode.
     ///
     /// Read from `simulation.random_seed`, `simulation.seed`, `simulation.variation` and
-    /// `simulation.steering`. In track and replay mode the seed supplies the values the file
-    /// does not carry and the variations are unused.
+    /// `simulation.steering`. When read, a `simulation.seed.gnss.quality` other than
+    /// `invalid`, `gps` or `differential` and a `simulation.seed.destination` object without
+    /// numeric `latitude` and `longitude` are rejected. In track and replay mode the seed supplies
+    /// the values the file does not carry and the variations are unused.
     core::simulation::DeltaConfig delta;
     /// Track-following settings, the `simulation.track` object; used in track mode.
     TrackSettings track;
@@ -298,7 +300,8 @@ struct Profile {
     /// `sentences.settings` object.
     ///
     /// Reading an id the registry does not know is an error. A key missing from an entry
-    /// takes the registry default; `period_ms` is not range-checked here.
+    /// takes the registry default. When read, a `talker` must be empty or two upper-case
+    /// letters and `period_ms` must lie in [50, 3600000].
     std::map<std::string, core::simulation::SentenceSetting> sentences;
     /// Sentences typed in by the operator, in emission order; the `sentences.custom` array.
     ///
@@ -331,10 +334,13 @@ struct Profile {
     /// Missing keys take the defaults of `default_profile`, except that the outputs default to
     /// none. A value of the wrong JSON type, or a fractional number for an integer key, is
     /// mostly treated as missing; a non-array `simulation.seed.engines` gives no engines and a
-    /// non-object `simulation.seed.destination` gives none. Reading stops at the first
-    /// problem: a missing, non-positive or too new `schema_version`, an unknown simulation
-    /// mode, output type, encoding, UDP mode or sentence id, a value outside its range, a
-    /// missing required path or serial port name, or an invalid custom sentence or AIS value.
+    /// non-object `simulation.seed.destination` gives none. `simulation.random_seed`
+    /// ([0, 4294967295]) and `simulation.seed.ais.mmsi` and `imo_number` ([0, 999999999])
+    /// are the exception: a number that is negative, too large or not whole is rejected.
+    /// Reading stops at the first problem: a missing, non-positive or too new
+    /// `schema_version`, an unknown simulation mode, output type, encoding, UDP mode or
+    /// sentence id, a value outside its range, a missing required path or serial port name,
+    /// or an invalid custom sentence or AIS value.
     /// Relative track and replay paths are kept as they are; `load` resolves them.
     ///
     /// @param json The profile document.

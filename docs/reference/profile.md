@@ -41,7 +41,7 @@ misread.
 | `mode` | string | `"delta"` | `delta` (seed values that drift), `track` (follow a file, see `track`) or `replay` (re-send a log, see `replay`) |
 | `tick_ms` | integer | `100` | Length of one simulation step, 10 to 10000 |
 | `start_time` | string | `"now"` | `"now"` or an ISO 8601 UTC date-time such as `"2026-09-22T12:34:56.780Z"` |
-| `random_seed` | integer | `2026` | Seed of the random generator; the same seed reproduces the same run |
+| `random_seed` | integer | `2026` | Seed of the random generator, a whole number from 0 to 4294967295 (anything else is rejected); the same seed reproduces the same run |
 | `seed` | object | see below | Initial vessel values |
 | `variation` | object | see below | How far and how fast each value drifts |
 | `steering` | object | see below | Rudder behaviour |
@@ -69,7 +69,7 @@ until the file provides one. The `variation` values are not used in those modes.
 | `wind_true_direction_deg` | number | `270` | degrees true, the direction the wind blows from |
 | `wind_true_speed_kn` | number | `12` | knots |
 | `gnss.fix` | boolean | `true` | `false` simulates a receiver without a fix |
-| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"` |
+| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"`; any other text is rejected |
 | `gnss.satellites_in_use`, `gnss.satellites_in_view` | integer | `8`, `10` | 0 to 12 |
 | `gnss.hdop`, `gnss.pdop`, `gnss.vdop` | number | `0.9`, `1.7`, `1.4` | dilution of precision |
 | `gnss.geoid_separation_m` | number | `0` | metres |
@@ -80,7 +80,7 @@ until the file provides one. The `variation` values are not used in those modes.
 ### `simulation.seed.destination`
 
 `null` (or a missing key) means no destination: APB, RMB and XTE are not sent and the Signal K
-course paths are absent. See the [simulation model](../explanation/simulation-model.md#destination).
+course paths are absent. An object without a numeric `latitude` and `longitude` is rejected. See the [simulation model](../explanation/simulation-model.md#destination).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -98,8 +98,8 @@ course paths are absent. See the [simulation model](../explanation/simulation-mo
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `mmsi` | integer | `239000001` | Maritime Mobile Service Identity, at most nine digits |
-| `imo_number` | integer | `0` | IMO number, 0 for none |
+| `mmsi` | integer | `239000001` | Maritime Mobile Service Identity, at most nine digits (0 to 999999999) |
+| `imo_number` | integer | `0` | IMO number, 0 for none, at most 999999999 |
 | `name` | string | `"NMEA SIMULATOR X"` | Vessel name, 20 characters of the AIS alphabet |
 | `call_sign` | string | `"SIMX"` | Call sign, 7 characters |
 | `ship_type` | integer | `37` | Type of ship and cargo code, 0 to 255 |
@@ -111,7 +111,8 @@ course paths are absent. See the [simulation model](../explanation/simulation-mo
 | `position_report_type` | integer | `1` | Message type of the position report: 1, 2 or 3 |
 
 The fields are described on the [AIS reference page](ais.md). The MMSI also forms the default
-Signal K context.
+Signal K context. An `mmsi` or `imo_number` that is negative, larger than 999999999 or not a
+whole number is rejected when the profile is loaded.
 
 ### `simulation.variation`
 
@@ -168,8 +169,9 @@ value. See the [simulation model](../explanation/simulation-model.md).
 | `settings` | object | `{}` | Per-sentence overrides keyed by registry id |
 | `custom` | array | `[]` | Sentences typed in by the operator, see below |
 
-Each entry of `settings` may contain `enabled` (boolean), `talker` (two characters, empty for
-the default) and `period_ms` (integer). Ids and defaults are listed by `nmeasim sentences`
+Each entry of `settings` may contain `enabled` (boolean), `talker` (two upper-case letters
+such as `GN`, empty for the default) and `period_ms` (integer, 50 to 3600000). A talker or
+period outside these is rejected when the profile is loaded. Ids and defaults are listed by `nmeasim sentences`
 and on the [sentence reference](nmea0183-sentences.md).
 
 ```json
