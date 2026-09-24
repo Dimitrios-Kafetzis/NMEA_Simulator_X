@@ -210,6 +210,10 @@ the cache only and shows *offline*.
 | macOS | `~/Library/Caches/NMEASimulatorX/NMEASimulatorX/tiles` |
 | Linux | `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles` |
 
+The `map/cache_directory` preference moves the cache: the tiles are then kept in its `tiles`
+sub-directory, which *Clear map tile cache* deletes, and the change takes effect at the next
+start.
+
 ## Console
 
 The console buffers sentences and repaints a few times per second so that high output rates
@@ -335,6 +339,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/zoom` | Last map zoom level |
+| `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the

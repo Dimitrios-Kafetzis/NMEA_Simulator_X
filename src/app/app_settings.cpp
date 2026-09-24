@@ -31,6 +31,8 @@ const auto kMapOnline = QStringLiteral("map/online");
 const auto kMapTileUrl = QStringLiteral("map/tile_url");
 /// Key of the last map zoom level; see `AppSettings::map_zoom`.
 const auto kMapZoom = QStringLiteral("map/zoom");
+/// Key of the directory that holds the tile cache; see `AppSettings::map_cache_directory`.
+const auto kMapCacheDirectory = QStringLiteral("map/cache_directory");
 /// Key of the look chosen under *View → Theme*; see `AppSettings::theme`.
 const auto kTheme = QStringLiteral("appearance/theme");
 
@@ -89,6 +91,14 @@ void AppSettings::set_map_zoom(int zoom) {
     settings_.setValue(kMapZoom, zoom);
 }
 
+QString AppSettings::map_cache_directory() const {
+    return settings_.value(kMapCacheDirectory).toString();
+}
+
+void AppSettings::set_map_cache_directory(const QString& directory) {
+    settings_.setValue(kMapCacheDirectory, directory);
+}
+
 QString AppSettings::theme() const {
     return settings_.value(kTheme, QStringLiteral("night")).toString();
 }
@@ -98,7 +108,10 @@ void AppSettings::set_theme(const QString& theme) {
 }
 
 QString AppSettings::tile_cache_directory() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QString base = AppSettings().map_cache_directory();
+    if (base.isEmpty()) {
+        base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    }
     const QString directory = QDir(base).filePath(QStringLiteral("tiles"));
     QDir().mkpath(directory);
     return directory;
