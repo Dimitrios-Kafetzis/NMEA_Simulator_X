@@ -34,7 +34,7 @@ GPX 1.0 and 1.1 are read the same way.
 | `<trkpt>/<course>` | Course over ground in degrees true (GPX 1.0) |
 | `<trkpt>/<speed>` | Speed over ground in metres per second (GPX 1.0), converted to knots |
 | `<extensions>/…/<speed>`, `<extensions>/…/<course>` | The same values in GPX 1.1 extensions, matched on the element name whatever the prefix, e.g. `gpxtpx:speed` |
-| `<metadata>/<name>`, `<name>`, `<trk>/<name>`, `<rte>/<name>` | Track name, first one found in that order; the file name when none |
+| `<metadata>/<name>`, `<name>`, `<trk>/<name>`, `<rte>/<name>` | Track name, first one found in that order; the file name when none. A `<name>` directly under `<gpx>` counts only when the file has no `<metadata>` element (GPX 1.0) |
 | `<wpt>` | Ignored |
 
 A recorded speed is reported as the vessel speed while sailing the leg that starts at that
@@ -51,7 +51,7 @@ KML 2.2 with the Google extension namespace `gx` is supported.
 | `<gx:MultiTrack>` | Its tracks, in order |
 | `<LineString>/<coordinates>` | Untimed points: `lon,lat[,alt]` tuples separated by whitespace |
 | `<MultiGeometry>`, `<Folder>`, `<Document>`, `<Placemark>` | Traversed; every track and line inside is used |
-| `<Placemark>/<name>`, `<Document>/<name>` | Track name of the first placemark holding geometry, else the document name |
+| `<Placemark>/<name>`, `<Document>/<name>` | Track name: the name of the last named placemark met before the first track or line, which is usually the placemark holding it; else the name of the first document or folder |
 | `<Point>`, `<Polygon>`, styles, `<TimeStamp>`, `<gx:angles>` | Ignored |
 
 The third coordinate, when present, is the altitude in metres. A `gx:Track` with fewer

@@ -37,7 +37,8 @@ Each line is handled on its own, so the shapes below can be mixed in one file.
 | `[10:00:00] $GPRMC,...` or any other prefix | Ignored; the line counts as having no timestamp |
 | `$GPRMC,...` | No timestamp on the line |
 | `# ...` | Comment; `# key: value` lines become header metadata |
-| Blank, or no `$` or `!` on the line | Skipped and counted |
+| Blank | Skipped, not counted |
+| No `$` or `!` on the line | Skipped and counted |
 
 A sentence with a checksum that does not match is skipped and counted. A sentence without a
 checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
