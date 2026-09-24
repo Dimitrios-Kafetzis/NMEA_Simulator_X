@@ -563,6 +563,8 @@ TEST_CASE("relative track and log paths are resolved against the profile file", 
     QFile saved(path);
     REQUIRE(saved.open(QIODevice::ReadOnly));
     const auto json = QJsonDocument::fromJson(saved.readAll()).object();
+    // Closed at once: Windows does not let the file be replaced by a later save while open.
+    saved.close();
     const auto simulation = json.value(QStringLiteral("simulation")).toObject();
     CHECK(simulation.value(QStringLiteral("track")).toObject().value(QStringLiteral("path")) ==
           QStringLiteral("../tracks/harbour.gpx"));
