@@ -18,12 +18,15 @@
 /// build/dev/tests/nmeasim_app_tests "[.screenshot]"
 /// ```
 ///
-/// The window is rendered by the offscreen platform set up in `main.cpp`, and the map tiles
-/// are downloaded from the tile server when they are not cached yet, so the chart only appears
-/// with network access.
+/// The window is rendered by the offscreen platform set up in `main.cpp`. `main.cpp` also
+/// switches tile downloads off and gives the run an empty temporary tile cache, so this test
+/// switches its window's downloads back on: the map tiles are fetched from the tile server on
+/// every run, and the chart only appears with network access.
 
 #include "io/event_loop.hpp"
 #include "main_window.hpp"
+#include "map/map_widget.hpp"
+#include "map/tile_cache.hpp"
 #include "theme/theme.hpp"
 
 #include <nmeasim/core/model/vessel_state.hpp>
@@ -49,6 +52,7 @@ TEST_CASE("capture the main window for the documentation", "[.screenshot]") {
          {std::pair{Mode::Night, "main-window.png"}, std::pair{Mode::Day, "main-window-day.png"}}) {
         nmeasim::app::theme::Theme::instance().apply(mode);
         nmeasim::app::MainWindow window;
+        window.map_view()->cache()->set_online(true);
         auto profile = nmeasim::io::Profile::default_profile();
         nmeasim::core::model::Destination destination;
         destination.name = "AEGINA";

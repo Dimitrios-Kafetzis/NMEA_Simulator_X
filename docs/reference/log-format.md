@@ -83,7 +83,7 @@ the state as it is.
 | MWV | Apparent (`R`) or true (`T`) wind angle and speed, unit converted to knots |
 | MWD | True wind direction and speed |
 | RSA | Rudder angle |
-| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position |
+| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position, the same id keeps the leg (an empty id is `WPT`) |
 | APB, XTE | Recognised, nothing applied (they repeat what RMB carries) |
 | RPM | Revolutions of engine `n` (`E` source, status `A`), creating engines up to `n`; running when above zero |
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |

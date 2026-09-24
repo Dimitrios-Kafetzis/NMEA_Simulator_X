@@ -31,13 +31,11 @@ on:
       - "tools/**"
       - "CMakeLists.txt"
       - ".github/workflows/docs.yml"
+      - ".github/versions.env"
   workflow_dispatch:
 
-# Pinned Doxygen and the SHA-256 of its release archive; keep both equal to ci.yml, which
-# explains the pin.
-env:
-  DOXYGEN_VERSION: 1.18.0
-  DOXYGEN_SHA256: 14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90
+# The Doxygen version and the SHA-256 of its release archive are pinned in
+# .github/versions.env, which the job reads after the checkout.
 
 permissions:
   contents: read
@@ -67,6 +65,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: docs/requirements.txt
+
+      # QT_VERSION, DOXYGEN_VERSION and DOXYGEN_SHA256 from .github/versions.env.
+      - name: Read the pinned tool versions
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/versions.env >> "$GITHUB_ENV"
 
       # The release binary of the pinned version, verified against its SHA-256 before use.
       - name: Install Doxygen
