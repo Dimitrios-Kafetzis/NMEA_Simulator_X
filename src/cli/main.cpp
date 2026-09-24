@@ -29,6 +29,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QHostAddress>
 #include <QJsonDocument>
 #include <QTimer>
 
@@ -158,9 +159,10 @@ struct RunOptions {
     /// `check_finite_options` refuses `nan` and `inf`.
     double track_speed_kn{0.0};
     /// `--ignore-timestamps`: sails a timed track at the track speed instead of on its own
-    /// timing.
+    /// timing. Not given keeps the profile's `simulation.track.use_timestamps`.
     bool ignore_timestamps{false};
-    /// `--loop`: starts the track or log again at its end instead of ending the run.
+    /// `--loop`: starts the track or log again at its end instead of ending the run. Not
+    /// given keeps the profile's `loop` flags.
     bool loop{false};
     /// Spacing of the sentences of a log without any time information, `--replay-interval`;
     /// CLI11 accepts [1, 60000]. Zero keeps the profile's
@@ -180,7 +182,8 @@ struct RunOptions {
     /// Ports of TCP server outputs, `--tcp-server`, repeatable; CLI11 accepts [1, 65535].
     std::vector<int> tcp_ports;
     /// Destinations of UDP outputs as `host:port`, `--udp`, repeatable; parsed by
-    /// `split_host_port`. The host `255.255.255.255` selects broadcast.
+    /// `split_host_port`. A broadcast address selects broadcast, see
+    /// `is_broadcast_address`.
     std::vector<std::string> udp_targets;
     /// Ports of WebSocket server outputs, `--websocket`, repeatable; CLI11 accepts
     /// [1, 65535].
@@ -194,13 +197,15 @@ struct RunOptions {
     /// Registry ids to switch off, `--disable`, repeatable. Applied after `enable`, so an id
     /// given to both ends up off.
     std::vector<std::string> disable;
-    /// Encoding of the command-line outputs, `--encoding`: `nmea0183`, `signalk` or
-    /// `viewsync`. Outputs that come from the profile keep their own encoding.
-    std::string encoding{"nmea0183"};
-    /// `--tag-block`: prefixes every sentence of the command-line outputs with an
-    /// IEC 61162-450 TAG block.
+    /// Encoding of the outputs, `--encoding`: `nmea0183`, `signalk` or `viewsync`. Empty, when
+    /// the option is not given, leaves the command-line outputs at `nmea0183` and the
+    /// profile's outputs at their own encoding.
+    std::string encoding;
+    /// `--tag-block`: prefixes every sentence of the outputs with an IEC 61162-450 TAG block.
+    /// Not given leaves each profile output's own TAG block setting.
     bool tag_block{false};
-    /// TAG block source identifier, `--tag-source`; empty keeps the default `SIM0001`.
+    /// TAG block source identifier, `--tag-source`; empty keeps the output's own source,
+    /// `SIM0001` unless a profile sets another.
     std::string tag_source;
     /// Waypoint to steer for as `LAT,LON[,NAME]` in decimal degrees, `--destination`;
     /// parsed by `apply_destination`. Empty sets no destination.
@@ -273,6 +278,30 @@ std::optional<std::pair<QString, int>> split_serial(const std::string& value) {
     return std::make_pair(QString::fromStdString(value.substr(0, at)), *baud);
 }
 
+/// Returns whether a `--udp` host is a broadcast address.
+///
+/// The limited broadcast address `255.255.255.255` is one, and so is the subnet broadcast
+/// address of every IPv4 address of the interfaces that are up, such as `192.168.1.255`
+/// for `192.168.1.20/24`. A host name is never one.
+///
+/// @param host The host part of a `--udp` argument.
+/// @return True when UDP datagrams to `host` must be sent as broadcasts.
+/// @see nmeasim::io::ipv4_interfaces
+bool is_broadcast_address(const QString& host) {
+    const QHostAddress address(host);
+    if (address.isNull()) {
+        return false;
+    }
+    if (address == QHostAddress(QHostAddress::Broadcast)) {
+        return true;
+    }
+    const auto interfaces = nmeasim::io::ipv4_interfaces();
+    return std::ranges::any_of(interfaces,
+                               [&address](const nmeasim::io::NetworkInterfaceInfo& info) {
+                                   return !info.broadcast.isNull() && info.broadcast == address;
+                               });
+}
+
 /// Refuses the non-finite values that CLI11 converts `nan` and `inf` to.
 ///
 /// CLI11 reads `--duration` and `--speed` as floating-point numbers and accepts `nan`, `inf`
@@ -293,41 +322,44 @@ bool check_finite_options(const RunOptions& options, std::string& error) {
     return true;
 }
 
-/// Replaces the outputs of `profile` with the outputs given on the command line.
+/// Replaces the outputs of `profile` with the outputs given on the command line, and applies
+/// `--encoding`, `--tag-block` and `--tag-source` to the outputs of the run.
 ///
-/// Does nothing when none of `--stdout`, `--tcp-server`, `--udp`, `--websocket`, `--serial`
-/// and `--file` is given. Otherwise it clears the profile's outputs and appends, in this
-/// order, the TCP servers, UDP senders, WebSocket servers, serial ports, files and finally
-/// standard output. Everything an option does not carry keeps the default of
-/// `nmeasim::io::OutputConfig`: servers listen on every interface and files are appended to.
-/// Every new output gets the `--encoding`, and a TAG block when `--tag-block` is given, with
-/// the `--tag-source` identifier when that is not empty.
+/// When any of `--stdout`, `--tcp-server`, `--udp`, `--websocket`, `--serial` and `--file`
+/// is given, it clears the profile's outputs and appends, in this order, the TCP servers, UDP
+/// senders, WebSocket servers, serial ports, files and finally standard output. Everything an
+/// option does not carry keeps the default of `nmeasim::io::OutputConfig`: servers listen on
+/// every interface, files are appended to, the encoding is `nmea0183` and there is no TAG
+/// block. Without an output option the profile's outputs stay.
+///
+/// Then every output of the run, except a `log` output (a recording, which always holds
+/// NMEA 0183), gets the `--encoding` when it is given, a TAG block when `--tag-block` is
+/// given, and the `--tag-source` identifier when that is not empty. An option that is not
+/// given leaves the output's own setting.
 ///
 /// @param options The parsed `run` options.
 /// @param[in,out] profile The profile to change.
 /// @param[out] error Set to a message for the user when the function returns false.
-/// @return True on success, including when there is nothing to replace; false when
-/// `--encoding` is not an encoding name or a `--udp` or `--serial` argument is malformed, in
-/// which case `profile` may be left partly changed.
-/// @note `--encoding`, `--tag-block` and `--tag-source` are only checked and applied here,
-/// so without an output option they have no effect.
+/// @return True on success; false when `--encoding` is not an encoding name or a `--udp` or
+/// `--serial` argument is malformed, in which case `profile` may be left partly changed.
 bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& profile,
                             std::string& error) {
     using nmeasim::io::OutputConfig;
+    std::optional<OutputConfig::Encoding> encoding;
+    if (!options.encoding.empty()) {
+        encoding = nmeasim::io::encoding_from_string(QString::fromStdString(options.encoding));
+        if (!encoding) {
+            error = std::format("--encoding must be nmea0183, signalk or viewsync, got '{}'",
+                                options.encoding);
+            return false;
+        }
+    }
     const bool any = options.use_stdout || !options.tcp_ports.empty() ||
                      !options.udp_targets.empty() || !options.websocket_ports.empty() ||
                      !options.serial_ports.empty() || !options.files.empty();
-    if (!any) {
-        return true;
+    if (any) {
+        profile.outputs.clear();
     }
-    const auto encoding =
-        nmeasim::io::encoding_from_string(QString::fromStdString(options.encoding));
-    if (!encoding) {
-        error = std::format("--encoding must be nmea0183, signalk or viewsync, got '{}'",
-                            options.encoding);
-        return false;
-    }
-    profile.outputs.clear();
     for (const int port : options.tcp_ports) {
         OutputConfig output;
         output.type = OutputConfig::Type::TcpServer;
@@ -342,7 +374,8 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
         }
         OutputConfig output;
         output.type = OutputConfig::Type::Udp;
-        output.udp.mode = parts->first == QLatin1String("255.255.255.255")
+        // A socket may only send to a broadcast address in broadcast mode.
+        output.udp.mode = is_broadcast_address(parts->first)
                               ? nmeasim::io::UdpConfig::Mode::Broadcast
                               : nmeasim::io::UdpConfig::Mode::Unicast;
         output.udp.address = parts->first;
@@ -384,8 +417,15 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
         profile.outputs.append(output);
     }
     for (auto& output : profile.outputs) {
-        output.encoding = *encoding;
-        output.tag_block.enabled = options.tag_block;
+        if (output.type == OutputConfig::Type::Log) {
+            continue;
+        }
+        if (encoding) {
+            output.encoding = *encoding;
+        }
+        if (options.tag_block) {
+            output.tag_block.enabled = true;
+        }
         if (!options.tag_source.empty()) {
             output.tag_block.options.source = options.tag_source;
         }
@@ -490,12 +530,13 @@ bool apply_sentence_overrides(const RunOptions& options, nmeasim::io::Profile& p
 
 /// Applies `--track`, `--replay`, their companion options and `--record` to `profile`.
 ///
-/// - With `--track`, the mode becomes `nmeasim::io::SimulationMode::Track` and the track
-///   settings are replaced: the path, `loop` from `--loop`, `use_timestamps` unless
-///   `--ignore-timestamps` is given, and the speed when `--speed` is positive (otherwise the
-///   profile's speed stays).
-/// - With `--replay`, the mode becomes `nmeasim::io::SimulationMode::Replay` with the path,
-///   `loop` from `--loop` and the fixed interval when `--replay-interval` is positive.
+/// - With `--track`, the mode becomes `nmeasim::io::SimulationMode::Track` with the path;
+///   `--loop` sets `loop`, `--ignore-timestamps` clears `use_timestamps` and a positive
+///   `--speed` sets the speed. A flag or option that is not given leaves the profile's
+///   setting.
+/// - With `--replay`, the mode becomes `nmeasim::io::SimulationMode::Replay` with the path;
+///   `--loop` sets `loop` and a positive `--replay-interval` sets the fixed interval, and
+///   either one not given leaves the profile's setting.
 /// - With neither, `--loop` sets the loop flag of both the profile's track and replay
 ///   settings, so that a profile already in one of those modes loops; without `--loop` the
 ///   profile's flags stay.
@@ -516,8 +557,12 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
         profile.mode = SimulationMode::Track;
         profile.track.path =
             QFileInfo(QString::fromStdString(options.track_path)).absoluteFilePath();
-        profile.track.loop = options.loop;
-        profile.track.use_timestamps = !options.ignore_timestamps;
+        if (options.loop) {
+            profile.track.loop = true;
+        }
+        if (options.ignore_timestamps) {
+            profile.track.use_timestamps = false;
+        }
         if (options.track_speed_kn > 0.0) {
             profile.track.speed_kn = options.track_speed_kn;
         }
@@ -525,7 +570,9 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
         profile.mode = SimulationMode::Replay;
         profile.replay.path =
             QFileInfo(QString::fromStdString(options.replay_path)).absoluteFilePath();
-        profile.replay.loop = options.loop;
+        if (options.loop) {
+            profile.replay.loop = true;
+        }
         if (options.replay_interval_ms > 0) {
             profile.replay.fixed_interval_ms = options.replay_interval_ms;
         }
@@ -631,9 +678,14 @@ int run_simulation(const RunOptions& options) {
         } else if (profile.mode == nmeasim::io::SimulationMode::Replay) {
             source = std::format(" replaying {}", profile.replay.path.toStdString());
         }
+        // Whether the source loops comes from the profile, which --loop only switches on.
+        const bool looping =
+            profile.mode == nmeasim::io::SimulationMode::Track
+                ? profile.track.loop
+                : profile.mode == nmeasim::io::SimulationMode::Replay && profile.replay.loop;
         if (const auto duration = runner.duration()) {
             source += std::format(" ({:.1f} s{})", std::chrono::duration<double>(*duration).count(),
-                                  options.loop ? ", looping" : "");
+                                  looping ? ", looping" : "");
         }
         std::cerr << std::format("running profile '{}'{} with a {} ms tick; press Ctrl+C to stop\n",
                                  profile.name.toStdString(), source, profile.tick_ms);
@@ -804,11 +856,10 @@ int main(int argc, char** argv) {
     run->add_option("--enable", options.enable, "Enable a sentence id such as MWV-T (repeatable)");
     run->add_option("--disable", options.disable, "Disable a sentence id such as GSV (repeatable)");
     run->add_option("--encoding", options.encoding,
-                    "Encoding of the outputs given on the command line: nmea0183 (default), "
-                    "signalk or viewsync");
+                    "Encoding of the outputs, the profile's when no output option is given: "
+                    "nmea0183 (default), signalk or viewsync");
     run->add_flag("--tag-block", options.tag_block,
-                  "Prefix every sentence of the command-line outputs with an IEC 61162-450 "
-                  "TAG block");
+                  "Prefix every sentence of the outputs with an IEC 61162-450 TAG block");
     run->add_option("--tag-source", options.tag_source,
                     "Source identifier of the TAG block (default: SIM0001)")
         ->needs("--tag-block");

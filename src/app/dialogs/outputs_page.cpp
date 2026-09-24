@@ -7,6 +7,8 @@
 
 #include "outputs_page.hpp"
 
+#include "app_settings.hpp"
+
 #include <nmeasim/io/serial_ports.hpp>
 
 #include <QFileDialog>
@@ -262,9 +264,11 @@ OutputsPage::OutputsPage(QWidget* parent)
     file_path_edit = new QLineEdit(file_page);
     auto* browse = new QPushButton(tr("Browse..."), file_page);
     connect(browse, &QPushButton::clicked, this, [this] {
+        // A relative path names a file next to the profile file.
         const QString path = QFileDialog::getSaveFileName(
-            this, tr("Log file"), file_path_edit->text(), tr("NMEA logs (*.nmea *.log *.txt)"),
-            nullptr, QFileDialog::DontConfirmOverwrite);
+            this, tr("Log file"),
+            AppSettings::resolve_profile_path(profile_directory_, file_path_edit->text()),
+            tr("NMEA logs (*.nmea *.log *.txt)"), nullptr, QFileDialog::DontConfirmOverwrite);
         if (!path.isEmpty()) {
             file_path_edit->setText(path);
         }
@@ -316,6 +320,7 @@ void OutputsPage::update_encoding_widgets() {
 
 void OutputsPage::load(const io::Profile& profile) {
     outputs_ = profile.outputs;
+    profile_directory_ = profile.base_directory;
     editing_ = -1;
     loading_ = true;
     list->clear();

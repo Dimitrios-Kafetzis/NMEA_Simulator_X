@@ -7,15 +7,15 @@
 
 #include "simulation_page.hpp"
 
+#include "app_settings.hpp"
+
 #include <QFileDialog>
-#include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QScrollArea>
-#include <QStandardPaths>
 #include <QTimeZone>
 #include <QVBoxLayout>
 
@@ -288,9 +288,8 @@ void SimulationPage::update_mode_widgets() {
 }
 
 void SimulationPage::browse_track() {
-    const QString start = track_path_edit->text().isEmpty()
-                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                              : QFileInfo(track_path_edit->text()).absolutePath();
+    const QString start =
+        AppSettings::dialog_directory(profile_directory_, track_path_edit->text());
     const QString path = QFileDialog::getOpenFileName(this, tr("Choose a track"), start,
                                                       tr("Tracks (*.gpx *.kml);;All files (*)"));
     if (!path.isEmpty()) {
@@ -299,9 +298,8 @@ void SimulationPage::browse_track() {
 }
 
 void SimulationPage::browse_log() {
-    const QString start = replay_path_edit->text().isEmpty()
-                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                              : QFileInfo(replay_path_edit->text()).absolutePath();
+    const QString start =
+        AppSettings::dialog_directory(profile_directory_, replay_path_edit->text());
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Choose a log"), start, tr("Logs (*.log *.nmea *.txt);;All files (*)"));
     if (!path.isEmpty()) {
@@ -322,6 +320,7 @@ QString SimulationPage::validate() const {
 
 void SimulationPage::load(const io::Profile& profile) {
     mode_combo->setCurrentIndex(static_cast<int>(profile.mode));
+    profile_directory_ = profile.base_directory;
     track_path_edit->setText(profile.track.path);
     track_speed_spin->setValue(profile.track.speed_kn);
     track_timestamps_check->setChecked(profile.track.use_timestamps);

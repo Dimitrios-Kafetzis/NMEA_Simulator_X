@@ -469,9 +469,8 @@ bool MainWindow::set_recording(const QString& path) {
 }
 
 void MainWindow::open_track() {
-    const QString start = profile_.track.path.isEmpty()
-                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                              : QFileInfo(profile_.track.path).absolutePath();
+    const QString start =
+        AppSettings::dialog_directory(profile_.base_directory, profile_.track.path);
     const QString path = QFileDialog::getOpenFileName(this, tr("Open track"), start,
                                                       tr("Tracks (*.gpx *.kml);;All files (*)"));
     if (!path.isEmpty()) {
@@ -480,9 +479,8 @@ void MainWindow::open_track() {
 }
 
 void MainWindow::open_log() {
-    const QString start = profile_.replay.path.isEmpty()
-                              ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
-                              : QFileInfo(profile_.replay.path).absolutePath();
+    const QString start =
+        AppSettings::dialog_directory(profile_.base_directory, profile_.replay.path);
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Open log for replay"), start, tr("Logs (*.log *.nmea *.txt);;All files (*)"));
     if (!path.isEmpty()) {

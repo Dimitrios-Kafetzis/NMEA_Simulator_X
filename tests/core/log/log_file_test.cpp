@@ -180,6 +180,11 @@ TEST_CASE("Unix time prefixes and TAG block times are understood", "[log]") {
     REQUIRE(tagged.entries.size() == 8);
     CHECK(tagged.entries[0].sentence.starts_with("$GPRMC"));
     CHECK(tagged.entries[7].offset == 7000ms);  // the c: times step by one second
+    // The time fields agree with the c: times: 1790416800 is 2026-09-26T10:00:00Z, so the RMC
+    // is dated 26 September 2026 at 10:00:00 and the GGA, one second later, at 10:00:01.
+    CHECK(tagged.entries[0].sentence.find(",100000.00,") != std::string::npos);
+    CHECK(tagged.entries[0].sentence.find(",260926,") != std::string::npos);
+    CHECK(tagged.entries[1].sentence.starts_with("$GPGGA,100001.00,"));
 
     std::string error;
     const auto millis = logfile::parse_log(
