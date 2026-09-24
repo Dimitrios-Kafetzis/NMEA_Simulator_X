@@ -510,8 +510,9 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
 ///
 /// Unless `--quiet` is given it prints to standard error each output that opened, a line
 /// naming the profile, the track or log, its length and the tick, `end of the track or log
-/// reached` when a finite source ends, and the count of
-/// `nmeasim::io::SimulationRunner::sentences_emitted` when it stops.
+/// reached` when a finite source ends, and when it stops the count of
+/// `nmeasim::io::SimulationRunner::sentences_emitted`, followed by that of
+/// `nmeasim::io::SimulationRunner::state_messages_sent` when there were any.
 /// A failure of one output while others work is printed as a warning and the run continues.
 ///
 /// @param options The parsed `run` options.
@@ -612,7 +613,12 @@ int run_simulation(const RunOptions& options) {
     }
     const int result = QCoreApplication::exec();
     if (!options.quiet) {
-        std::cerr << std::format("stopped after {} sentences\n", runner.sentences_emitted());
+        const auto messages = runner.state_messages_sent();
+        std::cerr << (messages > 0 ? std::format("stopped after {} sentences and {} Signal K or "
+                                                 "ViewSync messages\n",
+                                                 runner.sentences_emitted(), messages)
+                                   : std::format("stopped after {} sentences\n",
+                                                 runner.sentences_emitted()));
     }
     return result;
 }

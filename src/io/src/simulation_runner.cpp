@@ -200,6 +200,7 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
         recorder_->set_profile_name(profile_.name);
     }
     sentences_emitted_ = 0;
+    state_messages_sent_ = 0;
     return true;
 }
 
@@ -349,7 +350,7 @@ void SimulationRunner::emit_sentences(
             } else {
                 channel.transport->write(line);
             }
-            ++channel.sentences_sent;
+            ++channel.lines_sent;
         }
         if (recorder_ && recorder_->is_open()) {
             recorder_->write(line);
@@ -387,8 +388,8 @@ void SimulationRunner::emit_state_messages() {
             ++channel.counter;
         }
         channel.transport->write(QByteArray::fromStdString(message + "\r\n"));
-        ++channel.sentences_sent;
-        ++sentences_emitted_;
+        ++channel.lines_sent;
+        ++state_messages_sent_;
         emit sentence_emitted(id, QString::fromStdString(message));
     }
 }

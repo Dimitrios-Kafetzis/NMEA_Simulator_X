@@ -20,8 +20,8 @@ profile used is reopened, and if there is none the built-in default profile is u
 | Dashboard (central) | Compass rose and wind dial, then instrument tiles with override controls; scrolls when the window is small | No |
 | Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
-| Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
-| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the sentence counter. Errors appear here for ten seconds | No |
+| Outputs (dock, right) | One row per configured output: description, state, clients, lines sent (sentences, or Signal K or ViewSync messages), bytes, last error | Yes, *View* menu |
+| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the counter of NMEA 0183 sentences produced. Errors appear here for ten seconds | No |
 
 Docks can be moved to any edge, stacked, floated or closed. Geometry and dock layout are
 saved on exit and restored at the next start; the first start gives the map about 400 pixels,

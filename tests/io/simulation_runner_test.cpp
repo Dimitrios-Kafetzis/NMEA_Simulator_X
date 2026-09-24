@@ -167,9 +167,9 @@ TEST_CASE("the runner streams filtered sentences to its outputs", "[io][runner][
         CHECK(nmeasim::core::nmea0183::verify_checksum(line.toStdString()));
     }
     CHECK(runner.sentences_emitted() >= all_lines.size());
-    CHECK(emitted.count() == runner.sentences_emitted());
-    CHECK(runner.outputs()[0].sentences_sent >= all_lines.size());
-    CHECK(runner.outputs()[1].sentences_sent < runner.outputs()[0].sentences_sent);
+    CHECK(emitted.count() == runner.sentences_emitted() + runner.state_messages_sent());
+    CHECK(runner.outputs()[0].lines_sent >= all_lines.size());
+    CHECK(runner.outputs()[1].lines_sent < runner.outputs()[0].lines_sent);
 }
 
 TEST_CASE("pausing stops emission and resuming continues it", "[io][runner][integration]") {
@@ -233,6 +233,54 @@ TEST_CASE("a failing output is reported and the run continues on the others",
     CHECK(runner.outputs()[1].transport->is_open());
     REQUIRE(wait_until([&] { return runner.sentences_emitted() > 0; }));
     runner.stop();
+}
+
+TEST_CASE("sentences and state messages are counted apart", "[io][runner]") {
+    Profile profile = fast_profile();
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig nmea;
+    nmea.type = OutputConfig::Type::File;
+    nmea.path = directory.filePath(QStringLiteral("sentences.nmea"));
+    profile.outputs.append(nmea);
+    OutputConfig signalk = nmea;
+    signalk.path = directory.filePath(QStringLiteral("signalk.jsonl"));
+    signalk.encoding = OutputConfig::Encoding::SignalK;
+    profile.outputs.append(signalk);
+    OutputConfig viewsync = nmea;
+    viewsync.path = directory.filePath(QStringLiteral("viewsync.txt"));
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    profile.outputs.append(viewsync);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    runner.step();
+    runner.stop();
+    qint64 sentences = 0;
+    qint64 messages = 0;
+    for (const auto& call : emitted) {
+        const auto id = call.at(0).toString();
+        if (id == QStringLiteral("SIGNALK") || id == QStringLiteral("VIEWSYNC")) {
+            ++messages;
+        } else {
+            ++sentences;
+        }
+    }
+    // The first step sends every due sentence, one Signal K delta and one ViewSync packet.
+    REQUIRE(sentences > 0);
+    CHECK(messages == 2);
+    CHECK(runner.sentences_emitted() == sentences);
+    CHECK(runner.state_messages_sent() == messages);
+    CHECK(runner.outputs()[0].lines_sent == sentences);
+    CHECK(runner.outputs()[1].lines_sent == 1);
+    CHECK(runner.outputs()[2].lines_sent == 1);
+
+    // Applying a profile starts both counts again.
+    REQUIRE(runner.apply_profile(profile, &error));
+    CHECK(runner.sentences_emitted() == 0);
+    CHECK(runner.state_messages_sent() == 0);
 }
 
 TEST_CASE("the simulated clock starts from the profile start time", "[io][runner]") {
@@ -531,7 +579,7 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
         signalk_seen = signalk_seen || call.at(0).toString() == QStringLiteral("SIGNALK");
     }
     CHECK(signalk_seen);
-    CHECK(runner.outputs()[1].sentences_sent == static_cast<qint64>(lines.size()));
+    CHECK(runner.outputs()[1].lines_sent == static_cast<qint64>(lines.size()));
 }
 
 TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
@@ -559,7 +607,7 @@ TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
     QString error;
     REQUIRE(runner.apply_profile(profile, &error));
     runner.start();
-    REQUIRE(wait_until([&] { return runner.outputs()[0].sentences_sent >= 3; }, 5000));
+    REQUIRE(wait_until([&] { return runner.outputs()[0].lines_sent >= 3; }, 5000));
     runner.stop();
 
     const auto packets = read_sentences(viewsync.path);

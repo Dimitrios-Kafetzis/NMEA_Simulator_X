@@ -65,7 +65,10 @@ message `end of the track or log reached` is printed unless `--quiet` is given, 
 exits with status `0`.
 
 Status lines go to standard error, sentences go only to the outputs, so
-`nmeasim run --stdout --quiet` produces a clean stream that can be piped.
+`nmeasim run --stdout --quiet` produces a clean stream that can be piped. When the run stops,
+the last status line counts the NMEA 0183 sentences produced and, when a Signal K or ViewSync
+output ran, the messages those outputs sent: `stopped after 1200 sentences and 60 Signal K or
+ViewSync messages`.
 
 Exit status: `0` on a normal stop, `2` for invalid arguments or profile, `3` when no output
 could be opened. An output that fails while others succeed is reported as a warning and the
