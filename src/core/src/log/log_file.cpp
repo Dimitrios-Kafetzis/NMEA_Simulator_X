@@ -97,10 +97,35 @@ std::optional<system_clock::time_point> parse_prefix_time(std::string_view prefi
     return std::nullopt;
 }
 
+/// Checks the checksum of a TAG block.
+///
+/// @param block The TAG block between its two backslashes.
+/// @return True when `block` has no `*`, since the checksum is optional here as it is for a
+///         sentence, or when the `*` is followed by exactly two hexadecimal digits, upper or
+///         lower case, that equal the XOR of the characters before it; false otherwise.
+/// @see IEC 61162-450, TAG block checksum.
+bool tag_block_checksum_valid(std::string_view block) noexcept {
+    const auto star = block.find('*');
+    if (star == std::string_view::npos) {
+        return true;
+    }
+    const auto digits = block.substr(star + 1);
+    if (digits.size() != 2 || !std::all_of(digits.begin(), digits.end(), [](char c) {
+            return std::isxdigit(static_cast<unsigned char>(c)) != 0;
+        })) {
+        return false;
+    }
+    const auto expected =
+        nmea0183::format_checksum(nmea0183::compute_checksum(block.substr(0, star)));
+    return std::equal(digits.begin(), digits.end(), expected.begin(), [](char a, char b) {
+        return std::toupper(static_cast<unsigned char>(a)) == b;
+    });
+}
+
 /// Reads the time from the `c:` parameter of a TAG block.
 ///
 /// @param block The TAG block between its two backslashes; the `*hh` checksum, when present,
-///        is ignored and not verified.
+///        is ignored here and checked by `tag_block_checksum_valid`.
 /// @return The time of the first `c:` parameter, read by `parse_unix_time` as seconds or
 ///         milliseconds since the Unix epoch, or `std::nullopt` when there is no `c:`
 ///         parameter or its value is not a positive number.
@@ -165,6 +190,10 @@ milliseconds Log::duration() const noexcept {
 
 std::optional<Log> parse_log(std::string_view text, const LogParseOptions& options,
                              std::string* error) {
+    if (options.fixed_interval < milliseconds{0}) {
+        set_error(error, "The fixed interval must not be negative");
+        return std::nullopt;
+    }
     Log log;
     std::vector<RawEntry> raw;
     std::size_t start = 0;
@@ -199,7 +228,8 @@ std::optional<Log> parse_log(std::string_view text, const LogParseOptions& optio
         RawEntry entry;
         if (line.front() == '\\') {
             const auto close = line.find('\\', 1);
-            if (close == std::string_view::npos) {
+            if (close == std::string_view::npos ||
+                !tag_block_checksum_valid(line.substr(1, close - 1))) {
                 ++log.skipped_lines;
                 continue;
             }
@@ -255,21 +285,25 @@ std::optional<Log> parse_log(std::string_view text, const LogParseOptions& optio
         }
     } else if (any_sentence_time) {
         log.timing = TimingSource::SentenceTimes;
-        std::optional<milliseconds> previous_time_of_day;
+        // The latest time of day seen so far: a step back does not lower it, so the replay
+        // holds until the log's clock has caught up again and no time is counted twice.
+        std::optional<milliseconds> latest_time_of_day;
         for (auto& entry : raw) {
             if (entry.sentence_time) {
                 const auto now = entry.sentence_time->since_midnight;
-                if (previous_time_of_day) {
-                    auto delta = now - *previous_time_of_day;
+                if (!latest_time_of_day) {
+                    latest_time_of_day = now;
+                } else {
+                    auto delta = now - *latest_time_of_day;
                     // A large step back is the time of day wrapping at midnight.
                     if (delta < -std::chrono::hours{12}) {
                         delta += std::chrono::hours{24};
                     }
                     if (delta > milliseconds{0}) {
                         offset += delta;
+                        latest_time_of_day = now;
                     }
                 }
-                previous_time_of_day = now;
             }
             log.entries.push_back({offset, std::move(entry.sentence), std::nullopt});
         }
@@ -301,17 +335,15 @@ std::optional<Log> load_log(const std::string& path, const LogParseOptions& opti
     return log;
 }
 
-// Doxygen cannot match this definition to its declaration through the local
-// `system_clock` alias and would list it as a second, undocumented function, so it is
-// hidden from Doxygen; the documentation is in log_file.hpp.
-/// @cond
-std::string format_log_line(system_clock::time_point recorded_at, std::string_view sentence) {
+// Spelled out in full rather than through the local `system_clock` alias, so that Doxygen
+// matches the definition to its declaration.
+std::string format_log_line(std::chrono::system_clock::time_point recorded_at,
+                            std::string_view sentence) {
     std::string line = time::format_iso8601(recorded_at);
     line += ' ';
     line += sentence;
     return line;
 }
-/// @endcond
 
 std::string format_header_line(std::string_view key, std::string_view value) {
     std::string line{"# "};

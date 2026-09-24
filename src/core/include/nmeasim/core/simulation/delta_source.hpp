@@ -52,9 +52,11 @@ enum class Parameter {
 ///
 /// The value performs a bounded random walk: each step moves it by a uniformly distributed
 /// amount of at most `step_per_second` times the step length in seconds, and the result is
-/// clamped to [seed - `amplitude`, seed + `amplitude`]. When either member is zero or
-/// negative the value does not drift and stays where it is, which is its seed unless an
-/// override moved it.
+/// clamped to [seed - `amplitude`, seed + `amplitude`]. A value outside that band, where a
+/// released override can leave it, instead moves the full `step_per_second` times the step
+/// length towards the band on every step until it is back inside. When either member is
+/// zero or negative the value does not drift and stays where it is, which is its seed unless
+/// an override moved it.
 struct Variation {
     /// Largest distance from the seed, in the value's own unit.
     double amplitude{0.0};
@@ -147,23 +149,29 @@ public:
     /// @param parameter The value to pin.
     /// @param value The value in the parameter's unit; it is normalised or clamped as
     ///   `Parameter` states before it enters the state.
-    /// @note In steering mode the heading follows the rudder even when it is overridden.
+    /// @note In steering mode the heading follows the rudder even when it is overridden; the
+    ///   override then holds the heading where the rudder left it once steering mode is
+    ///   switched off.
     void set_override(Parameter parameter, double value);
     /// Releases an override so that the value is simulated again from where it is.
     ///
-    /// A drifting value continues its walk, but the drift bound still applies: a value
-    /// pinned outside [seed - amplitude, seed + amplitude] is pulled to the nearest edge of
-    /// that band by the next `advance`, unless its variation is zero. The speed through
-    /// water follows the speed over ground again; altitude and rudder angle stay where they
-    /// are. Releasing a parameter that is not overridden does nothing.
+    /// A drifting value continues its walk from where it was pinned. A value pinned outside
+    /// [seed - amplitude, seed + amplitude] drifts back gradually: each `advance` moves it
+    /// towards that band by the full step of its `Variation` until it is inside, and it
+    /// stays where it is when its variation is zero. The speed through water follows the
+    /// speed over ground again; altitude and rudder angle stay where they are. Releasing a
+    /// parameter that is not overridden does nothing.
     ///
     /// @param parameter The value to release.
     void clear_override(Parameter parameter);
-    /// Returns the value a parameter is pinned to.
+    /// Returns the value an overridden parameter holds, which is the value the simulation
+    /// uses.
     ///
     /// @param parameter The value to query.
-    /// @return The value as given to `set_override` or computed by `nudge`, before
-    ///   normalising or clamping, or `std::nullopt` when the parameter is not overridden.
+    /// @return The value given to `set_override` or computed by `nudge`, after normalising
+    ///   or clamping as `Parameter` states, or `std::nullopt` when the parameter is not
+    ///   overridden. In steering mode an overridden heading is the heading the rudder has
+    ///   turned the vessel to, because steering takes precedence over the override.
     [[nodiscard]] std::optional<double> override_value(Parameter parameter) const;
     /// Adds `delta` to a parameter's current value and pins it there.
     ///
@@ -244,8 +252,9 @@ private:
     /// @param seconds Length of the step in simulated seconds.
     /// @return `current` moved by a uniform random amount within plus or minus
     ///   `variation.step_per_second * seconds` and clamped to `seed` plus or minus
-    ///   `variation.amplitude`; `current` unchanged when either member of `variation` is
-    ///   zero or negative.
+    ///   `variation.amplitude`; when `current` lies outside that band, `current` moved by the
+    ///   full step towards the band, stopping at its edge; `current` unchanged when either
+    ///   member of `variation` is zero or negative.
     [[nodiscard]] double drift(double current, double seed, const Variation& variation,
                                double seconds);
     /// Updates the values that follow from the others: course over ground, position and
@@ -258,9 +267,10 @@ private:
     DeltaConfig config_;
     /// The current state.
     model::VesselState state_;
-    /// The pinned value of each parameter, indexed by the enumerator's value; `std::nullopt`
-    /// when the parameter drifts. The size is the number of `Parameter` enumerators.
-    std::array<std::optional<double>, 9> overrides_{};
+    /// Whether each parameter is overridden, indexed by the enumerator's value; false when
+    /// the parameter is simulated. The pinned value itself is the one in `state_`. The size
+    /// is the number of `Parameter` enumerators.
+    std::array<bool, 9> overrides_{};
     /// Whether the heading follows the rudder.
     bool steering_mode_{false};
     /// Pseudo-random generator of the drift, seeded from `DeltaConfig::random_seed`.

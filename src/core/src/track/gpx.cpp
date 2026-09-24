@@ -124,9 +124,14 @@ std::optional<Track> parse_gpx(std::string_view xml_text, std::string* error) {
 
     Track track;
     track.kind = TrackKind::GpxTrack;
-    // GPX 1.1 keeps the document name in <metadata>, GPX 1.0 directly under <gpx>.
-    const auto metadata = xml::child(root, "metadata");
-    track.name = metadata ? xml::child_text(metadata, "name") : xml::child_text(root, "name");
+    // GPX 1.1 keeps the document name in <metadata>, GPX 1.0 directly under <gpx>; a file
+    // may have <metadata> without a name and still name itself under <gpx>.
+    if (const auto metadata = xml::child(root, "metadata")) {
+        track.name = xml::child_text(metadata, "name");
+    }
+    if (track.name.empty()) {
+        track.name = xml::child_text(root, "name");
+    }
 
     for (const auto& trk : root.children()) {
         if (!xml::is_named(trk, "trk")) {
