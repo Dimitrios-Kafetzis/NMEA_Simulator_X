@@ -21,6 +21,9 @@ a change to the output.
 - Numbers never carry a leading `+`, never render negative zero and use a fixed number of
   decimals per field. Positions use four decimal minutes by default (0.19 m resolution).
 - Talker IDs are configurable per sentence; the tables show the defaults.
+- Text fields, such as the waypoint name, never contain the characters NMEA 0183 reserves
+  (`,` `*` `$` `!` `\` `^` `~`), control characters or bytes outside ASCII: they are
+  removed before the sentence is framed.
 - When an output enables [TAG blocks](#tag-blocks) each sentence on that output is preceded
   by a TAG block of the form `\s:<source>,c:<unix time>*hh\`.
 

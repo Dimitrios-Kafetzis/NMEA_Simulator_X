@@ -487,10 +487,7 @@ std::vector<std::string> encode_rsa(const EncoderContext& context) {
 std::string sanitize_waypoint_name(std::string_view name) {
     std::string result;
     for (const char c : name) {
-        const bool printable = c > ' ' && c <= '~';
-        const bool reserved =
-            c == ',' || c == '*' || c == '$' || c == '!' || c == '\\' || c == '^' || c == '~';
-        if (printable && !reserved) {
+        if (c != ' ' && is_text_field_character(c)) {
             result += c;
         }
         if (result.size() == model::kMaxWaypointNameLength) {

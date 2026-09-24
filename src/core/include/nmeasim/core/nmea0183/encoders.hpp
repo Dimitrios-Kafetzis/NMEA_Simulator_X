@@ -415,10 +415,10 @@ std::vector<std::string> encode_vdm_static(const EncoderContext& context);
 
 /// Restricts a waypoint name to the characters an NMEA 0183 field may carry.
 ///
-/// Keeps the printable ASCII characters other than space and the characters NMEA 0183
-/// reserves (`,`, `*`, `$`, `!`, `\`, `^` and `~`); spaces, control characters and bytes
-/// outside ASCII are dropped. The result is truncated to `model::kMaxWaypointNameLength`
-/// characters.
+/// Keeps the characters is_text_field_character() allows except space: the printable ASCII
+/// characters other than those NMEA 0183 reserves (`,`, `*`, `$`, `!`, `\`, `^` and `~`);
+/// spaces, control characters and bytes outside ASCII are dropped. The result is truncated to
+/// `model::kMaxWaypointNameLength` characters.
 ///
 /// @param name The configured waypoint name, of any length.
 /// @return The sanitised name, or `WPT` when no character is left.

@@ -44,6 +44,23 @@ TEST_CASE("SentenceBuilder supports encapsulated sentences", "[nmea0183][builder
     CHECK(builder.build() == "!AIVDM,1,1,,A,402E3Miv0r<BCPDAjjMdjuW000S:,0*26");
 }
 
+TEST_CASE("SentenceBuilder keeps reserved characters out of text fields", "[nmea0183][builder]") {
+    nmea::SentenceBuilder builder("GP", "TXT");
+    // Commas, the checksum and start delimiters, the TAG block delimiter, the code and
+    // reserved characters `^` and `~`, CR, LF, other control characters, DEL and bytes
+    // outside ASCII are removed; spaces and the other printable characters stay.
+    builder.field("A,B*C$D!E\\F^G~H\rI\nJ\tK\x7fL\xe9M N-O.P/Q").field(',').field('*').field('x');
+    const auto sentence = builder.build();
+    CHECK(nmea::verify_checksum(sentence));
+    CHECK(sentence.starts_with("$GPTXT,ABCDEFGHIJKLM N-O.P/Q,,,x*"));
+    CHECK(nmea::is_text_field_character('A'));
+    CHECK(nmea::is_text_field_character(' '));
+    CHECK(nmea::is_text_field_character('#'));
+    for (const char c : {',', '*', '$', '!', '\\', '^', '~', '\r', '\n', '\x7f', '\xe9'}) {
+        CHECK_FALSE(nmea::is_text_field_character(c));
+    }
+}
+
 TEST_CASE("length limit is checked before and after framing", "[nmea0183][builder]") {
     nmea::SentenceBuilder builder("GP", "TXT");
     CHECK(builder.fits_limit());
