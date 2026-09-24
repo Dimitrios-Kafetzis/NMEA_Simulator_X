@@ -193,14 +193,22 @@ Tiles follow the slippy map scheme and come from a tile server given as a URL te
 with `{z}`, `{x}` and `{y}` placeholders. The default is the OpenStreetMap server,
 `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, used under its
 [tile usage policy](https://operations.osmfoundation.org/policies/tiles/): requests carry
-a `User-Agent` naming this application, at most four downloads run at a time and every tile
-is cached. Set another server through the `map/tile_url` preference.
+a `User-Agent` naming this application and its version, at most four downloads run at a time,
+every tile is cached and a tile that failed is not requested over and over. Set another server
+through the `map/tile_url` preference.
+
+A tile the server does not have (HTTP 404 or 410) is not requested again until the
+application restarts. After any other failure, such as no network
+connection, a timeout or another HTTP error, the tile is requested again at the earliest 30
+seconds later, and each further failure of the same tile doubles that delay up to 10 minutes.
+Unticking and ticking *View → Download map tiles* again retries those tiles at once.
 
 Every downloaded tile is written to the tile cache directory below, so once an area has
 been viewed it stays available without a network connection. When a tile is missing the map
 shows the matching part of the nearest cached lower zoom level, or a grey square when there
 is none. Untick *View → Download map tiles* to stop all network access; the map then uses
-the cache only and shows *offline*.
+the cache only and shows *offline*. Unticking it also cancels the downloads in progress, as does
+*View → Clear map tile cache*.
 
 | Platform | Tile cache directory |
 | --- | --- |
