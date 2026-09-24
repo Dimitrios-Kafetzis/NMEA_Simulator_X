@@ -496,8 +496,10 @@ example `$PXYZ,1,2,3` or `!AIVDM,1,1,,A,13aEOK?P00PD2wVMdLDRhgvL289?,0`; the lea
 be left out, an old `*hh` and line terminator are ignored, and the checksum is computed
 when the sentence is sent. A body is refused when it is empty, carries characters outside
 printable ASCII or one of `$ ! \ ^ ~` inside, has no address of at least three letters or
-digits, or would exceed 82 characters.
+digits, or would exceed 80 characters with its checksum (82 with the line terminator).
 
 Custom sentences are emitted after the registry sentences of the same round, filtered by
-their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given) and
-recorded like them. An id equal to a registry id is refused.
+their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given, numbered
+by position in the list) and recorded like them. An id equal to a registry id is refused,
+and so is an id that another custom sentence already uses, including an explicit
+`CUSTOM-2` when the second sentence has no id.
