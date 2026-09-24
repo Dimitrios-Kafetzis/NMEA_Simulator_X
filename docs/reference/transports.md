@@ -18,8 +18,8 @@ sentences, without TAG block.
 | UDP | sends | mode (unicast, broadcast, multicast), address, port, interface, multicast TTL | One datagram per line. In broadcast mode an empty address resolves to the subnet broadcast of the chosen interface, or `255.255.255.255` when no interface is chosen; an explicit address such as `255.255.255.255` can always be given. The interface, when set, is the source of the datagrams and the multicast egress. |
 | WebSocket server | listens | bind address, port | Each line is one text frame. With the `signalk` encoding every client receives the Signal K [hello message](signalk.md#hello-message) right after it connects. |
 | Serial port | writes | port, baud rate, data bits, parity, stop bits, flow control | Any positive baud rate is accepted. The port is opened write-only; an unplugged device moves the transport to `failed`. |
-| File | writes | path, append or truncate | Flushed after every line so the file can be tailed while the simulator runs. |
-| Log | writes | path, append or truncate | A recording: a `#` header when the file is new, then every line prefixed with the wall-clock UTC time, see the [log file reference](log-format.md). Flushed after every line. |
+| File | writes | path, append or truncate | Lines are written byte for byte, with `<CR><LF>` on every platform. Flushed after every line so the file can be tailed while the simulator runs. With truncate, the file is emptied when the output first opens; stopping and starting the run continues it. |
+| Log | writes | path, append or truncate | A recording: a `#` header when the file is new, then every line prefixed with the wall-clock UTC time, see the [log file reference](log-format.md). Flushed after every line. With truncate, the file is emptied when the output first opens; stopping and starting the run continues it. |
 
 ## Network interfaces
 
