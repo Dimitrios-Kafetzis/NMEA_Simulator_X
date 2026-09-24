@@ -37,6 +37,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 using nmeasim::io::Transport;
 using nmeasim::test::wait_until;
 
@@ -179,6 +181,37 @@ TEST_CASE("UDP rejects an invalid destination", "[io][transport]") {
     CHECK_FALSE(udp.open());
     CHECK(udp.state() == Transport::State::Failed);
     CHECK(udp.last_error().contains(QStringLiteral("Invalid UDP destination")));
+}
+
+TEST_CASE("UDP rejects an IPv6 destination", "[io][transport]") {
+    nmeasim::io::UdpConfig config;
+    config.address = QStringLiteral("::1");
+    nmeasim::io::UdpTransport udp(config);
+    QSignalSpy errors(&udp, &Transport::error_occurred);
+    CHECK_FALSE(udp.open());
+    CHECK(udp.state() == Transport::State::Failed);
+    CHECK(errors.count() == 1);
+    CHECK(udp.last_error().contains(QStringLiteral("IPv4")));
+}
+
+TEST_CASE("UDP multicast finds its interface by system or descriptive name",
+          "[io][transport][integration]") {
+    const auto interfaces = nmeasim::io::ipv4_interfaces();
+    const auto loopback = std::find_if(interfaces.begin(), interfaces.end(),
+                                       [](const auto& info) { return info.is_loopback; });
+    REQUIRE(loopback != interfaces.end());
+    for (const auto& name : {loopback->name, loopback->human_name}) {
+        INFO(name.toStdString());
+        nmeasim::io::UdpConfig config;
+        config.mode = nmeasim::io::UdpConfig::Mode::Multicast;
+        // 239.255.0.1 is in the administratively scoped multicast range of RFC 2365.
+        config.address = QStringLiteral("239.255.0.1");
+        config.interface_name = name;
+        nmeasim::io::UdpTransport udp(config);
+        QSignalSpy errors(&udp, &Transport::error_occurred);
+        CHECK(udp.open());
+        CHECK(errors.isEmpty());
+    }
 }
 
 TEST_CASE("WebSocket server greets new clients and sends lines as text frames",
