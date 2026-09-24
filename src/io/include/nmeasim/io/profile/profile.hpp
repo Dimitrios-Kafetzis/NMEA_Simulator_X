@@ -168,7 +168,8 @@ struct OutputConfig {
     /// Unlike the track and replay paths, a relative path is not resolved against the profile
     /// file's directory when the profile is loaded.
     QString path;
-    /// The `append` key: true appends to an existing file, false truncates it on opening.
+    /// The `append` key: true appends to an existing file, false truncates it when the run
+    /// first opens it; stopping and starting the run again continues the file.
     bool append{true};
 };
 
