@@ -1,3 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::simulation::DeltaSource`, the endless source whose values drift
+/// around their seeds.
+///
+/// The cases cover the start from the seed, motion along a held heading, the derived
+/// apparent wind, the drift bounds and their wrap across north, reproducible runs, operator
+/// overrides and nudges of every `nmeasim::core::simulation::Parameter`, rudder steering,
+/// values the host sets directly, reset, and the destination and engines that survive it.
+/// No fixture file is read; the seed is `nmeasim::test::fixture_state`.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/geo/geodesic.hpp>
@@ -15,6 +26,14 @@ namespace sim = nmeasim::core::simulation;
 
 namespace {
 
+/// Returns a delta configuration seeded with `nmeasim::test::fixture_state` in which nothing
+/// drifts.
+///
+/// Every `sim::Variation` is `{0.0, 0.0}`, so a test sees only the deterministic parts of
+/// the model (motion, derived values, overrides and steering) and turns on the drift it
+/// needs by setting one variation.
+///
+/// @return The configuration, with the default steering gain, rudder limit and random seed.
 sim::DeltaConfig frozen_config() {
     sim::DeltaConfig config;
     config.seed = nmeasim::test::fixture_state();
@@ -51,7 +70,7 @@ TEST_CASE("with zero variation the vessel holds heading and speed and moves alon
     CHECK(state.navigation.speed_through_water_kn == Approx(6.5));
     CHECK(state.time_utc - start.time_utc == 600s);
 
-    // 6.5 knots for ten minutes is 2005.7 metres. A constant heading traces a rhumb line, so
+    // 6.5 knots for ten minutes is 2006.3 metres. A constant heading traces a rhumb line, so
     // the geodesic back-bearing differs from 045 by a few thousandths of a degree.
     const auto travelled =
         nmeasim::core::geo::inverse(start.navigation.position, state.navigation.position);
@@ -61,7 +80,8 @@ TEST_CASE("with zero variation the vessel holds heading and speed and moves alon
 
 TEST_CASE("apparent wind is derived from true wind and motion", "[simulation][delta]") {
     auto config = frozen_config();
-    config.seed.wind.true_direction_deg = 45.0;  // dead ahead of heading 045
+    // Dead ahead of heading 045, so the apparent speed is 10 knots plus the 6.5 of the motion.
+    config.seed.wind.true_direction_deg = 45.0;
     config.seed.wind.true_speed_kn = 10.0;
     sim::DeltaSource source(config);
     source.advance(1000ms);
@@ -79,6 +99,8 @@ TEST_CASE("drifting values stay within the configured amplitude of the seed",
     config.wind_speed = {3.0, 1.0};
     sim::DeltaSource source(config);
 
+    // The bounds are the seed plus or minus each amplitude: heading 045 +/- 3, speed
+    // 6.5 +/- 0.5 knots, depth 12.4 +/- 2 metres and wind speed 12 +/- 3 knots.
     bool heading_moved = false;
     for (int i = 0; i < 3600; ++i) {
         const auto& state = source.advance(1000ms);
@@ -141,6 +163,7 @@ TEST_CASE("overrides pin a value and nudges move it", "[simulation][delta]") {
     source.advance(1000ms);
     CHECK(source.current().navigation.speed_over_ground_kn == Approx(3.1));
 
+    // 3.1 - 10 is negative and is raised to zero.
     source.nudge(sim::Parameter::SpeedOverGround, -10.0);
     CHECK(source.current().navigation.speed_over_ground_kn == Approx(0.0));
 
@@ -187,6 +210,8 @@ TEST_CASE("every parameter can be overridden and nudged within its range", "[sim
     source.nudge(sim::Parameter::WindSpeedTrue, 7.0);
     CHECK(state.wind.true_speed_kn == Approx(7.0));
 
+    // The rudder is clamped to the default 35 degrees either side. The nudge starts from the
+    // clamped 35, so the override becomes -45 and the state shows -35.
     source.set_override(sim::Parameter::RudderAngle, 50.0);
     CHECK(state.steering.rudder_angle_deg == Approx(35.0));
     source.nudge(sim::Parameter::RudderAngle, -80.0);
@@ -227,7 +252,9 @@ TEST_CASE("steering mode turns the vessel according to the rudder", "[simulation
     config.turn_rate_per_rudder_deg = 0.6;
     sim::DeltaSource source(config);
     source.set_steering_mode(true);
-    source.set_override(sim::Parameter::RudderAngle, 10.0);  // 6 degrees per minute
+    // 10 degrees of rudder at 0.6 degrees per minute per degree turn 6 degrees per minute, so
+    // a minute takes the heading from 045 to 051.
+    source.set_override(sim::Parameter::RudderAngle, 10.0);
 
     for (int i = 0; i < 60; ++i) {
         source.advance(1000ms);
@@ -235,7 +262,8 @@ TEST_CASE("steering mode turns the vessel according to the rudder", "[simulation
     CHECK(source.current().navigation.rate_of_turn_deg_per_min == Approx(6.0));
     CHECK(source.current().navigation.heading_true_deg == Approx(51.0));
 
-    source.set_override(sim::Parameter::RudderAngle, -50.0);  // clamped to -35
+    // Clamped to -35 degrees, which turns 21 degrees to port in a minute: 051 to 030.
+    source.set_override(sim::Parameter::RudderAngle, -50.0);
     CHECK(source.current().steering.rudder_angle_deg == Approx(-35.0));
     source.advance(60s);
     CHECK(source.current().navigation.heading_true_deg == Approx(30.0));
@@ -245,6 +273,7 @@ TEST_CASE("position, fix and satellites can be set directly", "[simulation][delt
     sim::DeltaSource source(frozen_config());
     source.set_position({-38.9997, 151.5001});
     source.set_fix(false);
+    // Fewer satellites in view than in use are raised to the number in use.
     source.set_satellites(5, 3);
     const auto& state = source.current();
     CHECK(state.navigation.position.latitude_deg == Approx(-38.9997));
@@ -284,6 +313,8 @@ TEST_CASE("the destination and the engines can be changed and survive a reset",
 
     REQUIRE(source.current().engines.size() == 2);
     source.set_engine(1, {"Starboard engine", true, 2200.0, 85.0});
+    // An index past the end appends; removing index 0 drops the port engine and index 9 is
+    // ignored.
     source.set_engine(5, {"Generator", true, 1500.0, 70.0});
     REQUIRE(source.current().engines.size() == 3);
     CHECK(source.current().engines[1].running);

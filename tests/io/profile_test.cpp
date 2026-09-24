@@ -1,3 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::io::Profile`: its JSON form, validation, schema migration and files.
+///
+/// Covers `Profile::default_profile`, the round trip through `Profile::to_json` and
+/// `Profile::from_json` for every setting and output type, the defaults that fill in missing
+/// keys, the rejection of invalid documents with a reason that names the offending key, the
+/// migration of schema versions 1 and 2 to the current version 3, `Profile::save` and
+/// `Profile::load` with relative track and log paths, `Profile::make_scheduler`, and the
+/// string names of output types, simulation modes and encodings.
+///
+/// The profiles are built in code or saved to temporary directories; the file reads no
+/// fixture. The track and log paths it sets are never opened.
+
 #include <nmeasim/io/profile/profile.hpp>
 
 #include <QDir>
@@ -29,6 +43,8 @@ TEST_CASE("the default profile is valid and round-trips through JSON", "[io][pro
     CHECK(parsed->delta.seed.navigation.position.latitude_deg ==
           Approx(original.delta.seed.navigation.position.latitude_deg));
     CHECK(parsed->delta.seed.engines.size() == 2);
+    // `Profile::default_profile` seeds two engines, port and starboard, and has one output: a
+    // TCP server on port 10110, the port registered with IANA for NMEA 0183.
     CHECK(parsed->delta.seed.engines[1].label == "Starboard engine");
     CHECK(parsed->delta.heading.amplitude == Approx(original.delta.heading.amplitude));
     CHECK(parsed->delta.random_seed == original.delta.random_seed);
@@ -130,6 +146,8 @@ TEST_CASE("missing fields fall back to defaults", "[io][profile]") {
     const auto parsed =
         Profile::from_json(QJsonObject{{QStringLiteral("schema_version"), 1}}, &error);
     REQUIRE(parsed.has_value());
+    // The name and tick come from the `Profile` member defaults, the seed from
+    // `Profile::default_profile`; its TCP server output is not added to a parsed profile.
     CHECK(parsed->name == QStringLiteral("Default"));
     CHECK(parsed->tick_ms == 100);
     CHECK(parsed->outputs.isEmpty());
@@ -141,6 +159,7 @@ TEST_CASE("invalid profiles are rejected with a reason", "[io][profile]") {
     CHECK_FALSE(Profile::from_json(QJsonObject{}, &error).has_value());
     CHECK(error.contains(QStringLiteral("schema_version")));
 
+    // Version 99 is newer than `Profile::kCurrentSchemaVersion`.
     CHECK_FALSE(Profile::from_json(QJsonObject{{QStringLiteral("schema_version"), 99}}, &error)
                     .has_value());
     CHECK(error.contains(QStringLiteral("newer")));
@@ -151,6 +170,7 @@ TEST_CASE("invalid profiles are rejected with a reason", "[io][profile]") {
     CHECK_FALSE(Profile::from_json(bad_mode, &error).has_value());
     CHECK(error.contains(QStringLiteral("mode")));
 
+    // `tick_ms` must be in [10, 10000].
     QJsonObject bad_tick{
         {QStringLiteral("schema_version"), 1},
         {QStringLiteral("simulation"), QJsonObject{{QStringLiteral("tick_ms"), 1}}}};
@@ -178,6 +198,7 @@ TEST_CASE("invalid profiles are rejected with a reason", "[io][profile]") {
     CHECK_FALSE(Profile::from_json(bad_output, &error).has_value());
     CHECK(error.contains(QStringLiteral("outputs[0]")));
 
+    // 70000 does not fit the 16-bit port range [0, 65535].
     QJsonObject bad_port{
         {QStringLiteral("schema_version"), 1},
         {QStringLiteral("outputs"),
@@ -251,6 +272,7 @@ TEST_CASE("track and replay modes round-trip with their settings", "[io][profile
     profile.outputs.append(log);
 
     const auto json = profile.to_json();
+    // 3 is `Profile::kCurrentSchemaVersion`.
     CHECK(json.value(QStringLiteral("schema_version")).toInt() == 3);
     CHECK(json.value(QStringLiteral("simulation")).toObject().value(QStringLiteral("mode")) ==
           QStringLiteral("track"));
@@ -287,6 +309,8 @@ TEST_CASE("schema version 1 profiles are migrated to the current version", "[io]
     CHECK(parsed->name == QStringLiteral("Old"));
     CHECK(parsed->tick_ms == 200);
     CHECK(parsed->mode == SimulationMode::Delta);
+    // Keys that version 1 did not have take the member defaults of the track and replay
+    // settings.
     CHECK(parsed->track.speed_kn == Approx(6.0));
     CHECK(parsed->track.use_timestamps);
     CHECK(parsed->replay.fixed_interval_ms == 100);
@@ -438,6 +462,7 @@ TEST_CASE("destination, AIS data, custom sentences and encodings round-trip", "[
 
     const auto scheduler = parsed->make_scheduler();
     REQUIRE(scheduler.custom_sentences().size() == 2);
+    // The scheduler names a custom sentence without id `CUSTOM-n`, n being its 1-based position.
     CHECK(scheduler.custom_sentences()[1].id == "CUSTOM-2");
 
     // Clearing the destination writes null, which reads back as none.
@@ -457,6 +482,8 @@ TEST_CASE("schema version 2 profiles load with the new defaults", "[io][profile]
     const auto parsed = Profile::from_json(v2, &error);
     REQUIRE(parsed.has_value());
     CHECK_FALSE(parsed->delta.seed.destination.has_value());
+    // 239000001 is the default MMSI of the core AIS model, and 1000 ms the default period of
+    // an output.
     CHECK(parsed->delta.seed.ais.mmsi == 239000001);
     CHECK(parsed->custom_sentences.empty());
     REQUIRE(parsed->outputs.size() == 1);
@@ -479,6 +506,8 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
     const auto seed = [](const QJsonObject& ais) {
         return QJsonObject{{QStringLiteral("seed"), QJsonObject{{QStringLiteral("ais"), ais}}}};
     };
+    // An MMSI has at most nine digits, a ship type is in [0, 255] and a position report is
+    // message 1, 2 or 3.
     CHECK_FALSE(Profile::from_json(with(QStringLiteral("simulation"),
                                         seed({{QStringLiteral("mmsi"), 1234567890.0}})),
                                    &error)
@@ -504,6 +533,7 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
                            &error)
             .has_value());
     CHECK(error.contains(QStringLiteral("custom[0]")));
+    // Custom ids are upper-cased before the check, so `rmc` clashes with the registry's RMC.
     CHECK_FALSE(
         Profile::from_json(with(QStringLiteral("sentences"),
                                 custom({{QStringLiteral("id"), QStringLiteral("rmc")},
@@ -511,6 +541,7 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
                            &error)
             .has_value());
     CHECK(error.contains(QStringLiteral("registry")));
+    // Periods of custom sentences and outputs must be in [50, 3600000] ms.
     CHECK_FALSE(Profile::from_json(with(QStringLiteral("sentences"),
                                         custom({{QStringLiteral("body"), QStringLiteral("$PXYZ,1")},
                                                 {QStringLiteral("period_ms"), 10}})),

@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::app::SettingsDialog`, the profile editor of the desktop application.
+///
+/// Covers loading a profile into the simulation, sentences, outputs and vessel tabs and
+/// storing the edited values back: simulation values and the destination, the simulation mode
+/// and its files, per-sentence settings that differ from the registry, custom sentences,
+/// outputs with their transports and encodings, engines and AIS static data. It also checks
+/// that invalid input keeps the dialog open on the tab concerned with an error text, that an
+/// edited profile round-trips through JSON, and that `nmeasim::app::MainWindow` takes the
+/// dialog result as its profile. The dialogs are never shown; `accept` is called directly.
+/// The file reads no fixtures.
+
 #include "dialogs/settings_dialog.hpp"
 
 #include "dialogs/outputs_page.hpp"
@@ -32,6 +45,8 @@ TEST_CASE("the settings dialog loads and stores simulation values", "[app][setti
     page->longitude_spin->setValue(151.2);
     page->heading_spin->setValue(123.4);
     page->fix_check->setChecked(false);
+    // Combo index 2 is the differential fix. The drift rows run heading, speed, depth, water
+    // temperature, wind direction and wind speed, so row 0 is heading and row 5 wind speed.
     page->quality_combo->setCurrentIndex(2);
     page->amplitude_spins[0]->setValue(0.0);
     page->step_spins[5]->setValue(0.75);
@@ -54,6 +69,7 @@ TEST_CASE("the settings dialog loads and stores simulation values", "[app][setti
     CHECK(result.delta.turn_rate_per_rudder_deg == Approx(1.2));
     REQUIRE(result.start_time.has_value());
     CHECK(result.start_time->toString(Qt::ISODate) == QStringLiteral("2026-09-23T12:00:00Z"));
+    // A value that was not edited keeps the one loaded from the profile.
     CHECK(result.delta.speed.amplitude == Approx(profile.delta.speed.amplitude));
 }
 
@@ -103,6 +119,7 @@ TEST_CASE("the outputs tab adds, edits, validates and removes outputs", "[app][s
     page->add_output(OutputConfig::Type::Udp);
     REQUIRE(page->count() == 2);
     CHECK(page->current_index() == 1);
+    // The UDP modes are unicast, broadcast and multicast, in that order.
     page->udp_mode_combo->setCurrentIndex(1);
     page->udp_address_edit->clear();
     page->udp_port_spin->setValue(10111);
@@ -178,7 +195,8 @@ TEST_CASE("the simulation tab selects the mode and validates its files", "[app][
     CHECK(page->track_timestamps_check->isChecked());
     CHECK(page->replay_interval_spin->value() == 100);
 
-    // Track mode without a file is refused on the simulation tab.
+    // Track mode without a file is refused on the simulation tab. The modes are delta, track
+    // and replay, in that order.
     page->mode_combo->setCurrentIndex(1);
     dialog.accept();
     CHECK(dialog.error_text().contains(QStringLiteral("track")));
@@ -276,6 +294,7 @@ TEST_CASE("the vessel tab edits the engines and the AIS static data", "[app][set
     page->draught_spin->setValue(4.5);
     page->ais_destination_edit->setText(QStringLiteral("Piraeus"));
     page->navigation_status_spin->setValue(8);
+    // Index 2 is AIS message type 3.
     page->report_type_combo->setCurrentIndex(2);
     dialog.accept();
     CHECK(dialog.error_text().isEmpty());
@@ -354,6 +373,8 @@ TEST_CASE("the outputs tab selects the encoding and its options", "[app][setting
     page->tag_source_edit->setText(QStringLiteral("GP0001"));
     page->tag_milliseconds_check->setChecked(true);
 
+    // The encodings are NMEA 0183, Signal K and ViewSync, in that order; context index 2 is a
+    // custom context and planet index 2 is `mars`.
     page->add_output(OutputConfig::Type::WebSocketServer);
     page->encoding_combo->setCurrentIndex(1);
     CHECK(page->signalk_box->isVisibleTo(page));

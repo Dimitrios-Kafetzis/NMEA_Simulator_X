@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the dashboard dials `nmeasim::app::CompassDial` and `nmeasim::app::WindDial`.
+///
+/// Covers the relative-angle helpers `nmeasim::app::signed_relative_angle` and
+/// `nmeasim::app::format_wind_angle`, how `nmeasim::app::DashboardWidget` passes a vessel
+/// state to both dials, and that the dials paint their face in the night and the daylight
+/// theme on the offscreen platform. The file reads no fixtures.
+
 #include "widgets/dials.hpp"
 
 #include "theme/theme.hpp"
@@ -20,6 +29,7 @@ TEST_CASE("relative angles fold to port and starboard", "[app][dials]") {
     CHECK(signed_relative_angle(0.0) == Approx(0.0));
     CHECK(signed_relative_angle(30.0) == Approx(30.0));
     CHECK(signed_relative_angle(180.0) == Approx(180.0));
+    // 255.8 degrees clockwise is 360 - 255.8 = 104.2 degrees to port.
     CHECK(signed_relative_angle(255.8) == Approx(-104.2));
     CHECK(signed_relative_angle(359.0) == Approx(-1.0));
     CHECK(signed_relative_angle(-190.0) == Approx(170.0));
@@ -28,6 +38,7 @@ TEST_CASE("relative angles fold to port and starboard", "[app][dials]") {
     CHECK(format_wind_angle(255.8) == QStringLiteral("104°P"));
     CHECK(format_wind_angle(30.0) == QStringLiteral("30°S"));
     CHECK(format_wind_angle(0.0) == QStringLiteral("0°"));
+    // 359.6 folds to -0.4, which rounds to 0: dead ahead has no side letter.
     CHECK(format_wind_angle(359.6) == QStringLiteral("0°"));
     CHECK(format_wind_angle(180.0) == QStringLiteral("180°"));
 }
@@ -59,6 +70,7 @@ TEST_CASE("the dashboard feeds the compass and the wind dial", "[app][dials]") {
     state.destination = destination;
     dashboard.update_state(state);
     REQUIRE(compass->bearing().has_value());
+    // The destination, Aegina, lies south-west of the vessel at Athens.
     CHECK(*compass->bearing() > 180.0);
     CHECK(*compass->bearing() < 270.0);
 }

@@ -1,3 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::track::parse_kml`, the KML 2.2 track reader.
+///
+/// The cases cover a `LineString` as an untimed track, `gx:Track` elements concatenated
+/// with their timestamps, a `MultiGeometry` whose lines are kept and whose polygon is
+/// skipped, and every reason a file is rejected.
+///
+/// Fixture files, all under tests/fixtures/tracks: linestring.kml, gx_track.kml,
+/// multi_geometry.kml, and the rejected malformed.kml, no_geometry.kml, bad_coordinates.kml
+/// and timestamped.gpx (a GPX file, not KML).
+///
+/// @see OGC KML 2.2, https://www.ogc.org/standard/kml/
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/time/iso8601.hpp>

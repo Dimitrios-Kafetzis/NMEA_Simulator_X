@@ -1,13 +1,33 @@
-// Test runner for the desktop application. A QApplication with the offscreen platform lets
-// widgets be created and driven without a display, and QSettings is redirected to a temporary
-// directory so that tests never touch the operator's preferences.
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Entry point of `nmeasim_app_tests`, the Catch2 suite for the desktop application.
+///
+/// The suite has its own `main` instead of the one Catch2 provides because widgets can only
+/// be created once a `QApplication` exists. The runner forces the Qt platform plugin to
+/// `offscreen`, so that windows are created, laid out and painted without a display; the
+/// `ctest` registration in `tests/CMakeLists.txt` sets `QT_QPA_PLATFORM=offscreen` as well.
+/// It also redirects `QSettings` to INI files in a temporary directory, deleted when the run
+/// ends, under the application and organisation name `NMEASimulatorX-tests`, so that the tests
+/// never read or overwrite the operator's preferences. The map tile cache is not redirected:
+/// a `MainWindow` keeps its tiles in the standard cache location, which for this application
+/// name is a directory of its own, separate from the installed application's cache.
+
 #include <QApplication>
 #include <QSettings>
 #include <QTemporaryDir>
 
 #include <catch2/catch_session.hpp>
 
+/// Creates the offscreen `QApplication`, isolates the settings and runs the Catch2 session.
+///
+/// @param argc Number of command-line arguments.
+/// @param argv Command-line arguments; Qt removes the options it recognises, and the rest are
+///     passed to Catch2 (test names, tags such as `"[.screenshot]"`, reporter options).
+/// @return The exit code of the Catch2 session: 0 when every selected test passed, non-zero
+///     when a test failed.
 int main(int argc, char* argv[]) {
+    // Set before the QApplication exists, which reads it to choose the platform plugin. It
+    // overrides any value in the environment, so a run from a desktop session opens no windows.
     qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));
     QApplication application(argc, argv);
     QApplication::setApplicationName(QStringLiteral("NMEASimulatorX-tests"));

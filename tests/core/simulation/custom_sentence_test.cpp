@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of operator-defined sentences: `nmeasim::core::simulation::frame_custom_sentence`,
+/// `nmeasim::core::simulation::validate_custom_sentence` and their scheduling by
+/// `nmeasim::core::simulation::SentenceScheduler::set_custom_sentences`.
+///
+/// The cases cover framing with a recomputed checksum, every reason a body is refused, and
+/// how the scheduler names, times, disables and drops custom sentences. No fixture file is
+/// read; the scheduler encodes `nmeasim::test::fixture_state`.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/checksum.hpp>
@@ -15,6 +25,8 @@ using namespace std::chrono_literals;
 namespace sim = nmeasim::core::simulation;
 
 TEST_CASE("custom bodies are framed with a fresh checksum", "[simulation][custom]") {
+    // Each expected checksum is the XOR of the characters between the delimiter and `*`,
+    // computed in Python.
     CHECK(sim::frame_custom_sentence("$PXYZ,1,2,3") == "$PXYZ,1,2,3*17");
     CHECK(sim::frame_custom_sentence("PXYZ,1,2,3") == "$PXYZ,1,2,3*17");
     CHECK(sim::frame_custom_sentence("  $PXYZ,1,2,3*00\r\n") == "$PXYZ,1,2,3*17");
@@ -34,6 +46,8 @@ TEST_CASE("invalid custom bodies are refused with a reason", "[simulation][custo
     CHECK(sim::validate_custom_sentence("$PXYZ,caf\xc3\xa9")->find("printable") !=
           std::string::npos);
     CHECK(sim::validate_custom_sentence("$PXYZ,a$b")->find("printable") != std::string::npos);
+    // With 75 characters of field the framed sentence has 84 characters, over the limit of
+    // 80 without CR LF; with 71 it has exactly 80.
     CHECK(sim::validate_custom_sentence("$PXYZ," + std::string(75, 'x'))->find("82") !=
           std::string::npos);
     CHECK_FALSE(sim::validate_custom_sentence("$PXYZ," + std::string(71, 'x')).has_value());
@@ -50,7 +64,9 @@ TEST_CASE("the scheduler emits custom sentences on their own period", "[simulati
         {"BAD", "not a sentence!", 1000ms, true},
         {"RMC", "$GPRMC,clash", 1000ms, true},
     });
-    REQUIRE(scheduler.custom_sentences().size() == 3);  // OFF is kept, disabled
+    // OFF is kept, disabled; BAD cannot be framed and RMC clashes with a registry id, so
+    // both are dropped. The empty id and the zero period are filled in.
+    REQUIRE(scheduler.custom_sentences().size() == 3);
     CHECK(scheduler.custom_sentences()[0].id == "CUSTOM-1");
     CHECK(scheduler.custom_sentences()[0].period == 500ms);
     CHECK(scheduler.custom_sentences()[1].id == "BARO");
@@ -68,6 +84,8 @@ TEST_CASE("the scheduler emits custom sentences on their own period", "[simulati
     CHECK(std::none_of(first.begin(), first.end(),
                        [](const sim::EmittedSentence& s) { return s.id == "OFF"; }));
 
+    // Between 100 ms and 2000 ms the 500 ms sentence is due at 500, 1000, 1500 and 2000 ms,
+    // the one second sentence at 1000 and 2000 ms.
     int custom = 0;
     int baro = 0;
     for (auto now = 100ms; now <= 2000ms; now += 100ms) {

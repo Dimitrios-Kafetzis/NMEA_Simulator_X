@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the WGS 84 geodesic solutions of `nmeasim/core/geo/geodesic.hpp`.
+///
+/// Covers nmeasim::core::geo::normalize_bearing(), nmeasim::core::geo::inverse() against
+/// distances along the equator and the prime meridian that follow from the WGS 84 ellipsoid,
+/// and the agreement of nmeasim::core::geo::direct() with inverse(). No fixture file is read.
+
 #include <nmeasim/core/geo/geodesic.hpp>
 
 #include <catch2/catch_approx.hpp>
@@ -18,12 +26,14 @@ TEST_CASE("normalize_bearing maps any angle into [0, 360)", "[geo]") {
 TEST_CASE("inverse solves known WGS84 distances", "[geo]") {
     SECTION("one degree of latitude along the prime meridian from the equator") {
         const auto s = geo::inverse({0.0, 0.0}, {1.0, 0.0});
+        // The length of the WGS 84 meridian arc from the equator to latitude 1 degree.
         CHECK(s.distance_m == Approx(110574.39).margin(0.5));
         CHECK(s.initial_bearing_deg == Approx(0.0).margin(1e-9));
         CHECK(s.final_bearing_deg == Approx(0.0).margin(1e-9));
     }
     SECTION("one degree of longitude along the equator") {
         const auto s = geo::inverse({0.0, 0.0}, {0.0, 1.0});
+        // One degree of the equator, a circle: 6378137 m (the WGS 84 semi-major axis) * pi / 180.
         CHECK(s.distance_m == Approx(111319.49).margin(0.5));
         CHECK(s.initial_bearing_deg == Approx(90.0).margin(1e-9));
     }

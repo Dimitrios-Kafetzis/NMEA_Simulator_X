@@ -1,3 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the sentence log reader and writer of `nmeasim/core/log/log_file.hpp`.
+///
+/// Covers nmeasim::core::log::parse_log() with each timing source (recorder timestamps, Unix
+/// time prefixes, TAG block times, sentence time fields and the fixed interval), its tolerance
+/// of junk lines, its rejection of logs without sentences, nmeasim::core::log::load_log(),
+/// and the round trip through nmeasim::core::log::format_log_line(),
+/// nmeasim::core::log::format_header_line() and nmeasim::core::log::kHeaderLine.
+///
+/// Reads the fixtures `tests/fixtures/logs/recorded.log`, `plain.nmea`, `midnight.nmea`,
+/// `untimed.nmea`, `unix_prefix.log`, `tagblock.log`, `mixed.log`, `garbage.txt` and
+/// `empty.log` in the same directory, and expects `missing.log` not to exist.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/log/log_file.hpp>
@@ -16,6 +30,16 @@ namespace logfile = nmeasim::core::log;
 
 namespace {
 
+/// Parses a log fixture that must be accepted.
+///
+/// Fails the running test case (`REQUIRE`) when nmeasim::core::log::parse_log() rejects the
+/// log, and reports its error message.
+///
+/// @param name Path of the fixture relative to `tests/fixtures/`, such as
+///        `logs/recorded.log`; a missing file reads as an empty log.
+/// @param interval Spacing of the entries when the log carries no time at all; the 100 ms
+///        default is that of nmeasim::core::log::LogParseOptions.
+/// @return The parsed log.
 logfile::Log parse_fixture(const char* name, std::chrono::milliseconds interval = 100ms) {
     std::string error;
     const auto parsed = logfile::parse_log(read_fixture(name), {interval}, &error);
@@ -37,6 +61,8 @@ TEST_CASE("a recorded log keeps its header and absolute timestamps", "[log]") {
     CHECK(log.entries[0].offset == 0ms);
     CHECK(log.entries[0].sentence.starts_with("$GPRMC,100000.00"));
     CHECK(log.entries[0].recorded_at == parse_iso8601("2026-09-23T10:00:00Z"));
+    // The fixture's recorder timestamps are 20 ms apart within a burst, with bursts every
+    // 500 ms.
     CHECK(log.entries[1].offset == 20ms);
     CHECK(log.entries[8].offset == 500ms);
     CHECK(log.entries[31].offset == 1640ms);
@@ -57,6 +83,8 @@ TEST_CASE("a plain log is timed from the sentences' own time fields", "[log]") {
 }
 
 TEST_CASE("sentence times wrap correctly at midnight", "[log]") {
+    // RMC times 23:59:58, 23:59:59, 00:00:00 and 00:00:01.50, with an HDT and a DPT between
+    // them that share the offset of the RMC before them.
     const auto log = parse_fixture("logs/midnight.nmea");
     CHECK(log.timing == logfile::TimingSource::SentenceTimes);
     REQUIRE(log.entries.size() == 6);
@@ -80,6 +108,7 @@ TEST_CASE("Unix time prefixes and TAG block times are understood", "[log]") {
     const auto unix = parse_fixture("logs/unix_prefix.log");
     CHECK(unix.timing == logfile::TimingSource::Timestamps);
     REQUIRE(unix.entries.size() == 32);
+    // The fixture starts at 1790416800 Unix seconds, which is 2026-09-26T10:00:00Z.
     CHECK(unix.entries[0].recorded_at == parse_iso8601("2026-09-26T10:00:00Z"));
     CHECK(unix.entries[9].offset == 520ms);
     CHECK(unix.duration() == 1640ms);
@@ -88,7 +117,7 @@ TEST_CASE("Unix time prefixes and TAG block times are understood", "[log]") {
     CHECK(tagged.timing == logfile::TimingSource::Timestamps);
     REQUIRE(tagged.entries.size() == 8);
     CHECK(tagged.entries[0].sentence.starts_with("$GPRMC"));
-    CHECK(tagged.entries[7].offset == 7000ms);
+    CHECK(tagged.entries[7].offset == 7000ms);  // the c: times step by one second
 
     std::string error;
     const auto millis = logfile::parse_log(
@@ -107,16 +136,20 @@ TEST_CASE("Unix time prefixes and TAG block times are understood", "[log]") {
 TEST_CASE("junk, comments, bad checksums and backwards times are tolerated", "[log]") {
     const auto log = parse_fixture("logs/mixed.log");
     CHECK(log.timing == logfile::TimingSource::Timestamps);
+    // The line without a sentence and the RMC with a wrong checksum; the comment and the
+    // blank line are not counted.
     CHECK(log.skipped_lines == 2);
     CHECK(log.header.empty());
     REQUIRE(log.entries.size() == 5);
+    // The `[10:00:00]` prefix of the first RMC is not a time the reader understands, so the
+    // origin is the next line, 10:00:01.
     CHECK(log.entries[0].sentence.starts_with("$GPRMC"));
     CHECK(log.entries[0].offset == 0ms);
     CHECK(log.entries[1].offset == 0ms);
     // An earlier timestamp never moves the replay backwards.
     CHECK(log.entries[2].sentence.starts_with("$SDDPT"));
     CHECK(log.entries[2].offset == 0ms);
-    CHECK(log.entries[3].sentence == "$HEHDT,47.0,T");
+    CHECK(log.entries[3].sentence == "$HEHDT,47.0,T");  // accepted without a checksum
     CHECK(log.entries[3].offset == 1000ms);
     CHECK(log.entries[4].offset == 2000ms);
 }
@@ -128,6 +161,7 @@ TEST_CASE("logs without sentences are rejected", "[log]") {
     CHECK_FALSE(logfile::parse_log("", {}, &error).has_value());
     CHECK(error.find("empty") != std::string::npos);
     CHECK_FALSE(logfile::parse_log("# only: header\n", {}, nullptr).has_value());
+    // The TAG block is never closed by a second backslash, so the only line is skipped.
     CHECK_FALSE(logfile::parse_log("\\s:GP0001,c:1*00 $HEHDT,45.0,T\n", {}, &error).has_value());
 }
 
@@ -139,7 +173,7 @@ TEST_CASE("logs are loaded from disk", "[log]") {
     CHECK_FALSE(logfile::load_log(fixture_path("logs/missing.log"), {}, &error).has_value());
     CHECK(error.find("Cannot read") != std::string::npos);
     CHECK_FALSE(logfile::load_log(fixture_path("logs/empty.log"), {}, &error).has_value());
-    CHECK(error.find("empty.log") != std::string::npos);
+    CHECK(error.find("empty.log") != std::string::npos);  // the reason names the file
 }
 
 TEST_CASE("log lines are formatted the way the reader expects", "[log]") {

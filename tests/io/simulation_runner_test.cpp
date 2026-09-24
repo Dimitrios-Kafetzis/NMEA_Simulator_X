@@ -1,3 +1,19 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::io::SimulationRunner`, which runs a profile on a timer and feeds its
+/// outputs.
+///
+/// Covers applying a profile, starting, pausing, resuming, stepping, seeking and stopping in
+/// the delta, track and replay modes; output filters and disabled outputs; a failing output
+/// that does not stop the run; the profile start time; recording to a log; and the Signal K,
+/// ViewSync and TAG block encodings together with custom sentences.
+///
+/// Fixtures read from `tests/fixtures/`: `tracks/timestamped.gpx` (five timed points over
+/// 12 min 0.5 s), `tracks/malformed.gpx`, `logs/plain.nmea` (four rounds of eight sentences,
+/// 500 ms apart) and `logs/garbage.txt`; `tracks/missing.gpx` deliberately does not exist.
+/// Network outputs bind to port 0 on the loopback interface, so that the operating system
+/// picks free ports; file outputs write to temporary directories.
+
 #include "io/event_loop.hpp"
 
 #include <nmeasim/core/log/log_file.hpp>
@@ -38,6 +54,15 @@ using nmeasim::test::wait_until;
 
 namespace {
 
+/// Returns the default profile with a fast tick, every registry sentence due every 100 ms and
+/// no outputs.
+///
+/// The 20 ms tick and 100 ms periods keep the tests short: a few hundred milliseconds of wall
+/// clock produce several rounds of sentences. Each registry sentence keeps its default enabled
+/// state and an empty talker, which keeps the registry default. Tests add the outputs they
+/// need.
+///
+/// @return A profile in delta mode, seeded by `nmeasim::io::Profile::default_profile`.
 Profile fast_profile() {
     Profile profile = Profile::default_profile();
     profile.tick_ms = 20;
@@ -49,10 +74,22 @@ Profile fast_profile() {
     return profile;
 }
 
+/// Returns the path of a test fixture.
+///
+/// @param relative Path relative to `tests/fixtures/`, such as `logs/plain.nmea`.
+/// @return The absolute path, built from the `NMEASIM_FIXTURES_DIR` definition that
+///   `tests/CMakeLists.txt` passes to the compiler. The file need not exist.
 QString fixture(const char* relative) {
     return QStringLiteral(NMEASIM_FIXTURES_DIR "/") + QLatin1String(relative);
 }
 
+/// Reads the non-empty lines of a text file.
+///
+/// Fails the current test case through `REQUIRE` when the file cannot be opened.
+///
+/// @param path Path of the file, usually an output file written by the runner.
+/// @return The lines in file order, with surrounding white space (including `CR`) removed;
+///   blank lines are skipped.
 std::vector<std::string> read_sentences(const QString& path) {
     QFile file(path);
     REQUIRE(file.open(QIODevice::ReadOnly | QIODevice::Text));
@@ -71,6 +108,7 @@ TEST_CASE("the runner streams filtered sentences to its outputs", "[io][runner][
     Profile profile = fast_profile();
     OutputConfig everything;
     everything.type = OutputConfig::Type::TcpServer;
+    // Port 0 lets the operating system pick a free port for each of the servers below.
     everything.port = 0;
     everything.bind_address = QStringLiteral("127.0.0.1");
     profile.outputs.append(everything);
@@ -109,6 +147,7 @@ TEST_CASE("the runner streams filtered sentences to its outputs", "[io][runner][
     rmc_client.connectToHost(QHostAddress::LocalHost, rmc->port());
     REQUIRE(wait_until([&] { return all->client_count() == 1 && rmc->client_count() == 1; }));
 
+    // 15 ticks of 20 ms span at least three periods of the 100 ms sentences.
     REQUIRE(wait_until([&] { return ticks.count() >= 15; }, 5000));
     REQUIRE(wait_until(
         [&] { return all_client.bytesAvailable() > 0 && rmc_client.bytesAvailable() > 0; }));
@@ -152,12 +191,14 @@ TEST_CASE("pausing stops emission and resuming continues it", "[io][runner][inte
     runner.pause();
     CHECK(runner.is_paused());
     const auto before = runner.sentences_emitted();
+    // A condition that never holds pumps the event loop for 150 ms, about seven ticks.
     wait_until([] { return false; }, 150);
     CHECK(runner.sentences_emitted() == before);
 
     runner.resume();
     CHECK_FALSE(runner.is_paused());
     REQUIRE(wait_until([&] { return runner.sentences_emitted() > before; }));
+    // One emission for the pause and one for the resumption.
     CHECK(paused.count() == 2);
 
     QSignalSpy stopped(&runner, &SimulationRunner::stopped);
@@ -175,6 +216,7 @@ TEST_CASE("a failing output is reported and the run continues on the others",
     profile.outputs.append(bad_serial);
     OutputConfig tcp;
     tcp.type = OutputConfig::Type::TcpServer;
+    // Port 0 lets the operating system pick a free port.
     tcp.port = 0;
     tcp.bind_address = QStringLiteral("127.0.0.1");
     profile.outputs.append(tcp);
@@ -222,6 +264,7 @@ TEST_CASE("a track profile drives a track source and ends the run at the last po
     auto* source =
         dynamic_cast<nmeasim::core::simulation::TrackSource*>(&runner.simulation()->source());
     REQUIRE(source != nullptr);
+    // The fixture's points run from 10:00:00 to 10:12:00.500 UTC and start at 37.9 N.
     CHECK(runner.duration() == 12min + 500ms);
     CHECK(runner.position() == 0ms);
     CHECK(runner.simulation()->state().navigation.position.latitude_deg == Catch::Approx(37.9));
@@ -229,6 +272,7 @@ TEST_CASE("a track profile drives a track source and ends the run at the last po
     CHECK(runner.simulation()->state().water.depth_below_transducer_m == Catch::Approx(12.4));
 
     QSignalSpy ticks(&runner, &SimulationRunner::ticked);
+    // The second point of the track is at 10:03:00, 37.91 N.
     runner.seek(3min);
     CHECK(ticks.count() == 1);
     CHECK(runner.position() == 3min);
@@ -243,6 +287,7 @@ TEST_CASE("a track profile drives a track source and ends the run at the last po
     CHECK(finished.count() == 1);
     CHECK_FALSE(runner.is_running());
     CHECK(runner.sentences_emitted() > 0);
+    // The last point of the track is at 23.62 E.
     CHECK(runner.simulation()->state().navigation.position.longitude_deg ==
           Catch::Approx(23.62).margin(1e-9));
 
@@ -277,6 +322,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     REQUIRE(runner.apply_profile(profile, &error));
     REQUIRE(dynamic_cast<nmeasim::core::simulation::ReplaySource*>(
                 &runner.simulation()->source()) != nullptr);
+    // The log's four rounds are time-stamped 10:00:00.00, 00.50, 01.00 and 01.50.
     CHECK(runner.duration() == 1500ms);
 
     // Stepping before the run starts it paused and emits exactly one recorded sentence.
@@ -292,6 +338,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     runner.step();
     CHECK(emitted.count() == 2);
     CHECK(emitted.last().at(0).toString() == QStringLiteral("GGA"));
+    // The log's RMC sentences report 6.5 kn.
     CHECK(runner.simulation()->state().navigation.speed_over_ground_kn == Catch::Approx(6.5));
 
     // Seeking skips the rest of the first round; resuming plays the remaining three rounds.
@@ -302,6 +349,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     runner.resume();
     REQUIRE(wait_until([&] { return stopped.count() == 1; }, 5000));
     CHECK(finished.count() == 1);
+    // The two stepped sentences plus the three remaining rounds of eight.
     CHECK(runner.sentences_emitted() == 2 + 24);
 
     const auto original = read_sentences(fixture("logs/plain.nmea"));
@@ -309,9 +357,11 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     REQUIRE(replayed.size() == 26);
     CHECK(replayed[0] == original[0]);
     CHECK(replayed[1] == original[1]);
+    // The first sentence of the second round.
     CHECK(replayed[2] == original[8]);
     CHECK(replayed.back() == original.back());
     const auto depths = read_sentences(depth_only.path);
+    // One DPT per replayed round; the two steps of the first round sent only RMC and GGA.
     CHECK(depths.size() == 3);
     for (const auto& line : depths) {
         CHECK(line.starts_with("$SDDPT"));
@@ -331,6 +381,7 @@ TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored",
     const auto start = runner.simulation()->state().time_utc;
     runner.step();
     CHECK(runner.is_paused());
+    // One tick of the 20 ms `tick_ms` of `fast_profile`.
     CHECK(runner.simulation()->state().time_utc - start == 20ms);
     CHECK(runner.sentences_emitted() > 0);
     runner.seek(5min);
@@ -408,6 +459,7 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
         nmeasim::core::model::Destination{"AEGINA", {37.7466, 23.4275}, {38.0, 23.7}};
     OutputConfig websocket;
     websocket.type = OutputConfig::Type::WebSocketServer;
+    // Port 0 lets the operating system pick a free port.
     websocket.port = 0;
     websocket.bind_address = QStringLiteral("127.0.0.1");
     websocket.encoding = OutputConfig::Encoding::SignalK;
@@ -442,6 +494,7 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     QObject::connect(&client, &QWebSocket::textMessageReceived, &client,
                      [&received](const QString& message) { received.append(message); });
     client.open(QUrl(QStringLiteral("ws://127.0.0.1:%1").arg(server->port())));
+    // The greeting followed by at least three deltas.
     REQUIRE(wait_until([&] { return received.size() >= 4; }, 5000));
     runner.stop();
     CHECK(received.first() == server->greeting());
@@ -460,6 +513,8 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     for (const auto& value : values) {
         paths.append(value.toObject().value(QStringLiteral("path")).toString());
     }
+    // Cross-track error is present because the seed has a destination; `port` is the Signal K
+    // identifier of the default profile's "Port engine".
     CHECK(paths.contains(QStringLiteral("navigation.position")));
     CHECK(paths.contains(QStringLiteral("navigation.courseRhumbline.crossTrackError")));
     CHECK(paths.contains(QStringLiteral("propulsion.port.revolutions")));
@@ -509,6 +564,8 @@ TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
 
     const auto packets = read_sentences(viewsync.path);
     REQUIRE(packets.size() >= 3);
+    // Each packet starts with its counter and the latitude of the default seed, 37.9838, and
+    // has ten comma-separated fields ending with the planet.
     CHECK(packets[0].starts_with("0,37.98"));
     CHECK(packets[1].starts_with("1,37.98"));
     CHECK(packets[0].ends_with(",mars"));
@@ -517,6 +574,8 @@ TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
     const auto lines = read_sentences(tagged.path);
     REQUIRE_FALSE(lines.empty());
     bool baro_seen = false;
+    // Every line starts with a TAG block holding the source and a UNIX time; the sentence
+    // follows its closing backslash. `6F` is the checksum of the custom body.
     for (const auto& line : lines) {
         CHECK(line.starts_with("\\s:GP0001,c:"));
         const auto sentence = line.substr(line.find('\\', 1) + 1);

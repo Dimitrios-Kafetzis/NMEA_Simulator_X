@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the derived quantities of the vessel state in `nmeasim/core/model/vessel_state.hpp`.
+///
+/// Covers nmeasim::core::model::Navigation::heading_magnetic_deg(),
+/// nmeasim::core::model::Navigation::course_over_ground_magnetic_deg() and
+/// nmeasim::core::model::Wind::true_angle_relative_deg(). No fixture file is read.
+
 #include <nmeasim/core/model/vessel_state.hpp>
 
 #include <catch2/catch_approx.hpp>

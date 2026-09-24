@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the version constants and `nmeasim::core::version_description` from the
+/// configured version.hpp.
+///
+/// The case checks that the description starts with `nmeasim::core::kVersion`, that the
+/// version string matches its three numeric components, and the shape of the git suffix of
+/// a development build. No fixture file is read.
+
 #include <nmeasim/core/version.hpp>
 
 #include <catch2/catch_test_macros.hpp>

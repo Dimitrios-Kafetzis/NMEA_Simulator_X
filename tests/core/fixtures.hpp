@@ -1,3 +1,15 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Shared fixtures of the core test suite: fixture file access, reference vessel states and
+/// a sentence helper.
+///
+/// The test files of the `nmeasim_core_tests` executable include it: the AIS, NMEA 0183, log,
+/// Signal K, simulation, track and ViewSync tests. `fixture_state` is the reference vessel whose
+/// encoded sentences are the golden values of tests/core/nmea0183/encoders_test.cpp and the
+/// examples in docs/reference/nmea0183-sentences.md, so a change to one of its values
+/// changes expected output across the suite. The file paths rely on the
+/// `NMEASIM_FIXTURES_DIR` compile definition that tests/CMakeLists.txt sets to tests/fixtures.
+
 #pragma once
 
 #include <nmeasim/core/model/vessel_state.hpp>
@@ -8,20 +20,48 @@
 #include <string>
 #include <string_view>
 
+/// Shared helpers of the test suites: fixtures and utilities that several test files use.
+///
+/// It holds the core suite's fixture files and reference vessel states
+/// (tests/core/fixtures.hpp) and the Qt event-loop helper of the `nmeasim::io` suite
+/// (tests/io/event_loop.hpp). It is compiled only into the test executables.
 namespace nmeasim::test {
 
-/// Absolute path of a file under `tests/fixtures/`.
+/// Returns the absolute path of a file under tests/fixtures.
+///
+/// @param relative Path relative to tests/fixtures with `/` separators, such as
+///   `tracks/timestamped.gpx`.
+/// @return `NMEASIM_FIXTURES_DIR`, a `/` and `relative`; whether the file exists is not
+///   checked, so tests can also name missing files.
 inline std::string fixture_path(std::string_view relative) {
     return std::string{NMEASIM_FIXTURES_DIR} + "/" + std::string{relative};
 }
 
-/// Contents of a file under `tests/fixtures/`; empty when it does not exist.
+/// Returns the contents of a file under tests/fixtures.
+///
+/// The file is read in binary mode, so line terminators reach the parser byte for byte.
+///
+/// @param relative Path relative to tests/fixtures, as for `fixture_path`.
+/// @return The whole file, or an empty string when it does not exist or cannot be read.
 inline std::string read_fixture(std::string_view relative) {
     std::ifstream file(fixture_path(relative), std::ios::binary);
     return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
-/// A fully populated vessel state near Athens, used as the golden-file fixture.
+/// Returns the reference vessel state, off Athens at 12:34:56.780 UTC on 22 September 2026.
+///
+/// Every navigation, GNSS, steering, water, wind, engine and destination value is set, and
+/// the values are chosen so that every encoder has something distinctive to show: a
+/// non-zero millisecond part for the time fields; course 047.3 and heading 045.0 that
+/// differ, and an easterly variation of 4.6 degrees that makes every magnetic value
+/// different from its true one (heading 040.4 and course 042.7 magnetic); a negative rate of
+/// turn and rudder angle, which exercise the signs of a turn to port; ten satellites in view, which
+/// need three GSV sentences; a positive transducer offset, which gives the Signal K
+/// `surfaceToTransducer` and `belowSurface` depths; one running and one stopped engine; and a
+/// destination off the vessel's track. The AIS static data keeps the `model::AisStatic` defaults
+/// (MMSI 239000001, which also forms the default Signal K context).
+///
+/// @return A new copy of the state; tests modify their copy freely.
 inline core::model::VesselState fixture_state() {
     using namespace std::chrono;
     core::model::VesselState state;
@@ -57,14 +97,29 @@ inline core::model::VesselState fixture_state() {
     return state;
 }
 
-/// The fixture with the GNSS receiver reporting no fix.
+/// Returns `fixture_state` with the GNSS receiver reporting no fix.
+///
+/// Every other value, the satellite counts included, is unchanged, so a test sees only
+/// what losing the fix changes: empty positions, `V` status fields, and the Signal K paths
+/// that need a fix left out.
+///
+/// @return `fixture_state()` with `gnss.has_fix` false.
 inline core::model::VesselState fixture_state_without_fix() {
     auto state = fixture_state();
     state.gnss.has_fix = false;
     return state;
 }
 
-/// Extreme values that produce the longest possible fields.
+/// Returns `fixture_state` with extreme values that produce the longest possible fields.
+///
+/// Positions within 0.00001 degrees of the poles and the antimeridian, the last
+/// centisecond of 2099, four-digit speeds, negative values with the most digits, twelve
+/// satellites, a differential fix, engine revolutions of 99999.9 and a waypoint name longer
+/// than `model::kMaxWaypointNameLength` with NMEA reserved characters. The registry test
+/// encodes every sentence from it to prove that each one still fits the 82-character limit,
+/// and the AIS test to prove that the fields are clamped.
+///
+/// @return A new copy of the extreme state.
 inline core::model::VesselState fixture_state_extreme() {
     using namespace std::chrono;
     auto state = fixture_state();
@@ -103,6 +158,13 @@ inline core::model::VesselState fixture_state_extreme() {
 }
 
 /// Strips the start delimiter and the checksum from a framed sentence.
+///
+/// Tests compare bodies so that the expected strings need no checksum.
+///
+/// @param sentence A sentence such as `$GPHDT,45.0,T*0C`, without line terminator.
+/// @return The text between the first character and the last `*`, such as `GPHDT,45.0,T`;
+///   everything after the first character when there is no `*`.
+/// @throws std::out_of_range When `sentence` is empty.
 inline std::string body_of(std::string_view sentence) {
     const auto star = sentence.rfind('*');
     return std::string{

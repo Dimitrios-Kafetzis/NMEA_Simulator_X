@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the NMEA 0183 field formatters of `nmeasim/core/nmea0183/fields.hpp`.
+///
+/// Covers nmeasim::core::nmea0183::format_fixed(), format_padded(), format_latitude(),
+/// format_longitude(), format_time(), format_date(), date_parts() and east_west(), including
+/// negative zero, leading zeros, rounding up to a whole degree and the last millisecond of a
+/// day. No fixture file is read.
+
 #include <nmeasim/core/nmea0183/fields.hpp>
 
 #include <catch2/catch_test_macros.hpp>

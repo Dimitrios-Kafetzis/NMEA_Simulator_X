@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::time::parse_iso8601` and `nmeasim::core::time::format_iso8601`.
+///
+/// The cases cover the accepted variants (fractions, missing seconds or time, space
+/// separator, surrounding white space, UTC offsets in three spellings, a leap day), the
+/// rejected texts, and formatting with milliseconds and its round trip. No fixture file is
+/// read.
+
 #include <nmeasim/core/time/iso8601.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -9,6 +18,18 @@ namespace iso = nmeasim::core::time;
 
 namespace {
 
+/// Builds a UTC time point from calendar fields.
+///
+/// The fields are not validated; the tests pass only valid dates.
+///
+/// @param y Year.
+/// @param m Month, 1 to 12.
+/// @param d Day of the month, from 1.
+/// @param hh Hour, 0 to 23.
+/// @param mm Minute, 0 to 59.
+/// @param ss Second, 0 to 59.
+/// @param ms Millisecond, 0 to 999.
+/// @return The time point of that UTC date and time.
 system_clock::time_point at(int y, unsigned m, unsigned d, int hh, int mm, int ss, int ms = 0) {
     return sys_days{year{y} / month{m} / day{d}} + hours{hh} + minutes{mm} + seconds{ss} +
            milliseconds{ms};
@@ -20,6 +41,7 @@ TEST_CASE("ISO 8601 date-times parse in every common variant", "[time]") {
     CHECK(iso::parse_iso8601("2026-09-23T10:00:00Z") == at(2026, 9, 23, 10, 0, 0));
     CHECK(iso::parse_iso8601("2026-09-23T10:00:00.250Z") == at(2026, 9, 23, 10, 0, 0, 250));
     CHECK(iso::parse_iso8601("2026-09-23T10:00:00.7Z") == at(2026, 9, 23, 10, 0, 0, 700));
+    // Digits beyond the millisecond are truncated.
     CHECK(iso::parse_iso8601("2026-09-23T10:00:00.123456Z") == at(2026, 9, 23, 10, 0, 0, 123));
     CHECK(iso::parse_iso8601("2026-09-23T10:00:00") == at(2026, 9, 23, 10, 0, 0));
     CHECK(iso::parse_iso8601("2026-09-23 10:00") == at(2026, 9, 23, 10, 0, 0));

@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the leg geometry computed by nmeasim::core::geo::solve_leg().
+///
+/// Covers the bearings and distances of a leg, the sign of the cross-track error on either
+/// side of the leg and the along-track distance behind the origin and beyond the destination.
+/// No fixture file is read.
+
 #include <nmeasim/core/geo/route.hpp>
 
 #include <catch2/catch_approx.hpp>

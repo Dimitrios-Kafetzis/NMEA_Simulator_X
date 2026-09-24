@@ -1,3 +1,18 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::track::parse_gpx`, the GPX 1.0 and 1.1 reader.
+///
+/// The cases cover timed tracks with several segments, untimed tracks, GPX 1.0 course and
+/// speed elements, speed and course in GPX 1.1 extensions, routes, namespace prefixes, times
+/// out of order, and every reason a file is rejected.
+///
+/// Fixture files, all under tests/fixtures/tracks: timestamped.gpx, untimestamped.gpx,
+/// gpx10_course_speed.gpx, extensions_speed.gpx, route.gpx, prefixed.gpx,
+/// unordered_times.gpx, and the rejected malformed.gpx, no_points.gpx, bad_coordinates.gpx,
+/// bad_time.gpx and not_gpx.gpx.
+///
+/// @see GPX 1.1, https://www.topografix.com/GPX/1/1/
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/geo/geodesic.hpp>
@@ -47,6 +62,9 @@ TEST_CASE("a timestamped GPX track concatenates its segments", "[track][gpx]") {
             nmeasim::core::geo::inverse(parsed->points[i - 1].position, parsed->points[i].position)
                 .distance_m;
     }
+    // Two legs of 0.01 degrees north (1109.9 m each) and two of 0.01 degrees east at
+    // 37.92 N (879.3 m each), 3978.4 m in all according to GeographicLib; the bound
+    // guards against a sum that skipped a leg.
     CHECK(expected > 3900.0);
     CHECK(parsed->length_m() == Approx(expected));
 }
@@ -68,6 +86,7 @@ TEST_CASE("GPX 1.0 course and speed are read and converted", "[track][gpx]") {
     REQUIRE(parsed.has_value());
     CHECK(parsed->name == "GPX 1.0 with course and speed");
     REQUIRE(parsed->points.size() == 3);
+    // GPX speeds are in metres per second: 5.144444 m/s is 10 knots.
     CHECK(parsed->points[0].course_deg == Approx(12.5));
     CHECK(parsed->points[0].speed_kn == Approx(10.0).epsilon(1e-4));
     CHECK(parsed->points[1].course_deg == Approx(355.0));
@@ -81,6 +100,7 @@ TEST_CASE("speed and course inside GPX 1.1 extensions are read", "[track][gpx]")
     const auto parsed = track::parse_gpx(read_fixture("tracks/extensions_speed.gpx"), &error);
     REQUIRE(parsed.has_value());
     REQUIRE(parsed->points.size() == 3);
+    // 3 and 4 m/s in knots; 0.514444 m/s is one knot (1852 m per hour).
     CHECK(parsed->points[0].speed_kn == Approx(3.0 / 0.514444).epsilon(1e-4));
     CHECK(parsed->points[0].course_deg == Approx(90.0));
     CHECK(parsed->points[1].speed_kn == Approx(4.0 / 0.514444).epsilon(1e-4));

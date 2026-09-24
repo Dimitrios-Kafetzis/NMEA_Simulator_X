@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the NMEA 0183 decoder of `nmeasim/core/nmea0183/decoder.hpp`.
+///
+/// Covers nmeasim::core::nmea0183::parse_sentence(), the field parsers parse_coordinate(),
+/// parse_time_of_day(), parse_date() and parse_number_field(), sentence_time(), and
+/// apply_sentence(): every sentence of the registry, encoded from the fixture states of
+/// `tests/core/fixtures.hpp`, must decode back to the state it came from, and individual
+/// sentences must update only the values they carry. No fixture file is read.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/decoder.hpp>
@@ -64,6 +74,7 @@ TEST_CASE("field helpers parse coordinates, times, dates and numbers", "[nmea018
     CHECK_FALSE(nmea::parse_coordinate("", "N").has_value());
     CHECK_FALSE(nmea::parse_coordinate("3759.0280", "").has_value());
     CHECK_FALSE(nmea::parse_coordinate("3759.0280", "X").has_value());
+    // Sixty minutes, 91 degrees north and 181 degrees east are out of range.
     CHECK_FALSE(nmea::parse_coordinate("3760.0000", "N").has_value());
     CHECK_FALSE(nmea::parse_coordinate("9100.0000", "N").has_value());
     CHECK_FALSE(nmea::parse_coordinate("18100.0000", "E").has_value());
@@ -83,7 +94,7 @@ TEST_CASE("field helpers parse coordinates, times, dates and numbers", "[nmea018
     CHECK(date->year == 2026);
     CHECK(date->month == 9);
     CHECK(date->day == 22);
-    CHECK(nmea::parse_date("311299")->year == 1999);
+    CHECK(nmea::parse_date("311299")->year == 1999);  // two-digit years from 80 are 19xx
     CHECK_FALSE(nmea::parse_date("").has_value());
     CHECK_FALSE(nmea::parse_date("321226").has_value());
     CHECK_FALSE(nmea::parse_date("011326").has_value());
@@ -132,6 +143,7 @@ TEST_CASE("sentence times are read from the sentences that carry one", "[nmea018
 TEST_CASE("every encoded sentence decodes back to the state it came from", "[nmea0183][decoder]") {
     const auto original = nmeasim::test::fixture_state();
     nmeasim::core::model::VesselState decoded;
+    // A date far from the fixture's, so that the time check below proves the date decoded.
     decoded.time_utc = std::chrono::sys_days{std::chrono::year{2000} / 1 / 1};
     const auto& registry = nmea::SentenceRegistry::standard();
     int applied = 0;
@@ -211,6 +223,7 @@ TEST_CASE("autopilot and propulsion sentences update the destination and the eng
     CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,NOWHERE,,,,,20.1,225.2,6.5,V,A", state));
     CHECK(state.destination->name == "WPT");
 
+    // RPM numbers engines from 1 and XDR from 0; a sentence for a missing engine adds it.
     CHECK(nmea::apply_sentence("$ERRPM,E,2,1500.0,,A", state));
     REQUIRE(state.engines.size() == 2);
     CHECK(state.engines[0].label == "Engine 1");
@@ -219,13 +232,14 @@ TEST_CASE("autopilot and propulsion sentences update the destination and the eng
     CHECK(state.engines[1].revolutions_rpm == Approx(1500.0));
     CHECK(nmea::apply_sentence("$ERRPM,S,1,900.0,,A", state));  // shafts are not engines
     CHECK_FALSE(state.engines[0].running);
-    CHECK(nmea::apply_sentence("$ERRPM,E,1,900.0,,V", state));
+    CHECK(nmea::apply_sentence("$ERRPM,E,1,900.0,,V", state));  // invalid status
     CHECK_FALSE(state.engines[0].running);
-    CHECK(nmea::apply_sentence("$ERRPM,E,0,900.0,,A", state));
+    CHECK(nmea::apply_sentence("$ERRPM,E,0,900.0,,A", state));  // no engine 0 in RPM
     CHECK(state.engines.size() == 2);
     CHECK(nmea::apply_sentence("$ERXDR,C,79.5,C,ENGINE#0,T,0.0,R,ENGINE#1,P,1.0,B,BARO", state));
     CHECK(state.engines[0].coolant_temperature_c == Approx(79.5));
     CHECK_FALSE(state.engines[1].running);
+    // A malformed engine number and a temperature in Fahrenheit are both ignored.
     CHECK(nmea::apply_sentence("$ERXDR,C,30.0,C,ENGINE#x,C,31.0,F,ENGINE#0", state));
     CHECK(state.engines[0].coolant_temperature_c == Approx(79.5));
     CHECK(state.engines.size() == 2);
@@ -252,6 +266,8 @@ TEST_CASE("a receiver without a fix decodes as such", "[nmea0183][decoder]") {
 TEST_CASE("individual sentences update only what they carry", "[nmea0183][decoder]") {
     nmeasim::core::model::VesselState state;
     state.navigation.magnetic_variation_deg = 4.0;
+    // The true heading adds variation and deviation to the magnetic one: 41.0 + 4.0 = 45.0,
+    // then 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
     CHECK(nmea::apply_sentence("$HCHDM,41.0,M", state));
     CHECK(state.navigation.heading_true_deg == Approx(45.0));
     CHECK(nmea::apply_sentence("$HCHDG,40.0,1.0,W,5.0,E", state));
@@ -259,7 +275,8 @@ TEST_CASE("individual sentences update only what they carry", "[nmea0183][decode
     CHECK(state.navigation.magnetic_deviation_deg == Approx(-1.0));
     CHECK(state.navigation.magnetic_variation_deg == Approx(5.0));
 
-    // Wind speed units are converted; true MWV is relative to the heading.
+    // Wind speed units are converted; true MWV is relative to the heading, so 90.0 on 44.0
+    // comes from 134.0. 10 m/s = 19.438 kn, 18.52 km/h = 10 kn and 5 m/s = 9.719 kn.
     CHECK(nmea::apply_sentence("$WIMWV,90.0,T,10.0,M,A", state));
     CHECK(state.wind.true_direction_deg == Approx(134.0));
     CHECK(state.wind.true_speed_kn == Approx(19.438).epsilon(1e-3));
@@ -272,12 +289,14 @@ TEST_CASE("individual sentences update only what they carry", "[nmea0183][decode
     CHECK(nmea::apply_sentence("$WIMWD,,T,,M,,N,5.0,M", state));
     CHECK(state.wind.true_speed_kn == Approx(9.719).epsilon(1e-3));
 
+    // Without the metres field the depth comes from the feet: 32.8 ft = 9.997 m.
     CHECK(nmea::apply_sentence("$SDDBT,32.8,f,,M,5.5,F", state));
     CHECK(state.water.depth_below_transducer_m == Approx(10.0).epsilon(1e-3));
     // VBW sets the water speed; the ground speed comes from RMC and VTG.
     CHECK(nmea::apply_sentence("$VWVBW,5.0,0.0,A,3.0,4.0,A,,V,,V", state));
     CHECK(state.navigation.speed_through_water_kn == Approx(5.0));
     CHECK(state.navigation.speed_over_ground_kn == Approx(0.0));
+    // A water speed with status V is ignored.
     CHECK(nmea::apply_sentence("$VWVBW,6.0,0.0,V,3.0,4.0,A,,V,,V", state));
     CHECK(state.navigation.speed_through_water_kn == Approx(5.0));
     CHECK(nmea::apply_sentence("$IIRSA,7.5,A,,V", state));
@@ -286,6 +305,7 @@ TEST_CASE("individual sentences update only what they carry", "[nmea0183][decode
     CHECK(state.steering.rudder_angle_deg == Approx(7.5));
     CHECK(nmea::apply_sentence("$GPGSV,3,1,11,02,45,120,40", state));
     CHECK(state.gnss.satellites_in_view == 11);
+    // Satellites in use are counted from the non-empty PRN fields.
     CHECK(nmea::apply_sentence("$GPGSA,A,3,02,05,07,,,,,,,,,,2.0,1.1,1.6", state));
     CHECK(state.gnss.satellites_in_use == 3);
     CHECK(state.gnss.pdop == Approx(2.0));

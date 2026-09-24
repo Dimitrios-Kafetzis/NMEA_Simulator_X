@@ -1,3 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::app::MainWindow`, the main window of the desktop application.
+///
+/// Covers the position and duration formatting, running a profile against a local TCP server,
+/// dashboard overrides and keyboard nudges reaching the delta simulation, loading and saving
+/// profiles, the about text, following a GPX track with step and seek, replaying a log to its
+/// end, recording a session to a log file, and the engine tiles. The window is created on the
+/// offscreen platform (see `main.cpp`). The file reads the fixtures `tracks/timestamped.gpx`,
+/// `tracks/malformed.gpx` and `logs/plain.nmea` from `tests/fixtures`.
+
 #include "main_window.hpp"
 
 #include "io/event_loop.hpp"
@@ -32,6 +43,15 @@ namespace sim = nmeasim::core::simulation;
 
 namespace {
 
+/// Returns the default profile made fast and self-contained for tests.
+///
+/// The tick is 20 ms instead of the default 100 ms, and the only output is a TCP server on
+/// `127.0.0.1` with port 0, so that the operating system picks a free port and the test never
+/// collides with a port already in use. Every sentence of the standard registry is listed with
+/// its default enabled state, the default talker (the empty string) and a period of 100 ms, so
+/// that the console fills within a fraction of a second.
+///
+/// @return The profile, ready for `nmeasim::app::MainWindow::set_profile`.
 nmeasim::io::Profile quick_profile() {
     auto profile = nmeasim::io::Profile::default_profile();
     profile.tick_ms = 20;
@@ -48,6 +68,10 @@ nmeasim::io::Profile quick_profile() {
     return profile;
 }
 
+/// Returns the absolute path of a file in the test fixtures directory.
+///
+/// @param relative Path below `tests/fixtures`, for example `"tracks/timestamped.gpx"`.
+/// @return The path, built from the `NMEASIM_FIXTURES_DIR` compile definition.
 QString fixture(const char* relative) {
     return QStringLiteral(NMEASIM_FIXTURES_DIR "/") + QLatin1String(relative);
 }
@@ -55,6 +79,7 @@ QString fixture(const char* relative) {
 }  // namespace
 
 TEST_CASE("positions are formatted as degrees and decimal minutes", "[app]") {
+    // 0.9838 degrees is 59.028 minutes and 0.7275 degrees 43.650 minutes.
     CHECK(nmeasim::app::format_position({37.9838, 23.7275}) ==
           QStringLiteral("37°59.028'N  023°43.650'E"));
     CHECK(nmeasim::app::format_position({-38.9997, -151.5001}) ==
@@ -97,6 +122,7 @@ TEST_CASE("dashboard overrides and keyboard nudges reach the simulation", "[app]
     CHECK_FALSE(source->override_value(sim::Parameter::Depth).has_value());
 
     const double speed_before = source->current().navigation.speed_over_ground_kn;
+    // Up without Shift is the fine speed nudge of 0.1 kn; with Shift it is 1 kn.
     QKeyEvent up(QEvent::KeyPress, Qt::Key_Up, Qt::NoModifier);
     QApplication::sendEvent(&window, &up);
     CHECK(source->override_value(sim::Parameter::SpeedOverGround) == Approx(speed_before + 0.1));
@@ -154,6 +180,7 @@ TEST_CASE("the main window follows a track and offers step and seek", "[app][tra
     CHECK(window.profile().track.path == fixture("tracks/timestamped.gpx"));
     CHECK(window.map_view()->route_length() == 5);
     CHECK(window.seek_slider()->isEnabled());
+    // The fixture runs from 10:00:00 to 10:12:00.500, 720500 ms.
     CHECK(window.seek_slider()->maximum() == 720500);
     CHECK(window.position_label()->text() == QStringLiteral("00:00 / 12:00"));
     CHECK_FALSE(window.dashboard()->overrides_enabled());
@@ -168,7 +195,8 @@ TEST_CASE("the main window follows a track and offers step and seek", "[app][tra
     CHECK(window.runner().position() == 20ms);
     CHECK(window.runner().sentences_emitted() > 0);
 
-    // The slider seeks; the label and the map follow.
+    // The slider seeks; the label and the map follow. At 3 minutes the track is at its second
+    // point, 37.91 N.
     window.seek_slider()->setValue(180000);
     CHECK(window.runner().position() == 3min);
     CHECK(window.position_label()->text() == QStringLiteral("03:00 / 12:00"));
@@ -200,12 +228,14 @@ TEST_CASE("the main window replays a log to its end and records a session",
     window.set_profile(quick_profile());
     REQUIRE(window.load_log(fixture("logs/plain.nmea")));
     CHECK(window.profile().mode == nmeasim::io::SimulationMode::Replay);
+    // The fixture holds 32 sentences timed from 10:00:00.00 to 10:00:01.50, 1500 ms.
     CHECK(window.seek_slider()->maximum() == 1500);
     CHECK(window.map_view()->route_length() == 0);
 
     window.step_action()->trigger();
     CHECK(window.runner().is_paused());
     CHECK(window.runner().sentences_emitted() == 1);
+    // The first sentence of the fixture is an RMC with a speed of 6.5 kn.
     CHECK(window.runner().simulation()->state().navigation.speed_over_ground_kn == Approx(6.5));
 
     QSignalSpy stopped(&window.runner(), &nmeasim::io::SimulationRunner::stopped);
@@ -249,6 +279,7 @@ TEST_CASE("engine tiles on the dashboard drive the engines of the delta source",
           "[app][integration]") {
     nmeasim::app::MainWindow window;
     window.set_profile(quick_profile());
+    // The default profile has a port and a starboard engine.
     REQUIRE(window.dashboard()->engine_count() == 2);
     auto* tile = window.dashboard()->engine_tile(1);
     REQUIRE(tile != nullptr);
