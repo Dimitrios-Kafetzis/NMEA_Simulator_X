@@ -17,7 +17,6 @@
 #include <nmeasim/core/version.hpp>
 
 #include <QApplication>
-#include <QFile>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QString>
@@ -36,13 +35,14 @@
 /// 4. Applies the look stored under `appearance/theme` before any widget exists, so that the
 ///    window is built with its palette and *View → Theme* ticks the stored entry.
 /// 5. Creates and shows the main window, which applies the built-in default profile.
-/// 6. Loads the profile named by the first argument when that file exists; otherwise the
-///    profile stored under `profile/last_path` when that file exists. A path that does not
-///    exist is ignored without a message, and further arguments are ignored.
+/// 6. Loads the profile named by the first argument, or the profile stored under
+///    `profile/last_path`, through `MainWindow::open_initial_profile`: a profile given here
+///    that cannot be opened (a path that does not exist, for example) is reported, and the
+///    last profile is opened instead. Further arguments are ignored.
 /// 7. Starts the simulation when `simulation/autostart` is set.
 ///
 /// There is no other command-line option: an argument such as `--help` is taken as a profile
-/// path and ignored because no such file exists.
+/// path and reported because no such file exists.
 ///
 /// @param argc Number of command-line arguments, including the program name.
 /// @param argv The command-line arguments; `QApplication` requires both to stay valid for its
@@ -70,12 +70,7 @@ int main(int argc, char** argv) {
     window.show();
 
     const QStringList arguments = QApplication::arguments();
-    if (arguments.size() > 1 && QFile::exists(arguments.at(1))) {
-        window.load_profile(arguments.at(1));
-    } else if (!settings.last_profile_path().isEmpty() &&
-               QFile::exists(settings.last_profile_path())) {
-        window.load_profile(settings.last_profile_path());
-    }
+    window.open_initial_profile(arguments.size() > 1 ? arguments.at(1) : QString{});
     // After loading, so that autostart runs the chosen profile rather than the default one.
     if (settings.autostart()) {
         window.start();

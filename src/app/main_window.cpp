@@ -39,11 +39,13 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDockWidget>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QKeyEvent>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPointF>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStatusBar>
@@ -83,7 +85,9 @@ MainWindow::MainWindow(QWidget* parent)
     tile_cache_->set_online(settings_.map_online());
     tile_cache_->set_url_template(settings_.map_tile_url());
     map_->set_attribution(settings_.map_tile_attribution());
-    map_->set_zoom(settings_.map_zoom());
+    // Through zoom_to, which keeps the fractional level stored by earlier sessions; its anchor
+    // is the widget centre, so the centre stays where it is.
+    map_->zoom_to(settings_.map_zoom(), QPointF(map_->width(), map_->height()) / 2.0);
     connect(map_, &map::MapWidget::position_picked, this, &MainWindow::move_vessel);
     // Through a lambda: a pointer to set_destination cannot supply its default name.
     connect(map_, &map::MapWidget::destination_picked, this,
@@ -92,13 +96,14 @@ MainWindow::MainWindow(QWidget* parent)
     // Follow mode emits view_changed on every tick; storing only a changed zoom level keeps
     // QSettings from rewriting its file several times a second.
     connect(map_, &map::MapWidget::view_changed, this, [this] {
-        if (settings_.map_zoom() != map_->zoom()) {
-            settings_.set_map_zoom(map_->zoom());
+        if (settings_.map_zoom() != map_->zoom_level()) {
+            settings_.set_map_zoom(map_->zoom_level());
         }
     });
 
     build_actions();
     build_docks();
+    build_help_menu();
 
     run_led_ = new StatusLed(this);
     run_led_->setObjectName(QStringLiteral("run_led"));
@@ -286,9 +291,6 @@ void MainWindow::build_actions() {
     auto* quit_action = new QAction(tr("&Quit"), this);
     quit_action->setShortcut(QKeySequence::Quit);
     connect(quit_action, &QAction::triggered, this, &QWidget::close);
-    auto* about_action = new QAction(tr("&About"), this);
-    connect(about_action, &QAction::triggered, this,
-            [this] { QMessageBox::about(this, tr("About NMEA Simulator X"), about_text()); });
 
     auto* file_menu = menuBar()->addMenu(tr("&File"));
     file_menu->addActions({new_action_, open_action_, save_action_, save_as_action_});
@@ -304,8 +306,6 @@ void MainWindow::build_actions() {
     simulation_menu->addAction(clear_destination_action_);
     simulation_menu->addSeparator();
     simulation_menu->addAction(autostart_action_);
-    auto* help_menu = menuBar()->addMenu(tr("&Help"));
-    help_menu->addAction(about_action);
 
     toolbar->addActions({open_action_, save_action_, settings_action_});
     toolbar->addSeparator();
@@ -582,6 +582,14 @@ void MainWindow::build_docks() {
     }
 }
 
+void MainWindow::build_help_menu() {
+    auto* about_action = new QAction(tr("&About"), this);
+    connect(about_action, &QAction::triggered, this,
+            [this] { QMessageBox::about(this, tr("About NMEA Simulator X"), about_text()); });
+    auto* help_menu = menuBar()->addMenu(tr("&Help"));
+    help_menu->addAction(about_action);
+}
+
 core::simulation::DeltaSource* MainWindow::delta_source() {
     auto* simulation = runner_.simulation();
     return simulation != nullptr
@@ -596,8 +604,20 @@ bool MainWindow::load_profile(const QString& path) {
         report_error(tr("Cannot open profile"), error);
         return false;
     }
-    set_profile(*loaded, path);
-    return true;
+    return set_profile(*loaded, path);
+}
+
+void MainWindow::open_initial_profile(const QString& requested) {
+    if (!requested.isEmpty()) {
+        if (load_profile(requested)) {
+            return;
+        }
+        // Reported by load_profile; the last profile is still better than the default one.
+    }
+    const QString last = settings_.last_profile_path();
+    if (!last.isEmpty() && last != requested && QFile::exists(last)) {
+        load_profile(last);
+    }
 }
 
 bool MainWindow::set_profile(const io::Profile& profile, const QString& path) {
@@ -619,6 +639,11 @@ bool MainWindow::set_profile(const io::Profile& profile, const QString& path) {
     map_->clear_track();
     const bool delta = profile_.mode == io::SimulationMode::Delta;
     dashboard_->set_overrides_enabled(delta);
+    if (!delta) {
+        // Steering needs the delta source; unticked here, it is not carried into the next
+        // delta profile either.
+        steering_action_->setChecked(false);
+    }
     steering_action_->setEnabled(delta);
     if (const auto* source = delta_source()) {
         dashboard_->sync_overrides(*source);
@@ -708,6 +733,12 @@ void MainWindow::nudge(Parameter parameter, double delta) {
 }
 
 void MainWindow::keyPressEvent(QKeyEvent* event) {
+    if (delta_source() == nullptr) {
+        // Track and replay mode have nothing to nudge: the arrow keys go to the base class,
+        // which ignores them so that they propagate like any unused key.
+        QMainWindow::keyPressEvent(event);
+        return;
+    }
     const bool fine = !event->modifiers().testFlag(Qt::ShiftModifier);
     switch (event->key()) {
         case Qt::Key_Up:
@@ -758,13 +789,7 @@ bool MainWindow::save_profile() {
     if (profile_path_.isEmpty()) {
         return save_profile_as();
     }
-    QString error;
-    if (!profile_.save(profile_path_, &error)) {
-        report_error(tr("Cannot save profile"), error);
-        return false;
-    }
-    statusBar()->showMessage(tr("Saved %1").arg(profile_path_), 3000);
-    return true;
+    return save_profile_to(profile_path_);
 }
 
 bool MainWindow::save_profile_as() {
@@ -773,10 +798,21 @@ bool MainWindow::save_profile_as() {
     if (path.isEmpty()) {
         return false;
     }
+    return save_profile_to(path);
+}
+
+bool MainWindow::save_profile_to(const QString& path) {
+    QString error;
+    if (!profile_.save(path, &error)) {
+        report_error(tr("Cannot save profile"), error);
+        return false;
+    }
+    // Only a file that was written becomes the profile's file.
     profile_path_ = path;
     settings_.set_last_profile_path(path);
     update_title();
-    return save_profile();
+    statusBar()->showMessage(tr("Saved %1").arg(path), 3000);
+    return true;
 }
 
 void MainWindow::report_error(const QString& title, const QString& message) {

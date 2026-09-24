@@ -10,8 +10,10 @@
 NMEASimulatorX [profile.json]
 ```
 
-When a profile path is given and the file exists it is loaded at start-up. Otherwise the last
-profile used is reopened, and if there is none the built-in default profile is used.
+When a profile path is given it is loaded at start-up. A profile that cannot be opened, for
+example because the path does not exist or its track file is missing, is reported in a
+message box, and the last profile used is reopened instead. Without a path the last profile
+used is reopened, and if there is none the built-in default profile is used.
 
 ## Window layout
 
@@ -34,7 +36,7 @@ the outputs about 260 and the console about 170.
 | File | New profile | ++ctrl+n++ | Replaces the current profile with the default one |
 | File | Open profile... | ++ctrl+o++ | Loads a JSON profile; the simulation restarts if it was running |
 | File | Save profile | ++ctrl+s++ | Writes the current profile to its file, asking for a name the first time |
-| File | Save profile as... | ++ctrl+shift+s++ | Writes the current profile to a new file |
+| File | Save profile as... | ++ctrl+shift+s++ | Writes the current profile to a new file, which becomes the profile's file once written |
 | File | Open track... | ++ctrl+t++ | Switches the current profile to track mode with a GPX or KML file; the simulation restarts if it was running |
 | File | Open log for replay... | ++ctrl+l++ | Switches the current profile to replay mode with a recorded or plain NMEA log |
 | File | Record log... | ++ctrl+r++ | Starts recording every sentence to a log file, or stops the recording when unticked |
@@ -43,7 +45,7 @@ the outputs about 260 and the console about 170.
 | Simulation | Start / Stop | ++f5++ | Opens every enabled output and starts ticking, or closes everything |
 | Simulation | Pause | ++f6++ | Freezes the simulated clock and the vessel; outputs stay open |
 | Simulation | Step | ++f7++ | Pauses and advances by one tick, or by one recorded sentence during a replay; starts the run paused when it is stopped |
-| Simulation | Steering mode | | Arrow keys move the rudder instead of the heading; available in delta mode only |
+| Simulation | Steering mode | | Arrow keys move the rudder instead of the heading; available in delta mode only, and unticked when a track or log is loaded |
 | Simulation | Clear destination | | Stops steering for the waypoint; APB, RMB and XTE are no longer sent |
 | Simulation | Start automatically on launch | | Starts the simulation as soon as the window opens |
 | View | Map, Console, Outputs | | Shows or hides the panel |
@@ -105,6 +107,8 @@ The main window must have focus; click on the dashboard if the arrow keys do not
 
 A nudge sets an override on the parameter, which pins it at the new value until the override
 is cleared from the tile.
+In track and replay mode the file drives the vessel, so the arrow keys nudge nothing and are
+left to the rest of the window.
 
 ## Dashboard instruments
 
@@ -358,7 +362,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/tile_attribution` | Attribution drawn on the map; unset credits OpenStreetMap for its own servers only |
-| `map/zoom` | Last map zoom level |
+| `map/zoom` | Last map zoom level, fractional |
 | `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 
