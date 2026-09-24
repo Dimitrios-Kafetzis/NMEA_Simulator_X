@@ -87,11 +87,10 @@ public:
     /// Builds the window, restores its layout and applies the built-in default profile.
     ///
     /// Reads the map preferences (tiles online, tile URL, zoom) and the autostart flag from
-    /// `AppSettings`, gives the tile cache a `User-Agent` naming the application and its
-    /// version as the OpenStreetMap tile usage policy asks, builds the actions, menus, toolbar,
-    /// docks and status bar, and connects the map, dashboard, theme and runner signals. On a
-    /// first start, when no dock layout was saved, it gives the map about 400 pixels, the
-    /// outputs about 260 and the console about 170. The simulation is not started.
+    /// `AppSettings`, builds the actions, menus, toolbar, docks and status bar, and connects the
+    /// map, dashboard, theme and runner signals. On a first start, when no dock layout was saved,
+    /// it gives the map about 400 pixels, the outputs about 260 and the console about 170. The
+    /// simulation is not started.
     ///
     /// @param parent Qt parent that owns the window; null for a top-level window, as `main`
     ///   creates it.

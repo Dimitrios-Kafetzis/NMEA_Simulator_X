@@ -77,8 +77,9 @@ def main() -> int:
         total += 1
         # The limit counts the CR LF, which a line may lack or carry as LF only; adding two
         # to the stripped length measures every line as if it ended in CR LF.
-        if len(line.rstrip("\r\n")) + 2 > MAX_LENGTH:
-            print(f"too long ({len(line)} bytes): {line.strip()}")
+        length = len(line.rstrip("\r\n")) + 2
+        if length > MAX_LENGTH:
+            print(f"too long ({length} characters with CR LF): {line.strip()}")
             failures += 1
             continue
         if line.startswith("!"):

@@ -305,18 +305,22 @@ TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][m
     widget.set_route({{37.90, 23.60}, {37.95, 23.65}, {38.00, 23.70}});
     CHECK(widget.route_length() == 3);
 
-    QImage image(widget.size(), QImage::Format_ARGB32);
-    widget.render(&image);
     // The route passes through the centre; a green pixel is found on it. The route colour is
-    // green in both themes, so the test does not depend on the theme left by another test.
-    bool green_found = false;
-    for (int y = 140; y < 160 && !green_found; ++y) {
-        for (int x = 140; x < 160 && !green_found; ++x) {
-            const QColor color = image.pixelColor(x, y);
-            green_found = color.green() > color.red() + 40 && color.green() > color.blue() + 40;
+    // green in both themes; each theme is applied here, so the result does not depend on the
+    // theme that another test left.
+    for (const auto mode : {nmeasim::app::theme::Mode::Day, nmeasim::app::theme::Mode::Night}) {
+        nmeasim::app::theme::Theme::instance().apply(mode);
+        QImage image(widget.size(), QImage::Format_ARGB32);
+        widget.render(&image);
+        bool green_found = false;
+        for (int y = 140; y < 160 && !green_found; ++y) {
+            for (int x = 140; x < 160 && !green_found; ++x) {
+                const QColor color = image.pixelColor(x, y);
+                green_found = color.green() > color.red() + 40 && color.green() > color.blue() + 40;
+            }
         }
+        CHECK(green_found);
     }
-    CHECK(green_found);
 
     widget.clear_route();
     CHECK(widget.route_length() == 0);
