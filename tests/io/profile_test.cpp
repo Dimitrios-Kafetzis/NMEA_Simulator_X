@@ -568,3 +568,47 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
             .has_value());
     CHECK(error.contains(QStringLiteral("period_ms")));
 }
+
+TEST_CASE("random seed, MMSI and IMO number outside their integer range are rejected",
+          "[io][profile]") {
+    QString error;
+    const auto simulation = [](const QJsonObject& keys) {
+        return QJsonObject{{QStringLiteral("schema_version"), 3},
+                           {QStringLiteral("simulation"), keys}};
+    };
+    const auto ais = [&simulation](const char* key, double value) {
+        return simulation(
+            {{QStringLiteral("seed"),
+              QJsonObject{{QStringLiteral("ais"), QJsonObject{{QLatin1String(key), value}}}}}});
+    };
+
+    // 4294967295 is the largest `unsigned int` of 32 bits, 999999999 the largest nine-digit
+    // number.
+    for (const double bad : {-1.0, 4294967296.0, 5e9, 1.5}) {
+        INFO(bad);
+        CHECK_FALSE(Profile::from_json(simulation({{QStringLiteral("random_seed"), bad}}), &error)
+                        .has_value());
+        CHECK(error.contains(QStringLiteral("random_seed")));
+    }
+    for (const double bad : {-1.0, 1e9, 5e9, 211000123.5}) {
+        INFO(bad);
+        CHECK_FALSE(Profile::from_json(ais("mmsi", bad), &error).has_value());
+        CHECK(error.contains(QStringLiteral("mmsi")));
+        CHECK_FALSE(Profile::from_json(ais("imo_number", bad), &error).has_value());
+        CHECK(error.contains(QStringLiteral("imo_number")));
+    }
+
+    const auto seed =
+        Profile::from_json(simulation({{QStringLiteral("random_seed"), 4294967295.0}}), &error);
+    REQUIRE(seed.has_value());
+    CHECK(seed->delta.random_seed == 4294967295U);
+    const auto zero = Profile::from_json(simulation({{QStringLiteral("random_seed"), 0}}), &error);
+    REQUIRE(zero.has_value());
+    CHECK(zero->delta.random_seed == 0U);
+    const auto mmsi = Profile::from_json(ais("mmsi", 999999999.0), &error);
+    REQUIRE(mmsi.has_value());
+    CHECK(mmsi->delta.seed.ais.mmsi == 999999999U);
+    const auto imo = Profile::from_json(ais("imo_number", 9074729.0), &error);
+    REQUIRE(imo.has_value());
+    CHECK(imo->delta.seed.ais.imo_number == 9074729U);
+}

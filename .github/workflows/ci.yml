@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Continuous integration. Builds the project with the ci-* presets on Linux, Windows and macOS,
 # runs the unit tests, smoke-tests and installs the command-line tool, cross-checks its output
-# with independent parsers and, on Linux, reports the test coverage. Two further jobs check the
+# with independent parsers, tests those checkers and, on Linux, reports the test coverage. Two further jobs check the
 # C++ formatting and build the documentation site with the C++ reference.
 #
 # Triggers: pushes to main, every pull request and manual dispatch. A newer run for the same
@@ -29,15 +29,8 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # The Qt release installed with aqtinstall (ADR 0003) and shipped in the packages. Keep it
-  # equal in codeql.yml, release.yml and docs/how-to/build-from-source.md.
-  QT_VERSION: 6.10.3
-  # Doxygen is pinned because the C++ reference generator reads its XML, whose schema changes
-  # with the version (ADR 0017). The SHA-256 of the release archive makes the job fail if the
-  # download ever differs. Keep both values equal in docs.yml.
-  DOXYGEN_VERSION: 1.18.0
-  DOXYGEN_SHA256: 14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90
+# The Qt and Doxygen versions are pinned in .github/versions.env, which the jobs that need them
+# read in their first step after the checkout.
 
 jobs:
   # One job per platform, named after the platform and compiler. ci-linux builds with GCC,
@@ -68,6 +61,11 @@ jobs:
     steps:
       - name: Check out sources
         uses: actions/checkout@v7
+
+      # QT_VERSION, DOXYGEN_VERSION and DOXYGEN_SHA256 from .github/versions.env.
+      - name: Read the pinned tool versions
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/versions.env >> "$GITHUB_ENV"
 
       # Sets QT_ROOT_DIR, through which the presets find Qt.
       - name: Install Qt ${{ env.QT_VERSION }}
@@ -180,6 +178,13 @@ jobs:
           python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
           "$NMEASIM" run --stdout --quiet --duration 2 --encoding viewsync | python3 tools/check_viewsync_stream.py
 
+      # The unit tests of the Python tools (tools/tests): a malformed stream or coverage
+      # summary must fail its check, not pass it or end in a traceback. They use the pynmea2
+      # and pyais that the previous step installed.
+      - name: Test the Python tools
+        shell: bash
+        run: python3 -m unittest discover -s tools/tests -v
+
       # The ci-linux preset instruments the build for gcov; the report runs last so that the
       # smoke tests above count towards the coverage of the command-line tool.
       - name: Coverage report
@@ -233,6 +238,11 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: docs/requirements.txt
+
+      # QT_VERSION, DOXYGEN_VERSION and DOXYGEN_SHA256 from .github/versions.env.
+      - name: Read the pinned tool versions
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/versions.env >> "$GITHUB_ENV"
 
       # The release binary of the pinned version, verified against its SHA-256 before use.
       - name: Install Doxygen
