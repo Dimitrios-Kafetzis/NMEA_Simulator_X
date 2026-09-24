@@ -50,7 +50,7 @@ bool all_digits(std::string_view text) noexcept {
 /// Returns the value of a string of decimal digits.
 ///
 /// @param text Digits only, few enough for the value to fit an `int`; callers pass at most
-///     three.
+///     four.
 /// @return The decimal value, 0 for an empty text.
 /// @pre all_digits() is true for `text`, or `text` is empty.
 int digits_value(std::string_view text) noexcept {
@@ -59,6 +59,44 @@ int digits_value(std::string_view text) noexcept {
         value = value * 10 + (c - '0');
     }
     return value;
+}
+
+/// Tells whether a day, month and year form a date of the Gregorian calendar.
+///
+/// @param date The date to check; any values.
+/// @return True when the month is in [1, 12] and the day exists in that month of that year,
+///     29 February only in a leap year.
+bool date_exists(const DateParts& date) noexcept {
+    if (date.month < 1 || date.month > 12 || date.day < 1 || date.day > 31) {
+        return false;
+    }
+    const std::chrono::year_month_day ymd{std::chrono::year{date.year},
+                                          std::chrono::month{static_cast<unsigned>(date.month)},
+                                          std::chrono::day{static_cast<unsigned>(date.day)}};
+    return ymd.ok();
+}
+
+/// Reads the day, month and year fields of ZDA into a date.
+///
+/// @param day The day field, one or two digits.
+/// @param month The month field, one or two digits.
+/// @param year The year field, four digits.
+/// @return The date, or `std::nullopt` when a field is empty, has another form (a sign, a
+///     fraction, a two-digit year) or the three do not form a date that exists.
+std::optional<DateParts> zda_date(std::string_view day, std::string_view month,
+                                  std::string_view year) {
+    day = trim(day);
+    month = trim(month);
+    year = trim(year);
+    if (!all_digits(day) || day.size() > 2 || !all_digits(month) || month.size() > 2 ||
+        !all_digits(year) || year.size() != 4) {
+        return std::nullopt;
+    }
+    const DateParts date{digits_value(year), digits_value(month), digits_value(day)};
+    if (!date_exists(date)) {
+        return std::nullopt;
+    }
+    return date;
 }
 
 /// Parses a magnitude and its `E` or `W` letter, such as a magnetic variation, into a signed
@@ -365,15 +403,19 @@ bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies ROT: the rate of turn in degrees per minute, negative to port; the status field is
-/// not checked.
+/// Applies ROT: the rate of turn in degrees per minute, negative to port, when its status is
+/// `A`.
+///
+/// A sentence with status `V` (invalid) or without a status is ignored.
 ///
 /// @param s The parsed sentence; the talker is ignored.
 /// @param[in,out] state The state to update.
 /// @return Always true: the formatter is recognised even when no field could be used.
 /// @see NMEA 0183, sentence ROT.
 bool decode_rot(const ParsedSentence& s, model::VesselState& state) {
-    assign(parse_number_field(s.field(0)), state.navigation.rate_of_turn_deg_per_min);
+    if (s.field(1) == "A") {
+        assign(parse_number_field(s.field(0)), state.navigation.rate_of_turn_deg_per_min);
+    }
     return true;
 }
 
@@ -737,8 +779,22 @@ std::optional<double> parse_number_field(std::string_view value) {
 }
 
 std::optional<double> parse_coordinate(std::string_view value, std::string_view hemisphere) {
+    value = trim(value);
+    if (hemisphere.size() != 1 || value.empty() || value.front() == '+' || value.front() == '-') {
+        return std::nullopt;
+    }
+    const char letter = hemisphere.front();
+    const bool latitude = letter == 'N' || letter == 'S';
+    if (!latitude && letter != 'E' && letter != 'W') {
+        return std::nullopt;
+    }
+    // Two minute digits follow at most two degree digits in a latitude, three in a longitude.
+    const std::size_t integer_digits = value.substr(0, value.find('.')).size();
+    if (integer_digits > (latitude ? 4U : 5U)) {
+        return std::nullopt;
+    }
     const auto number = parse_number_field(value);
-    if (!number || hemisphere.size() != 1) {
+    if (!number) {
         return std::nullopt;
     }
     const double degrees = std::floor(*number / 100.0);
@@ -797,10 +853,11 @@ std::optional<DateParts> parse_date(std::string_view value) {
     const int day = digits_value(value.substr(0, 2));
     const int month = digits_value(value.substr(2, 2));
     const int year = digits_value(value.substr(4, 2));
-    if (day < 1 || day > 31 || month < 1 || month > 12) {
+    const DateParts date{year < 80 ? 2000 + year : 1900 + year, month, day};
+    if (!date_exists(date)) {
         return std::nullopt;
     }
-    return DateParts{year < 80 ? 2000 + year : 1900 + year, month, day};
+    return date;
 }
 
 std::optional<SentenceTime> sentence_time(const ParsedSentence& sentence) {
@@ -821,13 +878,7 @@ std::optional<SentenceTime> sentence_time(const ParsedSentence& sentence) {
     if (formatter == "RMC") {
         result.date = parse_date(sentence.field(8));
     } else if (formatter == "ZDA") {
-        const auto day = parse_number_field(sentence.field(1));
-        const auto month = parse_number_field(sentence.field(2));
-        const auto year = parse_number_field(sentence.field(3));
-        if (day && month && year) {
-            result.date = DateParts{static_cast<int>(*year), static_cast<int>(*month),
-                                    static_cast<int>(*day)};
-        }
+        result.date = zda_date(sentence.field(1), sentence.field(2), sentence.field(3));
     }
     return result;
 }

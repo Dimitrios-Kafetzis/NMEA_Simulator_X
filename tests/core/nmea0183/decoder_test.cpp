@@ -17,7 +17,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <optional>
 #include <string>
+#include <string_view>
 
 using Catch::Approx;
 using namespace std::chrono_literals;
@@ -108,6 +110,72 @@ TEST_CASE("field helpers parse coordinates, times, dates and numbers", "[nmea018
     CHECK_FALSE(nmea::parse_number_field("abc").has_value());
     CHECK_FALSE(nmea::parse_number_field("1,5").has_value());
     CHECK_FALSE(nmea::parse_number_field("-").has_value());
+}
+
+TEST_CASE("field helpers reject signs, extra degree digits and days a month lacks",
+          "[nmea0183][decoder]") {
+    // The hemisphere letter carries the sign: a signed value is malformed.
+    CHECK_FALSE(nmea::parse_coordinate("-3759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("+3759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("-02343.6500", "E").has_value());
+    // A latitude has at most two degree digits and a longitude at most three.
+    CHECK_FALSE(nmea::parse_coordinate("03759.0280", "N").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("003759.0280", "S").has_value());
+    CHECK_FALSE(nmea::parse_coordinate("002343.6500", "E").has_value());
+    CHECK(nmea::parse_coordinate("2343.6500", "E") == Approx(23.7275).epsilon(1e-6));
+    CHECK(nmea::parse_coordinate("0000.0000", "N") == Approx(0.0));
+    CHECK(nmea::parse_coordinate("18000.0000", "W") == Approx(-180.0));
+    CHECK(nmea::parse_coordinate(" 3759.0280 ", "N") == Approx(37.9838).epsilon(1e-6));
+
+    // Day 31 exists only in some months; 29 February only in leap years. Two-digit years
+    // below 80 are 20xx: 2000 and 2024 are leap years, 2100 is out of reach and 2026 is not.
+    CHECK_FALSE(nmea::parse_date("310426").has_value());
+    CHECK_FALSE(nmea::parse_date("310926").has_value());
+    CHECK_FALSE(nmea::parse_date("300226").has_value());
+    CHECK_FALSE(nmea::parse_date("290226").has_value());
+    CHECK_FALSE(nmea::parse_date("000126").has_value());
+    CHECK(nmea::parse_date("290224").has_value());
+    CHECK(nmea::parse_date("290200").has_value());
+    CHECK(nmea::parse_date("310126").has_value());
+    CHECK(nmea::parse_date("300426").has_value());
+}
+
+TEST_CASE("a ZDA date is used only when it exists", "[nmea0183][decoder]") {
+    const auto zda_date = [](std::string_view line) {
+        const auto parsed = nmea::parse_sentence(line);
+        REQUIRE(parsed.has_value());
+        const auto time = nmea::sentence_time(*parsed);
+        REQUIRE(time.has_value());
+        return time->date;
+    };
+    const auto valid = zda_date("$GPZDA,120000.00,29,02,2024,00,00");
+    REQUIRE(valid.has_value());
+    CHECK(valid->year == 2024);
+    CHECK(valid->month == 2);
+    CHECK(valid->day == 29);
+    CHECK(zda_date("$GPZDA,120000.00,1,9,2026,00,00").has_value());
+    // Out of range, not in the calendar, not whole numbers or not a four-digit year: the time
+    // is still read, the date is not.
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,29,02,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,31,04,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,00,09,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,13,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,26,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,-2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22.5,09,2026,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,22,09,99999,00,00").has_value());
+    CHECK_FALSE(zda_date("$GPZDA,120000.00,4294967318,09,2026,00,00").has_value());
+}
+
+TEST_CASE("a rate of turn is applied only with status A", "[nmea0183][decoder]") {
+    nmeasim::core::model::VesselState state;
+    CHECK(nmea::apply_sentence("$TIROT,-2.5,A", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
+    CHECK(nmea::apply_sentence("$TIROT,15.0,V", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
+    CHECK(nmea::apply_sentence("$TIROT,15.0,", state));
+    CHECK(nmea::apply_sentence("$TIROT,15.0", state));
+    CHECK(state.navigation.rate_of_turn_deg_per_min == Approx(-2.5));
 }
 
 TEST_CASE("sentence times are read from the sentences that carry one", "[nmea0183][decoder]") {
