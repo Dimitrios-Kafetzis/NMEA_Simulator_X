@@ -178,7 +178,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 
 | # | Field |
 | --- | --- |
-| 1 | Magnetic sensor heading |
+| 1 | Magnetic sensor (compass) heading: true heading minus variation and deviation |
 | 2 | Deviation, degrees |
 | 3 | `E`/`W` |
 | 4 | Variation, degrees |
@@ -192,7 +192,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 
 | # | Field |
 | --- | --- |
-| 1 | Heading, degrees magnetic |
+| 1 | Heading, degrees magnetic: true heading minus variation, without deviation |
 | 2 | `M` |
 
 ### HDT: True heading
@@ -229,7 +229,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 | --- | --- |
 | 1 | Heading, degrees true |
 | 2 | `T` |
-| 3 | Heading, degrees magnetic |
+| 3 | Heading, degrees magnetic: true heading minus variation, without deviation |
 | 4 | `M` |
 | 5 | Speed through water, knots |
 | 6 | `N` |
@@ -497,8 +497,10 @@ example `$PXYZ,1,2,3` or `!AIVDM,1,1,,A,13aEOK?P00PD2wVMdLDRhgvL289?,0`; the lea
 be left out, an old `*hh` and line terminator are ignored, and the checksum is computed
 when the sentence is sent. A body is refused when it is empty, carries characters outside
 printable ASCII or one of `$ ! \ ^ ~` inside, has no address of at least three letters or
-digits, or would exceed 82 characters.
+digits, or would exceed 80 characters with its checksum (82 with the line terminator).
 
 Custom sentences are emitted after the registry sentences of the same round, filtered by
-their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given) and
-recorded like them. An id equal to a registry id is refused.
+their id like any other sentence (`CUSTOM-1`, `CUSTOM-2`, ... when no id is given, numbered
+by position in the list) and recorded like them. An id equal to a registry id is refused,
+and so is an id that another custom sentence already uses, including an explicit
+`CUSTOM-2` when the second sentence has no id.

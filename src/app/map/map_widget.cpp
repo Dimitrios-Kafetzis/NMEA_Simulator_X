@@ -22,13 +22,16 @@
 #include <QNativeGestureEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QRegularExpression>
 #include <QResizeEvent>
 #include <QToolButton>
+#include <QUrl>
 #include <QWheelEvent>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <utility>
 
 namespace nmeasim::app::map {
 
@@ -108,6 +111,19 @@ QRect overlay_box(QPainter& painter, const QString& text, QPoint anchor, Qt::Ali
 
 }  // namespace
 
+QString default_attribution(const QString& url_template) {
+    // Braces are not allowed in a URL, and a placeholder may sit in the host name, as in
+    // {s}.tile.example.org; replacing every placeholder first keeps the URL parsable.
+    QString url = url_template;
+    url.replace(QRegularExpression(QStringLiteral("\\{[^}]*\\}")), QStringLiteral("0"));
+    const QString host = QUrl(url).host().toLower();
+    const auto osm = QStringLiteral("openstreetmap.org");
+    if (host == osm || host.endsWith(QLatin1Char('.') + osm)) {
+        return QStringLiteral("© OpenStreetMap contributors");
+    }
+    return {};
+}
+
 ScaleBar scale_bar(double metres_per_pixel, double max_length_px) {
     if (!(metres_per_pixel > 0.0) || !(max_length_px > 0.0)) {
         return {};
@@ -159,9 +175,18 @@ MapWidget::MapWidget(TileCache* cache, QWidget* parent)
     place_buttons();
 }
 
+QString MapWidget::attribution() const {
+    return attribution_.value_or(default_attribution(cache_->url_template()));
+}
+
+void MapWidget::set_attribution(std::optional<QString> attribution) {
+    attribution_ = std::move(attribution);
+    update();
+}
+
 void MapWidget::set_center(core::geo::Position center) {
     center_ = {std::clamp(center.latitude_deg, -kMaxLatitudeDeg, kMaxLatitudeDeg),
-               std::fmod(center.longitude_deg + 540.0, 360.0) - 180.0};
+               wrap_longitude(center.longitude_deg)};
     update();
     emit view_changed();
 }
@@ -244,7 +269,14 @@ void MapWidget::set_vessel(core::geo::Position position, double heading_true_deg
         }
     }
     if (follow_) {
-        center_ = position;
+        const core::geo::Position center{
+            std::clamp(position.latitude_deg, -kMaxLatitudeDeg, kMaxLatitudeDeg),
+            wrap_longitude(position.longitude_deg)};
+        if (center.latitude_deg != center_.latitude_deg ||
+            center.longitude_deg != center_.longitude_deg) {
+            center_ = center;
+            emit view_changed();
+        }
     }
     update();
 }
@@ -306,6 +338,7 @@ QPointF MapWidget::world_pixel(core::geo::Position position) const {
 core::geo::Position MapWidget::position_of_world(QPointF pixel) const {
     auto position = position_of_pixel(pixel / tile_scale(), tile_zoom());
     position.latitude_deg = std::clamp(position.latitude_deg, -kMaxLatitudeDeg, kMaxLatitudeDeg);
+    position.longitude_deg = wrap_longitude(position.longitude_deg);
     return position;
 }
 
@@ -314,8 +347,13 @@ QPointF MapWidget::center_pixel() const {
 }
 
 QPointF MapWidget::point_of(core::geo::Position position) const {
-    const QPointF origin = center_pixel() - QPointF(width(), height()) / 2.0;
-    return world_pixel(position) - origin;
+    const QPointF center = center_pixel();
+    QPointF pixel = world_pixel(position);
+    // The world repeats east and west: take the copy of the position nearest to the centre,
+    // so that the vessel and a track across the antimeridian stay in view.
+    const double world_width = tiles_at(tile_zoom()) * kTileSize * tile_scale();
+    pixel.rx() -= world_width * std::round((pixel.x() - center.x()) / world_width);
+    return pixel - (center - QPointF(width(), height()) / 2.0);
 }
 
 core::geo::Position MapWidget::position_at(QPointF point) const {
@@ -557,19 +595,22 @@ void MapWidget::draw_overlay(QPainter& painter) {
         painter.drawText(box, Qt::AlignCenter, text);
     };
 
-    // Attribution, bottom right; the position under the pointer above it.
-    const QString attribution = QStringLiteral("© OpenStreetMap contributors");
-    const QRect attribution_box =
-        overlay_box(painter, attribution, QPoint(width() - kOverlayMargin, height() - 4),
-                    Qt::AlignRight | Qt::AlignBottom);
-    draw_box(attribution_box, attribution);
+    // Attribution of the tile server, bottom right; the position under the pointer above it,
+    // or in the corner when there is no attribution.
+    int readout_bottom = height() - 4;
+    if (const QString text = attribution(); !text.isEmpty()) {
+        const QRect attribution_box =
+            overlay_box(painter, text, QPoint(width() - kOverlayMargin, readout_bottom),
+                        Qt::AlignRight | Qt::AlignBottom);
+        draw_box(attribution_box, text);
+        readout_bottom = attribution_box.top() - 4;
+    }
     if (pointer_) {
         painter.setFont(theme::Theme::mono_font());
         const QString text = format_position(*pointer_);
-        draw_box(
-            overlay_box(painter, text, QPoint(width() - kOverlayMargin, attribution_box.top() - 4),
-                        Qt::AlignRight | Qt::AlignBottom),
-            text);
+        draw_box(overlay_box(painter, text, QPoint(width() - kOverlayMargin, readout_bottom),
+                             Qt::AlignRight | Qt::AlignBottom),
+                 text);
         painter.setFont(base_font);
     }
 
@@ -654,7 +695,6 @@ void MapWidget::mousePressEvent(QMouseEvent* event) {
             return;
         }
         drag_last_ = event->position().toPoint();
-        dragged_ = false;
         setCursor(Qt::ClosedHandCursor);
     }
     setFocus();
@@ -669,7 +709,6 @@ void MapWidget::mouseMoveEvent(QMouseEvent* event) {
     const QPoint now = event->position().toPoint();
     const QPoint delta = now - *drag_last_;
     if (!delta.isNull()) {
-        dragged_ = true;
         if (follow_) {
             set_follow_vessel(false);
         }

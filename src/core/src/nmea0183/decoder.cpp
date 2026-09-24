@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -49,7 +50,7 @@ bool all_digits(std::string_view text) noexcept {
 /// Returns the value of a string of decimal digits.
 ///
 /// @param text Digits only, few enough for the value to fit an `int`; callers pass at most
-///     three.
+///     four.
 /// @return The decimal value, 0 for an empty text.
 /// @pre all_digits() is true for `text`, or `text` is empty.
 int digits_value(std::string_view text) noexcept {
@@ -58,6 +59,44 @@ int digits_value(std::string_view text) noexcept {
         value = value * 10 + (c - '0');
     }
     return value;
+}
+
+/// Tells whether a day, month and year form a date of the Gregorian calendar.
+///
+/// @param date The date to check; any values.
+/// @return True when the month is in [1, 12] and the day exists in that month of that year,
+///     29 February only in a leap year.
+bool date_exists(const DateParts& date) noexcept {
+    if (date.month < 1 || date.month > 12 || date.day < 1 || date.day > 31) {
+        return false;
+    }
+    const std::chrono::year_month_day ymd{std::chrono::year{date.year},
+                                          std::chrono::month{static_cast<unsigned>(date.month)},
+                                          std::chrono::day{static_cast<unsigned>(date.day)}};
+    return ymd.ok();
+}
+
+/// Reads the day, month and year fields of ZDA into a date.
+///
+/// @param day The day field, one or two digits.
+/// @param month The month field, one or two digits.
+/// @param year The year field, four digits.
+/// @return The date, or `std::nullopt` when a field is empty, has another form (a sign, a
+///     fraction, a two-digit year) or the three do not form a date that exists.
+std::optional<DateParts> zda_date(std::string_view day, std::string_view month,
+                                  std::string_view year) {
+    day = trim(day);
+    month = trim(month);
+    year = trim(year);
+    if (!all_digits(day) || day.size() > 2 || !all_digits(month) || month.size() > 2 ||
+        !all_digits(year) || year.size() != 4) {
+        return std::nullopt;
+    }
+    const DateParts date{digits_value(year), digits_value(month), digits_value(day)};
+    if (!date_exists(date)) {
+        return std::nullopt;
+    }
+    return date;
 }
 
 /// Parses a magnitude and its `E` or `W` letter, such as a magnetic variation, into a signed
@@ -79,7 +118,8 @@ std::optional<double> signed_east_west(std::string_view value, std::string_view 
 ///
 /// With a date that exists, the date and time are both replaced. Without a date, or with one
 /// that does not exist, only the time of day is replaced and the date of the current
-/// `state.time_utc` is kept, even when the time of day has wrapped past midnight.
+/// `state.time_utc` is kept, unless that would move the time back by more than 12 hours:
+/// then the time of day has wrapped past midnight and the date advances by one day.
 ///
 /// @param[in,out] state The state whose `time_utc` is set.
 /// @param time The time of day and optional date read by sentence_time().
@@ -94,7 +134,13 @@ void apply_time(model::VesselState& state, const SentenceTime& time) {
             return;
         }
     }
-    state.time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    auto time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    // The same rule as the log reader's: a large step back is the next day, a small one is
+    // taken as sent.
+    if (time_utc < state.time_utc - hours{12}) {
+        time_utc += days{1};
+    }
+    state.time_utc = time_utc;
 }
 
 /// Reads a latitude, its hemisphere, a longitude and its hemisphere from four consecutive
@@ -318,10 +364,10 @@ bool decode_hdt(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDG: deviation, variation and the heading.
+/// Applies HDG: deviation, variation and the compass heading.
 ///
 /// Deviation and variation are applied first, positive east; the true heading is then the
-/// sensor heading plus variation plus deviation, normalised to [0, 360), using the values
+/// sensor (compass) heading plus variation plus deviation, normalised to [0, 360), using the values
 /// just read or the previous ones where those fields are empty.
 ///
 /// @param s The parsed sentence; the talker is ignored.
@@ -339,11 +385,11 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDM: the heading, converted to true with the variation and deviation already in
-/// the state.
+/// Applies HDM: the magnetic heading, converted to true with the variation already in the
+/// state.
 ///
-/// The true heading is the sent heading plus variation plus deviation, normalised to
-/// [0, 360), the inverse of what encode_hdm() sends.
+/// The true heading is the sent heading plus variation, normalised to [0, 360), the inverse
+/// of what encode_hdm() sends. The deviation does not apply to a magnetic heading.
 ///
 /// @param s The parsed sentence; the talker is ignored.
 /// @param[in,out] state The state to update.
@@ -352,21 +398,24 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
 bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     if (const auto magnetic = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg =
-            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg +
-                                   state.navigation.magnetic_deviation_deg);
+            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg);
     }
     return true;
 }
 
-/// Applies ROT: the rate of turn in degrees per minute, negative to port; the status field is
-/// not checked.
+/// Applies ROT: the rate of turn in degrees per minute, negative to port, when its status is
+/// `A`.
+///
+/// A sentence with status `V` (invalid) or without a status is ignored.
 ///
 /// @param s The parsed sentence; the talker is ignored.
 /// @param[in,out] state The state to update.
 /// @return Always true: the formatter is recognised even when no field could be used.
 /// @see NMEA 0183, sentence ROT.
 bool decode_rot(const ParsedSentence& s, model::VesselState& state) {
-    assign(parse_number_field(s.field(0)), state.navigation.rate_of_turn_deg_per_min);
+    if (s.field(1) == "A") {
+        assign(parse_number_field(s.field(0)), state.navigation.rate_of_turn_deg_per_min);
+    }
     return true;
 }
 
@@ -510,8 +559,9 @@ bool decode_nothing(const ParsedSentence& /*s*/, model::VesselState& /*state*/) 
 /// Applies RMB: the destination name and position.
 ///
 /// Only a sentence with status `A` and a destination position that parses is applied. An
-/// empty name becomes `WPT`. For the same name as the current destination the origin and the
-/// arrival radius are kept; for a new destination the leg starts at the vessel's current
+/// empty name becomes `WPT` before the comparison, so it matches a current destination named
+/// `WPT`. For the same name as the current destination the origin and the arrival radius are
+/// kept; for a new destination the leg starts at the vessel's current
 /// position and the arrival radius takes its default. Cross-track error, range, bearing and
 /// closing velocity are ignored, since they follow from the positions.
 ///
@@ -528,12 +578,13 @@ bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
     if (!latitude || !longitude) {
         return true;
     }
-    const std::string name{s.field(4)};
+    // An empty name stands for WPT, so it is compared as such with the current destination.
+    const std::string name = s.field(4).empty() ? std::string{"WPT"} : std::string{s.field(4)};
     // The sentence does not carry the origin: a new destination starts its leg where the
     // vessel is, an update of the same destination keeps the leg.
     const bool same = state.destination && state.destination->name == name;
     model::Destination destination;
-    destination.name = name.empty() ? "WPT" : name;
+    destination.name = name;
     destination.position = {*latitude, *longitude};
     destination.origin = same ? state.destination->origin : state.navigation.position;
     if (same) {
@@ -728,8 +779,22 @@ std::optional<double> parse_number_field(std::string_view value) {
 }
 
 std::optional<double> parse_coordinate(std::string_view value, std::string_view hemisphere) {
+    value = trim(value);
+    if (hemisphere.size() != 1 || value.empty() || value.front() == '+' || value.front() == '-') {
+        return std::nullopt;
+    }
+    const char letter = hemisphere.front();
+    const bool latitude = letter == 'N' || letter == 'S';
+    if (!latitude && letter != 'E' && letter != 'W') {
+        return std::nullopt;
+    }
+    // Two minute digits follow at most two degree digits in a latitude, three in a longitude.
+    const std::size_t integer_digits = value.substr(0, value.find('.')).size();
+    if (integer_digits > (latitude ? 4U : 5U)) {
+        return std::nullopt;
+    }
     const auto number = parse_number_field(value);
-    if (!number || hemisphere.size() != 1) {
+    if (!number) {
         return std::nullopt;
     }
     const double degrees = std::floor(*number / 100.0);
@@ -788,10 +853,11 @@ std::optional<DateParts> parse_date(std::string_view value) {
     const int day = digits_value(value.substr(0, 2));
     const int month = digits_value(value.substr(2, 2));
     const int year = digits_value(value.substr(4, 2));
-    if (day < 1 || day > 31 || month < 1 || month > 12) {
+    const DateParts date{year < 80 ? 2000 + year : 1900 + year, month, day};
+    if (!date_exists(date)) {
         return std::nullopt;
     }
-    return DateParts{year < 80 ? 2000 + year : 1900 + year, month, day};
+    return date;
 }
 
 std::optional<SentenceTime> sentence_time(const ParsedSentence& sentence) {
@@ -812,13 +878,7 @@ std::optional<SentenceTime> sentence_time(const ParsedSentence& sentence) {
     if (formatter == "RMC") {
         result.date = parse_date(sentence.field(8));
     } else if (formatter == "ZDA") {
-        const auto day = parse_number_field(sentence.field(1));
-        const auto month = parse_number_field(sentence.field(2));
-        const auto year = parse_number_field(sentence.field(3));
-        if (day && month && year) {
-            result.date = DateParts{static_cast<int>(*year), static_cast<int>(*month),
-                                    static_cast<int>(*day)};
-        }
+        result.date = zda_date(sentence.field(1), sentence.field(2), sentence.field(3));
     }
     return result;
 }

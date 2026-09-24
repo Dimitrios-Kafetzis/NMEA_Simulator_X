@@ -5,7 +5,8 @@
 /// Covers the position and duration formatting, running a profile against a local TCP server,
 /// dashboard overrides and keyboard nudges reaching the delta simulation, loading and saving
 /// profiles, the about text, following a GPX track with step and seek, replaying a log to its
-/// end, recording a session to a log file, and the engine tiles. The window is created on the
+/// end, recording a session to a log file, the engine tiles, and that the window's map uses
+/// the temporary tile cache of the test run, offline. The window is created on the
 /// offscreen platform (see `main.cpp`). The file reads the fixtures `tracks/timestamped.gpx`,
 /// `tracks/malformed.gpx` and `logs/plain.nmea` from `tests/fixtures`.
 
@@ -22,9 +23,11 @@
 #include <nmeasim/core/simulation/delta_source.hpp>
 #include <nmeasim/core/version.hpp>
 
+#include <QDir>
 #include <QFile>
 #include <QKeyEvent>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -152,6 +155,19 @@ TEST_CASE("profiles round-trip through the window", "[app]") {
     CHECK(window.profile().name == QStringLiteral("Window test"));
     CHECK(window.windowTitle().startsWith(QStringLiteral("test.json")));
     CHECK_FALSE(window.load_profile(directory.filePath(QStringLiteral("missing.json"))));
+}
+
+TEST_CASE("the main window keeps map tiles in the test run's directory and downloads none",
+          "[app][map]") {
+    // main.cpp points map/cache_directory at a temporary directory and switches map/online
+    // off, so that no test reads or fills the operator's tile cache or calls the tile server.
+    const nmeasim::app::MainWindow window;
+    const auto* cache = window.map_view()->cache();
+    CHECK_FALSE(cache->online());
+    const QString directory = QDir::cleanPath(cache->directory());
+    CHECK(directory.startsWith(QDir::cleanPath(QDir::tempPath()) + QLatin1Char('/')));
+    CHECK_FALSE(directory.startsWith(
+        QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))));
 }
 
 TEST_CASE("durations are formatted for the transport label", "[app]") {
