@@ -37,28 +37,32 @@ nmeasim run [--profile FILE] [--duration SECONDS] [--rate MS] [--quiet]
 | `-r`, `--rate MS` | Send every sentence at this period, overriding the per-sentence periods of the profile. |
 | `--track FILE` | Follow a GPX or KML [track file](track-files.md) instead of running the delta simulation. Sets the profile's mode to `track`. |
 | `--speed KN` | Speed in knots along legs whose points have neither timestamps nor a recorded speed; also the speed of a timed track with `--ignore-timestamps`. Default: the profile's `simulation.track.speed_kn`, 6. `nan` and infinite values are refused. |
-| `--ignore-timestamps` | Sail a timed track at `--speed` instead of on its own timing. |
+| `--ignore-timestamps` | Sail a timed track at `--speed` instead of on its own timing. Without it the profile's `simulation.track.use_timestamps` applies, `true` by default. |
 | `--replay FILE` | Replay a [log file](log-format.md), recorded by the simulator or by other software, instead of simulating. Sets the mode to `replay`. Excludes `--track`. |
 | `--replay-interval MS` | Spacing between the sentences of a log that carries no time information at all. Default: the profile's `simulation.replay.fixed_interval_ms`, 100. |
-| `--loop` | Start the track or log again when its end is reached. Without it the run ends there. |
+| `--loop` | Start the track or log again when its end is reached. Without it the profile's `loop` setting of the track or replay applies; with the default `false` the run ends there. |
 | `--record PATH` | Record every emitted sentence with a timestamp to a [log file](log-format.md), in addition to the outputs. The file is truncated first. |
 | `-q`, `--quiet` | Suppress the status lines written to standard error. |
 | `--stdout` | Write sentences to standard output. |
 | `--tcp-server PORT` | Serve sentences to any number of TCP clients on this port. Repeatable. |
-| `--udp HOST:PORT` | Send one datagram per sentence. `255.255.255.255` selects broadcast. The host must not be empty and the port is digits only, 1 to 65535. Repeatable. |
+| `--udp HOST:PORT` | Send one datagram per sentence. A broadcast address selects broadcast: `255.255.255.255` or the subnet broadcast address of a local interface, as `nmeasim interfaces` lists them. The host must not be empty and the port is digits only, 1 to 65535. Repeatable. |
 | `--websocket PORT` | Serve sentences as WebSocket text frames on this port. Repeatable. |
 | `--serial DEVICE[@BAUD]` | Write to a serial device, 4800 baud unless given. The device must not be empty and the baud rate is digits only. Repeatable. |
 | `--file PATH` | Append sentences to a file. Repeatable. |
 | `--enable ID`, `--disable ID` | Turn a sentence on or off by registry id, for example `--enable MWV-T` or `--disable GSV`. Repeatable. |
-| `--encoding ENC` | What the outputs given on the command line carry: `nmea0183` (default), `signalk` deltas or `viewsync` packets, see the [profile reference](profile.md#outputs). Outputs from a profile keep their own encoding. |
-| `--tag-block` | Prefix every sentence of the command-line outputs with an IEC 61162-450 [TAG block](nmea0183-sentences.md#tag-blocks). |
-| `--tag-source ID` | Source identifier of the TAG block, `SIM0001` unless given. |
+| `--encoding ENC` | What the outputs carry: `nmea0183`, `signalk` deltas or `viewsync` packets, see the [profile reference](profile.md#outputs). Applies to the outputs given on the command line or, without an output option, to the outputs of the profile. Without `--encoding` the command-line outputs carry `nmea0183` and the profile's outputs keep their own encoding. |
+| `--tag-block` | Prefix every sentence of the outputs, the command line's or the profile's like `--encoding`, with an IEC 61162-450 [TAG block](nmea0183-sentences.md#tag-blocks). Without it a profile output keeps its own TAG block setting. |
+| `--tag-source ID` | Source identifier of the TAG block. Without it the output's own identifier applies, `SIM0001` unless the profile sets another. |
 | `--destination LAT,LON[,NAME]` | Steer for a waypoint so that APB, RMB and XTE are sent and the Signal K course paths appear; the leg starts at the seed position. Latitude and longitude are finite decimal degrees within ±90 and ±180. |
 
 When any output option is given, the outputs of the profile are replaced by those from the
-command line; `--record` adds a log output in either case. Sentence options are applied on
-top of the profile's sentence settings, and `--track` or `--replay` replace the profile's
-simulation mode.
+command line; `--record` adds a log output in either case. `--encoding`, `--tag-block` and
+`--tag-source` apply to whichever outputs the run has, except `log` outputs, which always
+record NMEA 0183 without TAG blocks; the filters of the outputs are kept as they are.
+Sentence options are applied on top of the profile's sentence settings. `--track` or
+`--replay` replace the profile's simulation mode and file, and keep its loop, timestamp,
+speed and interval settings unless `--loop`, `--ignore-timestamps`, `--speed` or
+`--replay-interval` is given.
 
 A track or a log that is not looped ends the run by itself: the last sentence is sent, the
 message `end of the track or log reached` is printed unless `--quiet` is given, and the tool

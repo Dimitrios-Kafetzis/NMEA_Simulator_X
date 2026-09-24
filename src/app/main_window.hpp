@@ -104,16 +104,40 @@ public:
     /// does, and remembers `path` as the profile to reopen at the next start.
     ///
     /// @param path Profile file in the JSON format of docs/reference/profile.md.
-    /// @return False when the file cannot be read or parsed; the reason is reported (see
-    ///   `error_reported`) and the current profile stays. True otherwise, including when the
-    ///   file was read but `set_profile` rejected it, which it reports itself.
+    /// @return False when the file cannot be read or parsed, or when `set_profile` rejects
+    ///   the profile (for example a track file that is missing); the reason is reported (see
+    ///   `error_reported`) and the current profile stays. True when the profile is current.
     bool load_profile(const QString& path);
+    /// Opens the profile to start with; called once by `main` after the window is shown.
+    ///
+    /// Loads `requested` with `load_profile` when it is not empty. When it is empty, or it
+    /// cannot be loaded (which `load_profile` reports), the profile stored under
+    /// `profile/last_path` is loaded instead, provided that file exists. Otherwise the
+    /// built-in default profile stays.
+    ///
+    /// @param requested Profile path given on the command line; empty when none was given.
+    void open_initial_profile(const QString& requested);
+    /// Writes the current profile to a file and makes that file the profile's file.
+    ///
+    /// Only after a successful write does `path` become the file *Save profile* writes to,
+    /// the one shown in the title and the profile to reopen at the next start; the saved path
+    /// is shown in the status bar for three seconds. A failed write is reported (see
+    /// `error_reported`) and changes nothing.
+    ///
+    /// @param path File to write, in the JSON format of docs/reference/profile.md.
+    /// @return True when the profile was written; false when the write failed.
+    bool save_profile_to(const QString& path);
+    /// Returns the file the current profile was loaded from or last saved to.
+    ///
+    /// @return The path *Save profile* writes to; empty when the profile has no file yet.
+    [[nodiscard]] const QString& profile_path() const noexcept { return profile_path_; }
     /// Makes a profile current and applies it to the runner.
     ///
     /// A running simulation is stopped, the profile applied and the run started again. On
     /// success the map's sailed track is cleared, the route of a track is drawn, the map is
     /// centred on the vessel, the dashboard overrides and *Steering mode* are enabled only in
-    /// delta mode, and the title, the transport controls and the outputs table are refreshed.
+    /// delta mode (in track and replay mode *Steering mode* is also unticked), and the title, the
+    /// transport controls and the outputs table are refreshed.
     ///
     /// @param profile The profile to use; copied.
     /// @param path File the profile came from and *Save profile* writes to. Empty means the
@@ -205,6 +229,11 @@ public:
     ///
     /// @return The action, owned by the window; never null after construction.
     [[nodiscard]] QAction* record_action() const noexcept { return record_action_; }
+    /// Returns the checkable *Steering mode* action.
+    ///
+    /// @return The action, owned by the window; never null after construction. It is enabled
+    ///   in delta mode only.
+    [[nodiscard]] QAction* steering_action() const noexcept { return steering_action_; }
     /// Returns the seek slider at the end of the toolbar.
     ///
     /// @return The slider, owned by the window; never null. Its range is the length of the
@@ -308,8 +337,9 @@ protected:
     /// Up and Down change the speed over ground by 0.1 kn (1 kn with Shift). Left and Right
     /// change the heading by 1° (10° with Shift), or the rudder angle when *Steering mode* is
     /// on; Left is to port. A nudge pins the parameter as an override of the delta source.
-    /// The arrow keys are consumed even in track and replay mode, where they have no effect.
-    /// The window receives them only while it or a child that ignores them has focus.
+    /// In track and replay mode, which have nothing to nudge, the arrow keys go to
+    /// `QMainWindow` as well. The window receives them only while it or a child that ignores
+    /// them has focus.
     ///
     /// @param event The key press.
     void keyPressEvent(QKeyEvent* event) override;
@@ -322,12 +352,14 @@ protected:
     void closeEvent(QCloseEvent* event) override;
 
 private:
-    /// Creates the *File*, *Simulation* and *Help* menus, their actions and shortcuts, and the
-    /// toolbar with the seek slider and position label, and connects each action to its slot.
+    /// Creates the *File* and *Simulation* menus, their actions and shortcuts, and the toolbar
+    /// with the seek slider and position label, and connects each action to its slot.
     void build_actions();
-    /// Puts the console, outputs and map into docks and creates the *View* menu with the dock
-    /// toggles, the map actions and the *Theme* submenu.
+    /// Puts the console, outputs and map into docks and creates the *View* menu, after
+    /// *Simulation*, with the dock toggles, the map actions and the *Theme* submenu.
     void build_docks();
+    /// Creates the *Help* menu with *About*, last in the menu bar.
+    void build_help_menu();
     /// Paints the action icons in the colours of the current theme.
     ///
     /// Connected to `theme::Theme::changed`, since the icons are drawn rather than loaded.
@@ -403,17 +435,14 @@ private:
     void edit_settings();
     /// Writes the current profile to its file; slot of *Save profile*.
     ///
-    /// Asks for a file name through `save_profile_as` when the profile has none. Reports a
-    /// write error and shows the saved path in the status bar for three seconds.
+    /// Asks for a file name through `save_profile_as` when the profile has none, and writes
+    /// through `save_profile_to` otherwise.
     ///
     /// @return True when the profile was written; false when it failed or the operator
     ///   cancelled the file dialog.
     bool save_profile();
-    /// Asks for a file name in the profiles directory and writes the profile there; slot of
-    /// *Save profile as...*.
-    ///
-    /// The chosen path becomes the profile's file and the profile to reopen at the next start
-    /// before the write is attempted.
+    /// Asks for a file name in the profiles directory and writes the profile there with
+    /// `save_profile_to`; slot of *Save profile as...*.
     ///
     /// @return True when the profile was written; false when the operator cancelled or the
     ///   write failed.

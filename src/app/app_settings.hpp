@@ -34,7 +34,7 @@ namespace nmeasim::app {
 /// | `map/online` | `map_online`, `set_map_online` | `true` |
 /// | `map/tile_url` | `map_tile_url`, `set_map_tile_url` | empty |
 /// | `map/tile_attribution` | `map_tile_attribution`, `set_map_tile_attribution` | unset |
-/// | `map/zoom` | `map_zoom`, `set_map_zoom` | `12` |
+/// | `map/zoom` | `map_zoom`, `set_map_zoom` | `12.0` |
 /// | `map/cache_directory` | `map_cache_directory`, `set_map_cache_directory` | empty |
 /// | `appearance/theme` | `theme`, `set_theme` | `night` |
 ///
@@ -126,13 +126,14 @@ public:
     void set_map_tile_attribution(const std::optional<QString>& attribution);
     /// Returns the map zoom level of the last session (key `map/zoom`).
     ///
-    /// @return A whole slippy map zoom level as stored, not checked here; 12 when it was never
-    ///   set. The map clamps it to its range of [1, 19].
-    [[nodiscard]] int map_zoom() const;
+    /// @return A fractional slippy map zoom level as stored, not checked here; 12 when it was
+    ///   never set or is not a finite number. A whole level stored by earlier versions reads as
+    ///   that level. The map clamps it to its range of [1, 19].
+    [[nodiscard]] double map_zoom() const;
     /// Stores the map zoom level (key `map/zoom`).
     ///
-    /// @param zoom A whole slippy map zoom level, stored unchecked.
-    void set_map_zoom(int zoom);
+    /// @param zoom A fractional slippy map zoom level, stored unchecked.
+    void set_map_zoom(double zoom);
     /// Returns the directory chosen for the map tile cache (key `map/cache_directory`).
     ///
     /// The application has no control for this key; it is edited in the settings store. The

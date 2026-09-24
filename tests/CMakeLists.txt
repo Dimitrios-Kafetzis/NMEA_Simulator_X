@@ -88,7 +88,7 @@ if(NMEASIM_BUILD_CLI)
         NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
         NMEASIM_CLI_PATH="$<TARGET_FILE:nmeasim_cli>")
     target_link_libraries(nmeasim_cli_tests
-        PRIVATE Catch2::Catch2 Qt6::Core nmeasim::warnings nmeasim::sanitizers
+        PRIVATE Catch2::Catch2 Qt6::Core Qt6::Network nmeasim::warnings nmeasim::sanitizers
     )
     # The tests run the tool, so building them builds it too.
     add_dependencies(nmeasim_cli_tests nmeasim_cli)

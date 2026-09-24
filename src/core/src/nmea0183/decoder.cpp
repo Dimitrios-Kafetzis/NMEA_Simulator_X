@@ -281,6 +281,57 @@ bool decode_gll(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies GNS: time of day, position, fix status and quality, satellites in use, HDOP,
+/// altitude and geoid separation.
+///
+/// The mode field has one letter per satellite system. When every letter is `N` the fix is
+/// cleared and the quality set to model::FixQuality::Invalid; otherwise there is a fix,
+/// differential when any letter is `D` and GPS otherwise. The satellites in view are raised
+/// to at least the satellites in use. The age of differential data, the reference station
+/// and the navigational status are ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence GNS.
+bool decode_gns(const ParsedSentence& s, model::VesselState& state) {
+    if (const auto time = sentence_time(s)) {
+        apply_time(state, *time);
+    }
+    apply_position(s, 1, state);
+    const auto mode = s.field(5);
+    if (!mode.empty()) {
+        const bool fix = std::any_of(mode.begin(), mode.end(), [](char c) { return c != 'N'; });
+        state.gnss.has_fix = fix;
+        state.gnss.quality = !fix                          ? model::FixQuality::Invalid
+                             : mode.find('D') != mode.npos ? model::FixQuality::Differential
+                                                           : model::FixQuality::Gps;
+    }
+    if (const auto satellites = parse_number_field(s.field(6))) {
+        state.gnss.satellites_in_use = static_cast<int>(*satellites);
+        state.gnss.satellites_in_view =
+            std::max(state.gnss.satellites_in_view, state.gnss.satellites_in_use);
+    }
+    assign(parse_number_field(s.field(7)), state.gnss.hdop);
+    assign(parse_number_field(s.field(8)), state.navigation.altitude_m);
+    assign(parse_number_field(s.field(9)), state.gnss.geoid_separation_m);
+    return true;
+}
+
+/// Applies the time of day of GST, GBS or GRS; their other fields, error statistics and
+/// residuals, have no counterpart in the vessel state.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when the time could not be used.
+/// @see NMEA 0183, sentences GST, GBS and GRS.
+bool decode_time_only(const ParsedSentence& s, model::VesselState& state) {
+    if (const auto time = sentence_time(s)) {
+        apply_time(state, *time);
+    }
+    return true;
+}
+
 /// Applies GSA: fix type, satellites in use and PDOP, HDOP and VDOP.
 ///
 /// Fix type 2 (2D) or 3 (3D) sets `gnss.has_fix`, 1 clears it. The satellites in use are the
@@ -896,6 +947,12 @@ bool apply_sentence(const ParsedSentence& sentence, model::VesselState& state) {
     }
     if (f == "GLL") {
         return decode_gll(sentence, state);
+    }
+    if (f == "GNS") {
+        return decode_gns(sentence, state);
+    }
+    if (f == "GST" || f == "GBS" || f == "GRS") {
+        return decode_time_only(sentence, state);
     }
     if (f == "GSA") {
         return decode_gsa(sentence, state);
