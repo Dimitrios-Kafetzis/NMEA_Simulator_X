@@ -311,9 +311,10 @@ struct Profile {
     std::map<std::string, core::simulation::SentenceSetting> sentences;
     /// Sentences typed in by the operator, in emission order; the `sentences.custom` array.
     ///
-    /// When read, an `id` is trimmed and upper-cased and must not be a registry id; the
-    /// `body` must pass `core::simulation::validate_custom_sentence`; `period_ms` must lie in
-    /// [50, 3600000].
+    /// When read, an `id` is trimmed and upper-cased and must not be a registry id nor the
+    /// id of another entry, the `CUSTOM-n` an entry without id stands for included (see
+    /// `core::simulation::find_duplicate_custom_id`); the `body` must pass
+    /// `core::simulation::validate_custom_sentence`; `period_ms` must lie in [50, 3600000].
     std::vector<core::simulation::CustomSentence> custom_sentences;
     /// Output channels, the `outputs` array, in file order.
     QList<OutputConfig> outputs;

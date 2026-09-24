@@ -1191,6 +1191,16 @@ std::optional<Profile> Profile::from_json(const QJsonObject& json, QString* erro
         }
         profile.custom_sentences.push_back(sentence);
     }
+    if (const auto duplicate =
+            core::simulation::find_duplicate_custom_id(profile.custom_sentences)) {
+        *err = QStringLiteral(
+                   "sentences.custom[%1]: id '%2' is already used by another custom "
+                   "sentence")
+                   .arg(*duplicate)
+                   .arg(QString::fromStdString(core::simulation::effective_custom_id(
+                       profile.custom_sentences[*duplicate], *duplicate)));
+        return std::nullopt;
+    }
 
     const auto outputs = document.value(QStringLiteral("outputs")).toArray();
     for (qsizetype i = 0; i < outputs.size(); ++i) {

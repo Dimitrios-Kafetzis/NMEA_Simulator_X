@@ -145,8 +145,12 @@ TEST_CASE("talker overrides apply per sentence", "[simulation][scheduler]") {
     sim::SentenceScheduler scheduler;
     const auto state = nmeasim::test::fixture_state();
     scheduler.configure("RMC", {.enabled = true, .talker = "GN", .period = 1000ms});
-    // A one-letter talker is invalid and ignored, so HDT keeps its default talker HE.
+    // A one-letter talker is invalid and ignored, so HDT keeps its default talker HE; so
+    // are talkers with lower-case letters, digits or other characters.
     scheduler.configure("HDT", {.enabled = true, .talker = "X", .period = 1000ms});
+    scheduler.configure("VTG", {.enabled = true, .talker = "gn", .period = 1000ms});
+    scheduler.configure("GGA", {.enabled = true, .talker = "G1", .period = 1000ms});
+    scheduler.configure("GLL", {.enabled = true, .talker = "$G", .period = 1000ms});
 
     const auto sentences = scheduler.encode_all(state);
     CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
@@ -155,6 +159,28 @@ TEST_CASE("talker overrides apply per sentence", "[simulation][scheduler]") {
     CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
         return s.id == "HDT" && s.text.starts_with("$HEHDT,");
     }));
+    CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
+        return s.id == "VTG" && s.text.starts_with("$GPVTG,");
+    }));
+    CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
+        return s.id == "GGA" && s.text.starts_with("$GPGGA,");
+    }));
+    CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {
+        return s.id == "GLL" && s.text.starts_with("$GPGLL,");
+    }));
+}
+
+TEST_CASE("a talker is empty or two upper-case letters", "[simulation][scheduler]") {
+    CHECK(sim::is_valid_talker(""));
+    CHECK(sim::is_valid_talker("GN"));
+    CHECK(sim::is_valid_talker("II"));
+    CHECK_FALSE(sim::is_valid_talker("G"));
+    CHECK_FALSE(sim::is_valid_talker("GPS"));
+    CHECK_FALSE(sim::is_valid_talker("gn"));
+    CHECK_FALSE(sim::is_valid_talker("U1"));
+    CHECK_FALSE(sim::is_valid_talker("G "));
+    // Two bytes, the UTF-8 encoding of an upper-case E with an acute accent.
+    CHECK_FALSE(sim::is_valid_talker("\xc3\x89"));
 }
 
 TEST_CASE("a non-positive period falls back to the registry default", "[simulation][scheduler]") {

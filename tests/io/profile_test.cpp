@@ -728,6 +728,40 @@ TEST_CASE("the new schema 3 keys are validated", "[io][profile]") {
     CHECK(error.contains(QStringLiteral("period_ms")));
 }
 
+TEST_CASE("custom sentence ids must be unique", "[io][profile]") {
+    QString error;
+    const auto custom = [](const QJsonArray& sentences) {
+        return QJsonObject{
+            {QStringLiteral("schema_version"), 3},
+            {QStringLiteral("sentences"), QJsonObject{{QStringLiteral("custom"), sentences}}}};
+    };
+    const auto sentence = [](const QString& id, const QString& body) {
+        return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("body"), body}};
+    };
+    // The second entry has no id and becomes CUSTOM-2, the id the first entry gives itself;
+    // ids are upper-cased before the comparison.
+    CHECK_FALSE(
+        Profile::from_json(custom({sentence(QStringLiteral("custom-2"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QString{}, QStringLiteral("$PXYZ,2"))}),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("custom[1]")));
+    CHECK(error.contains(QStringLiteral("CUSTOM-2")));
+    CHECK_FALSE(
+        Profile::from_json(custom({sentence(QStringLiteral("BARO"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QStringLiteral("baro"), QStringLiteral("$PXYZ,2"))}),
+                           &error)
+            .has_value());
+    CHECK(error.contains(QStringLiteral("custom[1]")));
+    CHECK(error.contains(QStringLiteral("BARO")));
+    const auto distinct =
+        Profile::from_json(custom({sentence(QStringLiteral("BARO"), QStringLiteral("$PXYZ,1")),
+                                   sentence(QString{}, QStringLiteral("$PXYZ,2"))}),
+                           &error);
+    REQUIRE(distinct.has_value());
+    CHECK(distinct->custom_sentences.size() == 2);
+}
+
 TEST_CASE("random seed, MMSI and IMO number outside their integer range are rejected",
           "[io][profile]") {
     QString error;

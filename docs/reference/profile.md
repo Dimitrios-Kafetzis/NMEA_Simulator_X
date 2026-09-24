@@ -190,7 +190,7 @@ Each entry is one [custom sentence](nmea0183-sentences.md#custom-sentences):
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | `""` | Identifier for filters and the console, upper-cased; empty gives `CUSTOM-n`; must not be a registry id |
+| `id` | string | `""` | Identifier for filters and the console, upper-cased; empty gives `CUSTOM-n`, `n` being the entry's 1-based position; must not be a registry id nor the id of another entry, including the `CUSTOM-n` of an entry without id |
 | `body` | string | required | The sentence without checksum, for example `$PXYZ,1,2,3`; validated when the profile is loaded |
 | `period_ms` | integer | `1000` | Emission period, 50 to 3600000 |
 | `enabled` | boolean | `true` | |
