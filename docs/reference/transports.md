@@ -23,8 +23,8 @@ sentences, without TAG block.
 
 ## Network interfaces
 
-The simulator lists every IPv4 address of every interface that is up, including loopback,
-with the subnet broadcast address. The list is used to choose the UDP source interface and to
+The simulator lists every IPv4 address of every interface that is up and running, including
+loopback, with the subnet broadcast address. The list is used to choose the UDP source interface and to
 show the addresses clients can connect to.
 
 ## Ports used by convention

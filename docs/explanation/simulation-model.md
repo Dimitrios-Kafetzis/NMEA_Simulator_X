@@ -41,7 +41,9 @@ clamped to the configured maximum, 35 degrees by default.
 Every controllable parameter can be **overridden** (pinned to a value, drift stops) or
 **nudged** (moved by a delta and then pinned). Keyboard arrows in the desktop application
 are nudges: up and down nudge speed, left and right nudge heading, or the rudder when
-steering mode is on. Clearing an override lets the value drift again from where it is.
+steering mode is on. Clearing an override lets the value drift again from where it is,
+within its drift band: a value pinned outside the seed plus or minus the amplitude moves back
+to the edge of the band on the next tick.
 
 ### Apparent wind
 

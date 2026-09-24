@@ -117,8 +117,9 @@ cpack --preset release                      # packages land in build/release/pac
 changing the version compiled into the programs. Every package is accompanied by a
 `.sha256` file.
 
-The screenshot in `docs/assets/screenshots/`, which the AppStream metadata also uses, is
-taken by a hidden test:
+The two screenshots in `docs/assets/screenshots/`, `main-window.png` (night theme) and
+`main-window-day.png` (daylight theme), which the AppStream metadata also uses, are taken by
+a hidden test:
 
 ```bash
 NMEASIM_SCREENSHOT_DIR=docs/assets/screenshots build/dev/tests/nmeasim_app_tests "[.screenshot]"
@@ -143,7 +144,7 @@ the HTML report as the `coverage-report` artifact.
 ## Formatting and static analysis
 
 ```bash
-pip install clang-format
+pip install clang-format==23.1.1   # the version CI uses; others format differently
 git ls-files '*.cpp' '*.hpp' | xargs clang-format -i
 ```
 

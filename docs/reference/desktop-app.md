@@ -139,7 +139,8 @@ The top row holds two round instruments and the position, time and GNSS tiles:
 
 An active override stops the random drift of that parameter, and the tile gets an amber
 border so that overridden values stand out. Clearing it lets the value drift again from where
-it is. In track and replay mode every override control is disabled, because
+it is, within its drift band: a value pinned outside the seed plus or minus the amplitude
+moves back to the edge of the band on the next tick. In track and replay mode every override control is disabled, because
 the file drives the vessel.
 
 ## Map
