@@ -140,6 +140,33 @@ TEST_CASE("sentence times are read from the sentences that carry one", "[nmea018
     CHECK_FALSE(nmea::sentence_time(*nmea::parse_sentence("$GPRMC,,V,,,,,,,,,,N")).has_value());
 }
 
+TEST_CASE("a time of day that wraps past midnight advances the date", "[nmea0183][decoder]") {
+    using std::chrono::sys_days;
+    using std::chrono::year;
+    nmeasim::core::model::VesselState state;
+    CHECK(nmea::apply_sentence("$GPZDA,235959.50,31,12,2026,00,00", state));
+    CHECK(state.time_utc == sys_days{year{2026} / 12 / 31} + 23h + 59min + 59s + 500ms);
+    // GGA and GLL just after midnight, before the next date: more than 12 hours back on the
+    // same date is the next day.
+    CHECK(nmea::apply_sentence("$GPGGA,000000.50,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 500ms);
+    CHECK(nmea::apply_sentence("$GPGLL,,,,,000001.00,V,N", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 1s);
+    // A smaller step back is taken as sent, on the same date.
+    CHECK(nmea::apply_sentence("$GPGGA,000000.00,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1});
+    state.time_utc = sys_days{year{2027} / 1 / 1} + 13h;
+    CHECK(nmea::apply_sentence("$GPGGA,010000.00,,,,,0,00,,,M,,M,,", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 1h);
+    // An RMC whose date does not exist counts as time-only and advances the date too.
+    state.time_utc = sys_days{year{2027} / 1 / 1} + 23h;
+    CHECK(nmea::apply_sentence("$GPRMC,000010.00,V,,,,,,,320127,,,N", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 2} + 10s);
+    // A sentence with a valid date is always taken as sent, even far back.
+    CHECK(nmea::apply_sentence("$GPZDA,120000.00,01,01,2027,00,00", state));
+    CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 12h);
+}
+
 TEST_CASE("every encoded sentence decodes back to the state it came from", "[nmea0183][decoder]") {
     const auto original = nmeasim::test::fixture_state();
     nmeasim::core::model::VesselState decoded;
