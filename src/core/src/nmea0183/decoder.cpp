@@ -509,8 +509,9 @@ bool decode_nothing(const ParsedSentence& /*s*/, model::VesselState& /*state*/) 
 /// Applies RMB: the destination name and position.
 ///
 /// Only a sentence with status `A` and a destination position that parses is applied. An
-/// empty name becomes `WPT`. For the same name as the current destination the origin and the
-/// arrival radius are kept; for a new destination the leg starts at the vessel's current
+/// empty name becomes `WPT` before the comparison, so it matches a current destination named
+/// `WPT`. For the same name as the current destination the origin and the arrival radius are
+/// kept; for a new destination the leg starts at the vessel's current
 /// position and the arrival radius takes its default. Cross-track error, range, bearing and
 /// closing velocity are ignored, since they follow from the positions.
 ///
@@ -527,12 +528,13 @@ bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
     if (!latitude || !longitude) {
         return true;
     }
-    const std::string name{s.field(4)};
+    // An empty name stands for WPT, so it is compared as such with the current destination.
+    const std::string name = s.field(4).empty() ? std::string{"WPT"} : std::string{s.field(4)};
     // The sentence does not carry the origin: a new destination starts its leg where the
     // vessel is, an update of the same destination keeps the leg.
     const bool same = state.destination && state.destination->name == name;
     model::Destination destination;
-    destination.name = name.empty() ? "WPT" : name;
+    destination.name = name;
     destination.position = {*latitude, *longitude};
     destination.origin = same ? state.destination->origin : state.navigation.position;
     if (same) {

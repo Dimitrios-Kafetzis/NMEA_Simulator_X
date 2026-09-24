@@ -217,6 +217,12 @@ TEST_CASE("autopilot and propulsion sentences update the destination and the eng
                                state));
     CHECK(state.destination->name == "WPT");
     CHECK(state.destination->origin.latitude_deg == Approx(37.9));
+    // An empty name is the same destination as the WPT it stands for: the leg is kept.
+    state.navigation.position = {37.8, 23.5};
+    CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A",
+                               state));
+    CHECK(state.destination->name == "WPT");
+    CHECK(state.destination->origin.latitude_deg == Approx(37.9));
     // An invalid RMB or one without a position changes nothing.
     CHECK(nmea::apply_sentence("$GPRMB,V,,,,,,,,,,,,V,N", state));
     CHECK(state.destination->name == "WPT");
