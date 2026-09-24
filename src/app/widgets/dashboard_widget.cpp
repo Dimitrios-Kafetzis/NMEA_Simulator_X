@@ -36,15 +36,21 @@ namespace {
 /// @param degree_digits Width of the zero-padded degrees: 2 for latitude, 3 for longitude.
 /// @param positive Letter for zero and positive values, `N` or `E`.
 /// @param negative Letter for negative values, `S` or `W`.
-/// @return The coordinate, such as `37°59.028'N`, with minutes to three decimals.
+/// @return The coordinate, such as `37°59.028'N`, with minutes rounded to three decimals and
+///   the rounding carried into the degrees, so the minutes never read 60.000. A value that
+///   rounds to zero takes the positive letter.
 QString format_coordinate(double degrees, int degree_digits, char positive, char negative) {
-    const double magnitude = std::fabs(degrees);
-    const int whole = static_cast<int>(magnitude);
-    const double minutes = (magnitude - whole) * 60.0;
+    // Rounded once, to thousandths of a minute, so that 59.9996 minutes carries into the
+    // degrees instead of printing as 60.000.
+    const auto thousandths = std::llround(std::fabs(degrees) * 60000.0);
+    const auto whole = thousandths / 60000;
+    const auto minutes = static_cast<double>(thousandths % 60000) / 1000.0;
+    // A value that rounds to zero has no hemisphere; it is written as the positive one.
+    const bool negative_side = degrees < 0.0 && thousandths != 0;
     return QStringLiteral("%1°%2'%3")
         .arg(whole, degree_digits, 10, QLatin1Char('0'))
         .arg(minutes, 6, 'f', 3, QLatin1Char('0'))
-        .arg(QLatin1Char(degrees < 0.0 ? negative : positive));
+        .arg(QLatin1Char(negative_side ? negative : positive));
 }
 
 /// Formats a time point for the *Time (UTC)* tile.
@@ -192,7 +198,10 @@ DashboardWidget::DashboardWidget(QWidget* parent)
                      999.9, 0.1, 1);
     add_controllable(Parameter::SpeedThroughWater, tr("Speed through water"), tr("kn"), 1, 1, 0.0,
                      999.9, 0.1, 1);
-    add_controllable(Parameter::RudderAngle, tr("Rudder"), tr("°"), 1, 2, -45.0, 45.0, 1.0, 1);
+    // The default rudder limit of a delta simulation, until set_rudder_limit sets the profile's.
+    const double rudder_limit = core::simulation::DeltaConfig{}.max_rudder_angle_deg;
+    add_controllable(Parameter::RudderAngle, tr("Rudder"), tr("°"), 1, 2, -rudder_limit,
+                     rudder_limit, 1.0, 1);
 
     add_controllable(Parameter::Depth, tr("Depth"), tr("m"), 2, 0, 0.0, 99999.9, 0.1, 1);
     add_controllable(Parameter::WaterTemperature, tr("Water temperature"), tr("°C"), 2, 1, -5.0,
@@ -250,6 +259,21 @@ QString DashboardWidget::destination_text() const {
     return destination_tile_->text();
 }
 
+QString DashboardWidget::apparent_wind_text() const {
+    return apparent_wind_tile_->text();
+}
+
+InstrumentTile* DashboardWidget::control(Parameter parameter) const {
+    return controls_.at(parameter);
+}
+
+void DashboardWidget::set_rudder_limit(double max_rudder_angle_deg) {
+    auto* rudder = controls_.at(Parameter::RudderAngle);
+    rudder->set_override_range(-max_rudder_angle_deg, max_rudder_angle_deg);
+    rudder->setToolTip(
+        tr("Rudder angle, limited to ±%1° by the profile").arg(max_rudder_angle_deg, 0, 'f', 0));
+}
+
 InstrumentTile* DashboardWidget::add_tile(const QString& title, const QString& unit, int row,
                                           int column) {
     auto* tile = new InstrumentTile(title, unit, content_);
@@ -304,8 +328,9 @@ void DashboardWidget::update_state(const core::model::VesselState& state) {
     course_tile_->set_value(navigation.course_over_ground_deg, 1);
     std::optional<double> bearing;
     rate_of_turn_tile_->set_value(navigation.rate_of_turn_deg_per_min, 1);
-    apparent_wind_tile_->set_text(tr("%1° at %2 kn")
-                                      .arg(state.wind.apparent_angle_deg, 0, 'f', 1)
+    // Written as the wind dial writes it, to port or starboard of the bow.
+    apparent_wind_tile_->set_text(tr("%1 at %2 kn")
+                                      .arg(format_wind_angle(state.wind.apparent_angle_deg))
                                       .arg(state.wind.apparent_speed_kn, 0, 'f', 1));
     if (state.destination) {
         const auto leg = core::geo::solve_leg(state.destination->origin,

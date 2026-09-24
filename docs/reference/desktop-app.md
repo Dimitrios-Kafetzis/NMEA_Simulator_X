@@ -131,13 +131,13 @@ The top row holds two round instruments and the position, time and GNSS tiles:
 | Rate of turn | Degrees per minute | No |
 | Speed over ground | kn | Yes |
 | Speed through water | kn | Yes |
-| Rudder | Rudder angle | Yes, -45 to 45°; enabled only in steering mode |
+| Rudder | Rudder angle | Yes, within the profile's maximum rudder angle (±35° by default); enabled only in steering mode |
 | Depth | Below transducer, m | Yes |
 | Water temperature | °C | Yes |
 | Altitude | m | Yes |
 | True wind direction | Degrees true | Yes |
 | True wind speed | kn | Yes |
-| Apparent wind | Angle and speed derived from true wind and vessel motion | No |
+| Apparent wind | Angle and speed derived from true wind and vessel motion; the angle is written as on the wind dial, `104°P` to port, `30°S` to starboard | No |
 | Destination | Waypoint id, bearing and distance to it, cross-track error and the side to steer; *None* without a destination | No, set it on the map |
 | Engines | One tile per configured engine with its label, a *Running* switch, revolutions and coolant temperature | Yes, every field; changes apply at once to RPM, XDR, the AIS and Signal K output |
 

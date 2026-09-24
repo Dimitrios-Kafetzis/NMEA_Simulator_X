@@ -104,7 +104,8 @@ private:
 /// - *Heading*, °T, [0, 359.9], `core::simulation::Parameter::HeadingTrue`;
 /// - *Speed over ground*, kn, [0, 999.9], `Parameter::SpeedOverGround`;
 /// - *Speed through water*, kn, [0, 999.9], `Parameter::SpeedThroughWater`;
-/// - *Rudder*, degrees positive to starboard, [-45, 45], `Parameter::RudderAngle`;
+/// - *Rudder*, degrees positive to starboard, within the profile's rudder limit (see
+///   `set_rudder_limit`, [-35, 35] by default), `Parameter::RudderAngle`;
 /// - *Depth*, m below the transducer, [0, 99999.9], `Parameter::Depth`;
 /// - *Water temperature*, °C, [-5, 60], `Parameter::WaterTemperature`;
 /// - *Altitude*, m, [-500, 20000], `Parameter::Altitude`;
@@ -112,10 +113,10 @@ private:
 /// - *True wind speed*, kn, [0, 200], `Parameter::WindSpeedTrue`.
 ///
 /// The display-only tiles are *Position*, *Time (UTC)*, *Course over ground* (°T), *Rate of
-/// turn* (°/min, positive to starboard), *Apparent wind* (angle clockwise from the bow and
-/// speed) and *Destination*. The *GNSS* tile carries a *Fix* check box and a *Satellites* spin
-/// box in [0, 12]; the *Engines* group holds one `EngineTile` per engine. Every child widget
-/// is owned by the dashboard through Qt parents.
+/// turn* (°/min, positive to starboard), *Apparent wind* (angle off the bow to port or
+/// starboard, as `format_wind_angle` writes it, and speed) and *Destination*. The *GNSS* tile
+/// carries a *Fix* check box and a *Satellites* spin box in [0, 12]; the *Engines* group holds one
+/// `EngineTile` per engine. Every child widget is owned by the dashboard through Qt parents.
 ///
 /// @see docs/reference/desktop-app.md, sections "Dashboard instruments" and "Dashboard tiles".
 class DashboardWidget : public QWidget {
@@ -162,6 +163,15 @@ public:
     ///
     /// @param enabled False to grey out every control.
     void set_overrides_enabled(bool enabled);
+    /// Limits the *Rudder* override to the rudder limit of a profile.
+    ///
+    /// The simulation clamps the rudder to the same limit, so the control never holds an
+    /// angle the simulation does not use; its tooltip names the limit. The main window calls
+    /// it when it applies a profile.
+    ///
+    /// @param max_rudder_angle_deg Largest rudder angle either side, in degrees, as
+    ///   `core::simulation::DeltaConfig::max_rudder_angle_deg`; positive.
+    void set_rudder_limit(double max_rudder_angle_deg);
     /// Returns whether the override controls are enabled.
     ///
     /// @return The value last passed to `set_overrides_enabled`, true initially.
@@ -181,6 +191,17 @@ public:
     ///
     /// @return The destination summary, or `None` (translated) without a destination.
     [[nodiscard]] QString destination_text() const;
+    /// Returns the text of the *Apparent wind* tile.
+    ///
+    /// @return The angle off the bow, as `format_wind_angle` writes it, and the speed, for
+    ///   example `104°P at 8.7 kn`; `--` before the first `update_state`.
+    [[nodiscard]] QString apparent_wind_text() const;
+    /// Returns the tile with the override control of a parameter.
+    ///
+    /// @param parameter Parameter the tile drives.
+    /// @return The tile, owned by the dashboard; never null, as every
+    ///   `core::simulation::Parameter` has one.
+    [[nodiscard]] InstrumentTile* control(core::simulation::Parameter parameter) const;
     /// Returns the compass rose.
     ///
     /// @return The dial, owned by the dashboard; never null.
@@ -284,7 +305,7 @@ private:
     InstrumentTile* course_tile_;
     /// Rate of turn, °/min, positive to starboard.
     InstrumentTile* rate_of_turn_tile_;
-    /// Apparent wind angle clockwise from the bow and speed in knots.
+    /// Apparent wind angle off the bow, to port or starboard, and speed in knots.
     InstrumentTile* apparent_wind_tile_;
     /// Destination summary, or `None` without a destination; spans the grid's width.
     InstrumentTile* destination_tile_;
