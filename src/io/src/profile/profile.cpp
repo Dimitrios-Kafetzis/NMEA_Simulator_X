@@ -16,7 +16,9 @@
 #include <QSaveFile>
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace nmeasim::io {
 
@@ -47,6 +49,41 @@ double number(const QJsonObject& object, const char* key, double fallback) {
 /// @return The integer stored under `key`, or `fallback`.
 int integer(const QJsonObject& object, const char* key, int fallback) {
     return object.value(QLatin1String(key)).toInt(fallback);
+}
+
+/// Reads an unsigned integer from a JSON object and checks it against a range.
+///
+/// A missing key, or a value that is not a number, leaves `value` unchanged, like the other
+/// helpers. A number that is negative, larger than `maximum` or not a whole number is
+/// rejected instead of being converted, since converting it would wrap or truncate it.
+///
+/// @param object The object to read from.
+/// @param key The key, a Latin-1 string literal.
+/// @param name The full name of the key in the profile, such as `simulation.random_seed`,
+///     used in the error message.
+/// @param maximum The largest value accepted; the range is [0, `maximum`].
+/// @param[in,out] value Receives the number read; keeps its value when the key is missing
+///     or not a number, and when the number is rejected.
+/// @param[out] error Receives `<name> must be a whole number between 0 and <maximum>` when
+///     the number is rejected; must not be null.
+/// @return False when the number is rejected, true otherwise.
+bool unsigned_integer(const QJsonObject& object, const char* key, const QString& name,
+                      std::uint32_t maximum, std::uint32_t& value, QString* error) {
+    const auto json = object.value(QLatin1String(key));
+    if (!json.isDouble()) {
+        return true;
+    }
+    const double number = json.toDouble();
+    // The negated comparison also rejects NaN, which a JSON document cannot hold but a
+    // QJsonObject built in code can.
+    if (!(number >= 0.0 && number <= static_cast<double>(maximum)) ||
+        std::trunc(number) != number) {
+        *error =
+            QStringLiteral("%1 must be a whole number between 0 and %2").arg(name).arg(maximum);
+        return false;
+    }
+    value = static_cast<std::uint32_t>(number);
+    return true;
 }
 
 /// Reads a boolean from a JSON object.
@@ -357,7 +394,8 @@ QJsonObject seed_to_json(const core::model::VesselState& seed) {
 /// `Engine`, not running, 0 rpm and 20 degrees Celsius. A present `destination` key sets the
 /// destination when it holds an object (latitude and longitude default to 0, the origin to
 /// the seed position, the name to `WPT` and the arrival radius to 100 m) and clears it
-/// otherwise. Nothing is validated here; see `validate_ais`.
+/// otherwise. The AIS `mmsi` and `imo_number` are left to `ais_identities_from_json`, and
+/// nothing is validated here; see `validate_ais`.
 ///
 /// @param object The `simulation.seed` object; empty keeps `fallback` entirely.
 /// @param fallback The state the values are read on top of.
@@ -436,10 +474,6 @@ core::model::VesselState seed_from_json(const QJsonObject& object,
     }
     const auto ais = object.value(QStringLiteral("ais")).toObject();
     const auto& ais_fallback = fallback.ais;
-    seed.ais.mmsi =
-        static_cast<std::uint32_t>(ais.value(QStringLiteral("mmsi")).toDouble(ais_fallback.mmsi));
-    seed.ais.imo_number = static_cast<std::uint32_t>(
-        ais.value(QStringLiteral("imo_number")).toDouble(ais_fallback.imo_number));
     seed.ais.name = text(ais, "name", QString::fromStdString(ais_fallback.name)).toStdString();
     seed.ais.call_sign =
         text(ais, "call_sign", QString::fromStdString(ais_fallback.call_sign)).toStdString();
@@ -461,20 +495,39 @@ core::model::VesselState seed_from_json(const QJsonObject& object,
     return seed;
 }
 
+/// Reads the MMSI and the IMO number of the `simulation.seed.ais` object.
+///
+/// Both are whole numbers in [0, 999999999]: nine digits, the length of an MMSI and the
+/// largest value the IMO number field of the settings dialog offers, which also fits the
+/// 30-bit field of AIS message 5. A missing key keeps the value already in `ais`.
+///
+/// @param object The `simulation.seed` object.
+/// @param[in,out] ais The AIS static data to update.
+/// @param[out] error Receives a message naming the offending key when a value is rejected;
+///     must not be null.
+/// @return False when a value is negative, too large or not a whole number, true otherwise.
+/// @see ITU-R M.1371-5, messages 1 and 5.
+bool ais_identities_from_json(const QJsonObject& object, core::model::AisStatic& ais,
+                              QString* error) {
+    constexpr std::uint32_t kNineDigits{999'999'999U};
+    const auto json = object.value(QStringLiteral("ais")).toObject();
+    return unsigned_integer(json, "mmsi", QStringLiteral("simulation.seed.ais.mmsi"), kNineDigits,
+                            ais.mmsi, error) &&
+           unsigned_integer(json, "imo_number", QStringLiteral("simulation.seed.ais.imo_number"),
+                            kNineDigits, ais.imo_number, error);
+}
+
 /// Checks the AIS static data of the own vessel against the ranges of its message fields.
 ///
-/// Checks, in this order: an MMSI of at most nine digits, a ship type in [0, 255], a
-/// navigational status in [0, 15] and a position report type of 1, 2 or 3. The dimensions,
-/// draught and texts are not checked here.
+/// Checks, in this order: a ship type in [0, 255], a navigational status in [0, 15] and a
+/// position report type of 1, 2 or 3. The MMSI and IMO number are checked as they are read,
+/// by `ais_identities_from_json`; the dimensions, draught and texts are not checked here.
 ///
 /// @param ais The AIS static data read from the profile.
 /// @return A message naming the first offending `simulation.seed.ais` key, or an empty string
 ///     when the data is valid.
 /// @see ITU-R M.1371-5, messages 1, 2, 3 and 5.
 QString validate_ais(const core::model::AisStatic& ais) {
-    if (ais.mmsi > 999'999'999U) {
-        return QStringLiteral("simulation.seed.ais.mmsi must have at most nine digits");
-    }
     if (ais.ship_type < 0 || ais.ship_type > 255) {
         return QStringLiteral("simulation.seed.ais.ship_type must be between 0 and 255");
     }
@@ -920,12 +973,17 @@ std::optional<Profile> Profile::from_json(const QJsonObject& input, QString* err
         }
         profile.start_time = parsed.toUTC();
     }
-    const auto random_seed = simulation.value(QStringLiteral("random_seed")).toDouble(-1.0);
-    if (random_seed >= 0.0) {
-        profile.delta.random_seed = static_cast<unsigned int>(random_seed);
+    std::uint32_t random_seed{profile.delta.random_seed};
+    if (!unsigned_integer(simulation, "random_seed", QStringLiteral("simulation.random_seed"),
+                          std::numeric_limits<std::uint32_t>::max(), random_seed, err)) {
+        return std::nullopt;
     }
-    profile.delta.seed =
-        seed_from_json(simulation.value(QStringLiteral("seed")).toObject(), profile.delta.seed);
+    profile.delta.random_seed = random_seed;
+    const auto seed_object = simulation.value(QStringLiteral("seed")).toObject();
+    profile.delta.seed = seed_from_json(seed_object, profile.delta.seed);
+    if (!ais_identities_from_json(seed_object, profile.delta.seed.ais, err)) {
+        return std::nullopt;
+    }
     if (const auto problem = validate_ais(profile.delta.seed.ais); !problem.isEmpty()) {
         *err = problem;
         return std::nullopt;
