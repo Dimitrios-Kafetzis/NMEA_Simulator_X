@@ -139,9 +139,11 @@ The top row holds two round instruments and the position, time and GNSS tiles:
 
 An active override stops the random drift of that parameter, and the tile gets an amber
 border so that overridden values stand out. Clearing it lets the value drift again from where
-it is, within its drift band: a value pinned outside the seed plus or minus the amplitude
-moves back to the edge of the band on the next tick. In track and replay mode every override control is disabled, because
-the file drives the vessel.
+it is: a value pinned outside the seed plus or minus the amplitude drifts back towards that
+band at its normal step rate, one full step per tick, and then wanders within it. In steering
+mode the heading follows the rudder even when its override is set; switching steering off
+leaves the override holding the heading where the rudder left it. In track and replay mode every override control is disabled,
+because the file drives the vessel.
 
 ## Map
 
@@ -193,20 +195,32 @@ Tiles follow the slippy map scheme and come from a tile server given as a URL te
 with `{z}`, `{x}` and `{y}` placeholders. The default is the OpenStreetMap server,
 `https://tile.openstreetmap.org/{z}/{x}/{y}.png`, used under its
 [tile usage policy](https://operations.osmfoundation.org/policies/tiles/): requests carry
-a `User-Agent` naming this application, at most four downloads run at a time and every tile
-is cached. Set another server through the `map/tile_url` preference.
+a `User-Agent` naming this application and its version, at most four downloads run at a time,
+every tile is cached and a tile that failed is not requested over and over. Set another server
+through the `map/tile_url` preference.
+
+A tile the server does not have (HTTP 404 or 410) is not requested again until the
+application restarts. After any other failure, such as no network
+connection, a timeout or another HTTP error, the tile is requested again at the earliest 30
+seconds later, and each further failure of the same tile doubles that delay up to 10 minutes.
+Unticking and ticking *View → Download map tiles* again retries those tiles at once.
 
 Every downloaded tile is written to the tile cache directory below, so once an area has
 been viewed it stays available without a network connection. When a tile is missing the map
 shows the matching part of the nearest cached lower zoom level, or a grey square when there
 is none. Untick *View → Download map tiles* to stop all network access; the map then uses
-the cache only and shows *offline*.
+the cache only and shows *offline*. Unticking it also cancels the downloads in progress, as does
+*View → Clear map tile cache*.
 
 | Platform | Tile cache directory |
 | --- | --- |
 | Windows | `%LOCALAPPDATA%\NMEASimulatorX\NMEASimulatorX\cache\tiles` |
 | macOS | `~/Library/Caches/NMEASimulatorX/NMEASimulatorX/tiles` |
 | Linux | `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles` |
+
+The `map/cache_directory` preference moves the cache: the tiles are then kept in its `tiles`
+sub-directory, which *Clear map tile cache* deletes, and the change takes effect at the next
+start.
 
 ## Console
 
@@ -333,6 +347,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/zoom` | Last map zoom level |
+| `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 
 The default folder offered by the profile dialogs is the `profiles` sub-folder of the

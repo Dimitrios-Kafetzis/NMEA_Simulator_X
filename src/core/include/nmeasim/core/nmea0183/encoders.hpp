@@ -150,7 +150,7 @@ std::vector<std::string> encode_zda(const EncoderContext& context);
 
 /// Encodes HDG, the magnetic sensor heading with deviation and variation.
 ///
-/// Fields: the compass heading model::Navigation::heading_magnetic_deg() (true heading minus
+/// Fields: the compass heading model::Navigation::heading_compass_deg() (true heading minus
 /// variation and deviation), the magnitude of the deviation with its `E` or `W` letter and
 /// the magnitude of the variation with its letter, each with one decimal; a zero value is
 /// sent as `E`.
@@ -162,9 +162,8 @@ std::vector<std::string> encode_hdg(const EncoderContext& context);
 
 /// Encodes HDM, the heading referenced to magnetic north.
 ///
-/// Fields: model::Navigation::heading_magnetic_deg() with one decimal, then `M`. That value
-/// is the compass heading HDG sends: the true heading minus variation and deviation, which
-/// equals the magnetic heading only while the deviation is zero.
+/// Fields: model::Navigation::heading_magnetic_deg() (true heading minus variation) with one
+/// decimal, then `M`. The compass deviation does not apply; HDG carries it.
 ///
 /// @param context The state and talker to encode with.
 /// @return One sentence.
@@ -183,7 +182,7 @@ std::vector<std::string> encode_hdt(const EncoderContext& context);
 /// Encodes VHW, the water speed and heading.
 ///
 /// Fields: heading in degrees true, `T`, heading from
-/// model::Navigation::heading_magnetic_deg() (the compass heading, as in encode_hdm()), `M`,
+/// model::Navigation::heading_magnetic_deg() (without deviation, as in encode_hdm()), `M`,
 /// speed through the water in knots, `N`, and the same speed in km/h, `K`, each with one
 /// decimal.
 ///

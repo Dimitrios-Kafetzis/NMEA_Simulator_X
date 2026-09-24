@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -79,7 +80,8 @@ std::optional<double> signed_east_west(std::string_view value, std::string_view 
 ///
 /// With a date that exists, the date and time are both replaced. Without a date, or with one
 /// that does not exist, only the time of day is replaced and the date of the current
-/// `state.time_utc` is kept, even when the time of day has wrapped past midnight.
+/// `state.time_utc` is kept, unless that would move the time back by more than 12 hours:
+/// then the time of day has wrapped past midnight and the date advances by one day.
 ///
 /// @param[in,out] state The state whose `time_utc` is set.
 /// @param time The time of day and optional date read by sentence_time().
@@ -94,7 +96,13 @@ void apply_time(model::VesselState& state, const SentenceTime& time) {
             return;
         }
     }
-    state.time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    auto time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    // The same rule as the log reader's: a large step back is the next day, a small one is
+    // taken as sent.
+    if (time_utc < state.time_utc - hours{12}) {
+        time_utc += days{1};
+    }
+    state.time_utc = time_utc;
 }
 
 /// Reads a latitude, its hemisphere, a longitude and its hemisphere from four consecutive
@@ -318,10 +326,10 @@ bool decode_hdt(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDG: deviation, variation and the heading.
+/// Applies HDG: deviation, variation and the compass heading.
 ///
 /// Deviation and variation are applied first, positive east; the true heading is then the
-/// sensor heading plus variation plus deviation, normalised to [0, 360), using the values
+/// sensor (compass) heading plus variation plus deviation, normalised to [0, 360), using the values
 /// just read or the previous ones where those fields are empty.
 ///
 /// @param s The parsed sentence; the talker is ignored.
@@ -339,11 +347,11 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDM: the heading, converted to true with the variation and deviation already in
-/// the state.
+/// Applies HDM: the magnetic heading, converted to true with the variation already in the
+/// state.
 ///
-/// The true heading is the sent heading plus variation plus deviation, normalised to
-/// [0, 360), the inverse of what encode_hdm() sends.
+/// The true heading is the sent heading plus variation, normalised to [0, 360), the inverse
+/// of what encode_hdm() sends. The deviation does not apply to a magnetic heading.
 ///
 /// @param s The parsed sentence; the talker is ignored.
 /// @param[in,out] state The state to update.
@@ -352,8 +360,7 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
 bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     if (const auto magnetic = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg =
-            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg +
-                                   state.navigation.magnetic_deviation_deg);
+            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg);
     }
     return true;
 }
@@ -510,8 +517,9 @@ bool decode_nothing(const ParsedSentence& /*s*/, model::VesselState& /*state*/) 
 /// Applies RMB: the destination name and position.
 ///
 /// Only a sentence with status `A` and a destination position that parses is applied. An
-/// empty name becomes `WPT`. For the same name as the current destination the origin and the
-/// arrival radius are kept; for a new destination the leg starts at the vessel's current
+/// empty name becomes `WPT` before the comparison, so it matches a current destination named
+/// `WPT`. For the same name as the current destination the origin and the arrival radius are
+/// kept; for a new destination the leg starts at the vessel's current
 /// position and the arrival radius takes its default. Cross-track error, range, bearing and
 /// closing velocity are ignored, since they follow from the positions.
 ///
@@ -528,12 +536,13 @@ bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
     if (!latitude || !longitude) {
         return true;
     }
-    const std::string name{s.field(4)};
+    // An empty name stands for WPT, so it is compared as such with the current destination.
+    const std::string name = s.field(4).empty() ? std::string{"WPT"} : std::string{s.field(4)};
     // The sentence does not carry the origin: a new destination starts its leg where the
     // vessel is, an update of the same destination keeps the leg.
     const bool same = state.destination && state.destination->name == name;
     model::Destination destination;
-    destination.name = name.empty() ? "WPT" : name;
+    destination.name = name;
     destination.position = {*latitude, *longitude};
     destination.origin = same ? state.destination->origin : state.navigation.position;
     if (same) {

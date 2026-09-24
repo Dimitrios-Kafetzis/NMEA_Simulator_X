@@ -86,11 +86,16 @@ the state as it is.
 | MWV | Apparent (`R`) or true (`T`) wind angle and speed, unit converted to knots |
 | MWD | True wind direction and speed |
 | RSA | Rudder angle |
-| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position |
+| RMB | Destination waypoint id and position; a new id starts the leg at the vessel's current position, the same id keeps the leg (an empty id is `WPT`) |
 | APB, XTE | Recognised, nothing applied (they repeat what RMB carries) |
 | RPM | Revolutions of engine `n` (`E` source, status `A`), creating engines up to `n`; running when above zero |
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |
 | VDO, VDM | Passed through unchanged; the AIS payload is not decoded |
+
+The simulated UTC time follows the time fields: RMC and ZDA with a valid date set the date and
+the time, the other time fields only the time of day. A time of day more than 12 hours
+earlier than the current time is taken as the next day, so a GGA just after midnight moves
+to the new date without waiting for the next RMC or ZDA.
 
 Replayed sentences are identified by their formatter (`MWV`, not `MWV-R`) for output
 filters and the console filter.
