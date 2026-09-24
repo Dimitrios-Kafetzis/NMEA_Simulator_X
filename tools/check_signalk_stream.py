@@ -8,8 +8,9 @@ simulator sends: a `context` string and a non-empty `updates` list whose entries
 `source` object with a `label`, a UTC `timestamp` with milliseconds and a list of `values`.
 Every path must be one that docs/reference/signalk.md lists, and every value must have the
 JSON type the specification gives that path: a number, a string, or a position object with
-numeric `latitude` and `longitude`. Units and ranges are not checked. Optional arguments
-require a context, a minimum number of deltas and paths that must appear at least once.
+numeric `latitude` and `longitude`; a JSON `true` or `false` is not a number. Units and
+ranges are not checked. Optional arguments require a context, a minimum number of deltas and
+paths that must appear at least once.
 
 The script prints one line per problem, each path that was required but never sent and a
 summary to standard output, and writes no files. Blank lines are skipped.
@@ -21,10 +22,9 @@ Usage:
     python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
 
 Exit status:
-    0 when every line passes, 1 when a line is not JSON, a delta has a problem, a required
-    path was never sent or fewer than `--min-deltas` deltas were read, and 2 for invalid
-    arguments. A line that is valid JSON but not an object, or whose updates or values are
-    not objects, ends the script with a traceback and status 1.
+    0 when every line passes, 1 when a line is not a JSON object, a delta has a problem
+    (among them an update or value entry that is not an object), a required path was never
+    sent or fewer than `--min-deltas` deltas were read, and 2 for invalid arguments.
 """
 import argparse
 import json
@@ -67,6 +67,19 @@ EXPECTED = {
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
 
+def is_number(value) -> bool:
+    """Return whether a decoded JSON value is a number.
+
+    Args:
+        value: Any decoded JSON value.
+
+    Returns:
+        True for an integer or a floating-point number. JSON true and false decode to bool, a
+        subclass of int, and are not numbers in Signal K, so they return False.
+    """
+    return isinstance(value, NUMBER) and not isinstance(value, bool)
+
+
 def check_value(kind, value) -> bool:
     """Return whether a delta value has the expected JSON type.
 
@@ -76,31 +89,32 @@ def check_value(kind, value) -> bool:
 
     Returns:
         True when the value is a number other than a boolean for `NUMBER`, a string for
-        `TEXT`, or an object with numeric `latitude` and `longitude` for `POSITION`.
+        `TEXT`, or an object whose `latitude` and `longitude` are numbers other than booleans
+        for `POSITION`.
     """
     if kind is POSITION:
-        return (isinstance(value, dict) and isinstance(value.get("latitude"), NUMBER)
-                and isinstance(value.get("longitude"), NUMBER))
+        return (isinstance(value, dict) and is_number(value.get("latitude"))
+                and is_number(value.get("longitude")))
     if kind is TEXT:
         return isinstance(value, str)
-    # JSON true and false decode to bool, a subclass of int, and are not numbers in Signal K.
-    return isinstance(value, NUMBER) and not isinstance(value, bool)
+    return is_number(value)
 
 
 def check_delta(document, context: str | None) -> list[str]:
     """Check one decoded document against the delta shape and the documented paths.
 
     Args:
-        document: The decoded JSON object of one line.
+        document: The decoded JSON value of one line.
         context: The context every delta must have, or None to accept any string.
 
     Returns:
         One human-readable description per problem found; empty when the delta is valid.
-        When `updates` is missing, empty or not a list, the updates are not checked further.
-
-    Raises:
-        AttributeError: The document, an update or a value entry is not a JSON object.
+        When the document is not an object, or `updates` is missing, empty or not a list, the
+        document is not checked further; an update or value entry that is not an object, or
+        `values` that is not a list, is one problem and is not checked further.
     """
+    if not isinstance(document, dict):
+        return [f"not a JSON object: {type(document).__name__}"]
     problems = []
     if context is not None and document.get("context") != context:
         problems.append(f"context is {document.get('context')!r}, expected {context!r}")
@@ -110,11 +124,21 @@ def check_delta(document, context: str | None) -> list[str]:
     if not isinstance(updates, list) or not updates:
         return problems + ["missing updates"]
     for update in updates:
+        if not isinstance(update, dict):
+            problems.append(f"update is not an object: {update!r}")
+            continue
         if not isinstance(update.get("source"), dict) or "label" not in update["source"]:
             problems.append("update without source label")
         if not TIMESTAMP.match(str(update.get("timestamp"))):
             problems.append(f"bad timestamp {update.get('timestamp')!r}")
-        for entry in update.get("values", []):
+        values = update.get("values", [])
+        if not isinstance(values, list):
+            problems.append(f"values is not a list: {values!r}")
+            continue
+        for entry in values:
+            if not isinstance(entry, dict):
+                problems.append(f"value entry is not an object: {entry!r}")
+                continue
             path, value = entry.get("path"), entry.get("value")
             kinds = [kind for pattern, kind in EXPECTED.items() if re.fullmatch(pattern, str(path))]
             if not kinds:
@@ -122,6 +146,26 @@ def check_delta(document, context: str | None) -> list[str]:
             elif not check_value(kinds[0], value):
                 problems.append(f"wrong value type for {path!r}: {value!r}")
     return problems
+
+
+def sent_paths(document) -> set:
+    """Return the paths of the value entries of one decoded document.
+
+    Args:
+        document: The decoded JSON value of one line, valid or not.
+
+    Returns:
+        The `path` of every value entry that is an object, in every update that is an object
+        with a `values` list; empty for a document that is not a delta.
+    """
+    paths = set()
+    updates = document.get("updates") if isinstance(document, dict) else None
+    for update in updates if isinstance(updates, list) else []:
+        values = update.get("values") if isinstance(update, dict) else None
+        for entry in values if isinstance(values, list) else []:
+            if isinstance(entry, dict):
+                paths.add(entry.get("path"))
+    return paths
 
 
 def main() -> int:
@@ -155,9 +199,7 @@ def main() -> int:
         for problem in problems:
             print(f"delta {deltas}: {problem}")
         failures += len(problems)
-        for update in document.get("updates", []):
-            for entry in update.get("values", []):
-                seen.add(entry.get("path"))
+        seen |= sent_paths(document)
     missing = [path for path in args.require_path if path not in seen]
     for path in missing:
         print(f"path never sent: {path}")
