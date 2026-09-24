@@ -1,3 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# CodeQL code scanning of the C++ sources. The job builds the ci-linux preset while CodeQL
+# watches the compiler (build mode manual), analyses the result and uploads the findings to the
+# repository's code scanning alerts.
+#
+# Triggers: pushes to main, pull requests into main, and a weekly run on Mondays at 03:17 UTC,
+# which applies new CodeQL queries to unchanged code.
+#
+# Permissions: read access to the contents, and security-events: write to upload the results.
+# No secrets, no repository variables.
+#
+# Its job, Analyze C++, is not a required check.
+
 name: CodeQL
 
 # Code scanning is free for public repositories only, so the job is skipped while the
@@ -24,6 +37,7 @@ jobs:
       - name: Check out sources
         uses: actions/checkout@v7
 
+      # Same Qt as QT_VERSION in ci.yml; keep them equal.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -39,6 +53,8 @@ jobs:
           languages: c-cpp
           build-mode: manual
 
+      # CodeQL analyses the code that this build compiles. The sanitizers of the ci-linux
+      # preset are switched off; the dependencies are built by vcpkg without a binary cache.
       - name: Build
         run: |
           export VCPKG_ROOT="$VCPKG_INSTALLATION_ROOT"

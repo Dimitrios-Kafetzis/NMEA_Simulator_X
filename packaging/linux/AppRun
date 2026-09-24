@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-only
 # Entry point of the AppImage. Starts the desktop application, or the command-line tool when
 # the AppImage is called through a link named `nmeasim` or with `nmeasim` as first argument:
 #
@@ -6,7 +7,7 @@
 #   ln -s NMEASimulatorX-1.0.0-x86_64.AppImage ~/.local/bin/nmeasim && nmeasim --version
 #
 # linuxdeploy installs this script as AppRun.wrapped behind its own AppRun, which sources the
-# plugin hooks first.
+# plugin hooks first. packaging/linux/appimage.cmake passes it to linuxdeploy (--custom-apprun).
 HERE="$(dirname "$(readlink -f "$0")")"
 
 # linuxdeploy's Qt hook asks for the gtk2 theme on GNOME and Xfce, which Qt 6 does not have.
@@ -16,6 +17,8 @@ if [ "${QT_QPA_PLATFORMTHEME:-}" = "gtk2" ]; then
     export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 fi
 
+# The AppImage runtime sets ARGV0 to the name the AppImage was started under, which is the name
+# of the link when it is started through one.
 if [ "$(basename "${ARGV0:-$0}")" = "nmeasim" ]; then
     exec "$HERE/usr/bin/nmeasim" "$@"
 fi

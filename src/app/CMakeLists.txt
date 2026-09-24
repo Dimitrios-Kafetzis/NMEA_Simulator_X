@@ -1,5 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-only
 # NMEASimulatorX - the Qt Widgets desktop application. The window and widgets live in a
 # static library so that the test suite can drive them without a display.
+#
+# Builds the static library nmeasim_app_lib (alias nmeasim::app_lib), which tests/ links, and
+# the executable target nmeasim_app, named NMEASimulatorX, a macOS bundle and a Windows GUI
+# application. Installs it with its platform extras: the Qt libraries and plugins deployed by
+# Qt's deploy script on Windows and macOS, an ad-hoc signature on macOS, and the desktop file
+# and the icons on Linux. Added by the top-level CMakeLists.txt when NMEASIM_BUILD_APP is ON;
+# reads NMEASIM_APP_ID, NMEASIM_INSTALL_BINDIR and NMEASIM_BUILD_CLI.
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network Widgets)
 qt_standard_project_setup()
@@ -56,10 +64,12 @@ qt_add_resources(nmeasim_app_lib "fonts"
 
 target_link_libraries(nmeasim_app_lib
     PUBLIC nmeasim::core nmeasim::io Qt6::Network Qt6::Widgets
-    PRIVATE nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
+    PRIVATE nmeasim::warnings nmeasim::sanitizers
 )
 
 set(NMEASIM_ICONS_DIR "${PROJECT_SOURCE_DIR}/packaging/icons")
+# Platform-specific sources of the executable: the Windows resource script with the icon and
+# the version information, or the macOS icon, which goes to the bundle's Resources folder.
 set(NMEASIM_APP_PLATFORM_SOURCES "")
 if(WIN32)
     configure_file(resources/nmeasimulatorx.rc.in "${CMAKE_CURRENT_BINARY_DIR}/nmeasimulatorx.rc"
@@ -76,6 +86,7 @@ qt_add_executable(nmeasim_app
     ${NMEASIM_APP_PLATFORM_SOURCES}
 )
 
+# The window icon, which main.cpp loads from the resources.
 qt_add_resources(nmeasim_app "icons"
     PREFIX "/icons"
     BASE "${NMEASIM_ICONS_DIR}"
@@ -95,11 +106,13 @@ set_target_properties(nmeasim_app PROPERTIES
 )
 
 target_link_libraries(nmeasim_app
-    PRIVATE nmeasim::app_lib nmeasim::warnings nmeasim::documentation_warnings
-            nmeasim::sanitizers
+    PRIVATE nmeasim::app_lib nmeasim::warnings nmeasim::sanitizers
 )
+# main.cpp gives the identifier to Qt as the desktop file name, with which Wayland compositors
+# match the window to its icon and launcher.
 target_compile_definitions(nmeasim_app PRIVATE NMEASIM_APP_ID="${NMEASIM_APP_ID}")
 
+# The macOS bundle goes to the root of the install tree, where the disk image shows it.
 install(TARGETS nmeasim_app
     BUNDLE DESTINATION .
     RUNTIME DESTINATION "${NMEASIM_INSTALL_BINDIR}"
@@ -119,6 +132,7 @@ if(WIN32 OR APPLE)
         set(NMEASIM_DEPLOY_EXECUTABLE "$<TARGET_FILE_NAME:nmeasim_app>")
         set(NMEASIM_DEPLOY_CLI "$<TARGET_FILE_NAME:nmeasim_cli>")
     endif()
+    # Without the command-line tool there is no second executable to deploy.
     if(NOT NMEASIM_BUILD_CLI)
         set(NMEASIM_DEPLOY_CLI "")
     endif()
@@ -137,6 +151,7 @@ qt_deploy_runtime_dependencies(
     NO_TRANSLATIONS
     NO_COMPILER_RUNTIME
 )")
+    # Runs at install time, after the executables are in place.
     install(SCRIPT "${NMEASIM_DEPLOY_SCRIPT}")
 endif()
 
@@ -150,6 +165,8 @@ if(APPLE)
                         COMMAND_ERROR_IS_FATAL ANY)
     ")
 elseif(UNIX)
+    # Desktop entry and icons under the application identifier, as the AppStream metadata, the
+    # AppImage and the Flatpak expect.
     install(FILES "${PROJECT_SOURCE_DIR}/packaging/linux/${NMEASIM_APP_ID}.desktop"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
     install(FILES "${NMEASIM_ICONS_DIR}/nmeasimulatorx.svg"

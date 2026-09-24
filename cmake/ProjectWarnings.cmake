@@ -1,12 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-only
 # Defines the interface target nmeasim::warnings carrying the project's warning flags.
 # Link it PRIVATE into every first-party target. Third-party headers are imported
 # targets, so CMake treats them as system headers and they stay warning-free.
+# NMEASIM_WARNINGS_AS_ERRORS, ON in the CI presets, adds /WX or -Werror.
 
 add_library(nmeasim_warnings INTERFACE)
 add_library(nmeasim::warnings ALIAS nmeasim_warnings)
 
 set(NMEASIM_MSVC_WARNINGS
     /W4
+    # Not warnings, but needed by every target: standard conformance, and UTF-8 sources such
+    # as the degree signs in the application's labels.
     /permissive-
     /utf-8
     /w14242 # conversion with possible loss of data
@@ -47,12 +51,20 @@ set(NMEASIM_GCC_CLANG_WARNINGS
     -Wimplicit-fallthrough
 )
 
+# GCC only: Clang does not know most of these and would report unknown warning options.
 set(NMEASIM_GCC_ONLY_WARNINGS
     -Wmisleading-indentation
     -Wduplicated-cond
     -Wduplicated-branches
     -Wlogical-op
     -Wuseless-cast
+)
+
+# Clang only (Clang and AppleClang): -Wdocumentation checks every documentation comment
+# against the declaration it describes, for example that each @param names a parameter and
+# that a void function has no @return; see docs/development/coding-standards.md.
+set(NMEASIM_CLANG_ONLY_WARNINGS
+    -Wdocumentation
 )
 
 if(MSVC)
@@ -64,6 +76,8 @@ else()
     set(NMEASIM_WARNINGS ${NMEASIM_GCC_CLANG_WARNINGS})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         list(APPEND NMEASIM_WARNINGS ${NMEASIM_GCC_ONLY_WARNINGS})
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        list(APPEND NMEASIM_WARNINGS ${NMEASIM_CLANG_ONLY_WARNINGS})
     endif()
     if(NMEASIM_WARNINGS_AS_ERRORS)
         list(APPEND NMEASIM_WARNINGS -Werror)
@@ -71,14 +85,3 @@ else()
 endif()
 
 target_compile_options(nmeasim_warnings INTERFACE ${NMEASIM_WARNINGS})
-
-# Defines nmeasim::documentation_warnings: Clang's -Wdocumentation, which checks every
-# documentation comment against the declaration it describes (@param names, no @return on void
-# functions). With NMEASIM_WARNINGS_AS_ERRORS it is an error, as in the macOS CI job. GCC and
-# MSVC have no equivalent, so the target is empty there. A target links it once its comments
-# follow docs/development/coding-standards.md.
-add_library(nmeasim_documentation_warnings INTERFACE)
-add_library(nmeasim::documentation_warnings ALIAS nmeasim_documentation_warnings)
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    target_compile_options(nmeasim_documentation_warnings INTERFACE -Wdocumentation)
-endif()

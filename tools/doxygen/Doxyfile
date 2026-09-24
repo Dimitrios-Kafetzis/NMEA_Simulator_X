@@ -5,7 +5,7 @@
 # tools/doxygen/mkdocs_hook.py runs it during `mkdocs build`; to run it on its own, from the
 # repository root:
 #   doxygen tools/doxygen/Doxyfile
-# Warnings go to build/doxygen/warnings.log; the hook turns them into build errors.
+# Warnings go to build/doxygen/warnings.log and are errors.
 
 PROJECT_NAME           = "NMEA Simulator X"
 PROJECT_NUMBER         = $(NMEASIM_VERSION)
@@ -67,8 +67,9 @@ WARN_IF_DOC_ERROR      = YES
 WARN_IF_INCOMPLETE_DOC = YES
 WARN_NO_PARAMDOC       = YES
 WARN_IF_UNDOC_ENUM_VAL = YES
-# The hook fails the build on warnings from the directories whose comments are complete.
-WARN_AS_ERROR          = NO
+# Every warning is an error: Doxygen still writes the XML and the log, then exits with status 1,
+# and the hook reports the warnings.
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
 WARN_FORMAT            = "$file:$line: $text"
 WARN_LOGFILE           = build/doxygen/warnings.log
 

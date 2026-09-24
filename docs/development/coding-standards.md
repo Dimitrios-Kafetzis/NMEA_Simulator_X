@@ -268,10 +268,21 @@ Open specifications are linked.
 
 | Check | Where | What it enforces |
 | --- | --- | --- |
-| Doxygen, warnings as errors | *Documentation* job | Every file, namespace member, type, function, parameter, return value, data member and enumerator in `src/` and `tests/` is documented; comments are well formed. |
-| Clang `-Wdocumentation`, warnings as errors | *macOS (Clang)* job | `@param` and `@tparam` names match the declaration; no `@return` on a `void` function; commands are well formed. |
-| File headers | *Documentation* job | The licence line and a file comment in every C++, Python, CMake and workflow file. |
-| `ruff` pydocstyle rules | *Documentation* job | Docstrings in every Python module, class and function, with documented arguments. |
+| Doxygen, warnings as errors (`tools/doxygen/Doxyfile`, run by `mkdocs build`) | *Documentation* job | Every file, namespace member, type, function, parameter, return value, data member and enumerator in `src/` and `tests/` is documented, private members and anonymous namespaces included; comments are well formed. |
+| Clang `-Wdocumentation`, warnings as errors (`cmake/ProjectWarnings.cmake`) | *macOS (Clang)* job | `@param` and `@tparam` names match the declaration; no `@return` on a `void` function; commands are well formed. |
+| File headers (`mkdocs build` for the C++ file comment, `tools/check_file_headers.py` for the licence line) | *Documentation* job | The licence line in every C++, Python, CMake, workflow and shell file, and a file comment in every C++ file. |
+| `ruff check` with the pydocstyle rules of `ruff.toml` | *Documentation* job | Docstrings in the Google layout of PEP 257 in every Python module, class and function, with documented arguments. |
+
+To run the checks locally before pushing:
+
+```bash
+NMEASIM_REQUIRE_DOXYGEN=1 mkdocs build --strict   # Doxygen and the C++ file comments
+python3 tools/check_file_headers.py
+ruff check .                                      # pip install ruff==0.16.8
+```
+
+Clang's `-Wdocumentation` runs in every build with Clang or AppleClang, for example the
+`ci-macos` preset.
 
 Checks that a machine cannot make (that a comment is specific, current and explains why)
 are part of code review.

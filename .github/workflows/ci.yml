@@ -1,3 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Continuous integration. Builds the project with the ci-* presets on Linux, Windows and macOS,
+# runs the unit tests, smoke-tests and installs the command-line tool, cross-checks its output
+# with independent parsers and, on Linux, reports the test coverage. Two further jobs check the
+# C++ formatting and build the documentation site with the C++ reference.
+#
+# Triggers: pushes to main, every pull request and manual dispatch. A newer run for the same
+# ref cancels the one in progress. Pull requests that Release Please opens with GITHUB_TOKEN
+# start no run; closing and reopening them starts one (docs/development/release-process.md).
+#
+# Permissions: read access to the repository contents. No secrets, no repository variables.
+#
+# Required checks: every job of this workflow. Linux (GCC), Windows (MSVC), macOS (Clang),
+# Code formatting and Documentation are required status checks of the branch protection on
+# main, so renaming a job means updating the branch protection too.
+
 name: CI
 
 on:
@@ -14,11 +30,19 @@ permissions:
   contents: read
 
 env:
+  # The Qt release installed with aqtinstall (ADR 0003) and shipped in the packages. Keep it
+  # equal in codeql.yml, release.yml and docs/how-to/build-from-source.md.
   QT_VERSION: 6.10.3
+  # Doxygen is pinned because the C++ reference generator reads its XML, whose schema changes
+  # with the version (ADR 0017). The SHA-256 of the release archive makes the job fail if the
+  # download ever differs. Keep both values equal in docs.yml.
   DOXYGEN_VERSION: 1.18.0
   DOXYGEN_SHA256: 14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90
 
 jobs:
+  # One job per platform, named after the platform and compiler. ci-linux builds with GCC,
+  # warnings as errors, AddressSanitizer, UndefinedBehaviorSanitizer and coverage; ci-windows
+  # (MSVC) and ci-macos (Apple Clang, which adds -Wdocumentation) with warnings as errors.
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
@@ -45,6 +69,7 @@ jobs:
       - name: Check out sources
         uses: actions/checkout@v7
 
+      # Sets QT_ROOT_DIR, through which the presets find Qt.
       - name: Install Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v4
         with:
@@ -54,12 +79,16 @@ jobs:
           modules: qtserialport qtwebsockets
           cache: true
 
+      # The Ninja generator of the presets needs the compiler environment that the Visual
+      # Studio developer prompt would provide.
       - name: Set up MSVC environment
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      # The runners come with vcpkg (VCPKG_INSTALLATION_ROOT). Its binary cache is moved into
+      # the workspace so that the next step can save and restore the built dependencies.
       - name: Prepare vcpkg binary cache
         shell: bash
         run: |
@@ -67,6 +96,8 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
           mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
 
+      # Keyed on vcpkg.json (ADR 0003); after a change to it, the newest cache of the same
+      # platform is restored and vcpkg rebuilds only what changed.
       - name: Restore vcpkg binary cache
         uses: actions/cache@v6
         with:
@@ -83,6 +114,8 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
 
+      # Runs every subcommand and every source (simulation, track, route, replay, recording)
+      # and every encoding once on the freshly built tool.
       - name: Smoke-test the command-line tool
         shell: bash
         run: |
@@ -104,6 +137,9 @@ jobs:
           "$NMEASIM" run --stdout --quiet --duration 1 --encoding signalk | head -2
           "$NMEASIM" run --stdout --quiet --duration 1 --encoding viewsync | head -2
 
+      # Checks the install rules that the packages are made from: Qt deployed next to the
+      # executables on Windows and into the signed bundle on macOS, and on Linux, where Qt is
+      # not deployed, the desktop file and the AppStream metadata.
       - name: Install into a staging directory
         shell: bash
         run: |
@@ -126,6 +162,8 @@ jobs:
         with:
           python-version: "3.12"
 
+      # pynmea2 and pyais, pinned to exact versions, parse the stream independently of the
+      # project's own decoder. --expect is the minimum number of distinct sentence formatters.
       - name: Cross-check the NMEA stream with an independent parser
         shell: bash
         run: |
@@ -153,6 +191,7 @@ jobs:
           gcovr --root . --filter src/ --json-summary coverage.json --html-nested coverage/index.html
           python3 tools/coverage_summary.py coverage.json | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # Also after a failure, so that a partial report can be inspected.
       - name: Upload the coverage report
         if: runner.os == 'Linux' && always()
         uses: actions/upload-artifact@v7
@@ -173,6 +212,7 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Pinned: another clang-format release may format the same code differently.
       - name: Install clang-format
         run: pip install clang-format==23.1.1
 
@@ -194,6 +234,7 @@ jobs:
           cache: pip
           cache-dependency-path: docs/requirements.txt
 
+      # The release binary of the pinned version, verified against its SHA-256 before use.
       - name: Install Doxygen
         run: |
           curl -sSfL -o doxygen.tar.gz \
@@ -205,9 +246,25 @@ jobs:
       - name: Install MkDocs
         run: pip install -r docs/requirements.txt
 
-      # The MkDocs hook runs Doxygen, fails on documentation warnings in the directories whose
-      # comments are complete, and generates the C++ reference pages.
+      # The MkDocs hook runs Doxygen, which treats every warning as an error (an undocumented
+      # entity, parameter, return value or enumerator in src/ or tests/, or a malformed
+      # comment), fails on C++ files without their licence line or file comment, and generates
+      # the C++ reference pages. NMEASIM_REQUIRE_DOXYGEN makes a missing Doxygen an error
+      # instead of placeholder pages.
       - name: Build documentation site and C++ reference (strict)
         env:
           NMEASIM_REQUIRE_DOXYGEN: "1"
         run: mkdocs build --strict
+
+      # The licence identifier on the first line of every C++, Python, CMake, workflow and
+      # shell file.
+      - name: Check file headers
+        run: python3 tools/check_file_headers.py
+
+      # PEP 257 docstrings in the Google layout for every Python module, class and function,
+      # with every argument documented; the rules are in ruff.toml. Ruff is pinned like
+      # clang-format so that a new release cannot fail an unchanged commit.
+      - name: Check Python docstrings
+        run: |
+          pip install ruff==0.16.8
+          ruff check .

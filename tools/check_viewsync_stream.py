@@ -1,16 +1,41 @@
 #!/usr/bin/env python3
-"""Validate a ViewSync packet stream: ten comma-separated fields per line, a counter that
-increases by one, coordinates in range and times counted from the year 1.
+# SPDX-License-Identifier: GPL-3.0-only
+r"""Validate a stream of ViewSync packets, the camera updates Google Earth accepts.
+
+Reads one packet per line from standard input and checks it against the layout on the
+ViewSync reference page (docs/reference/viewsync.md): ten comma-separated fields, which are
+a counter, latitude, longitude, altitude, heading, tilt, roll, start time, end time and
+planet. A packet fails when it does not have ten fields or its numeric fields do not parse,
+when the counter is not one more than the previous packet's, when the latitude is outside
+[-90, 90] or the longitude outside [-180, 180] degrees, when the heading is outside [0, 360)
+or the tilt outside [0, 90] degrees, when the start and end times, in seconds since
+0001-01-01T00:00:00Z, differ or lie before the Unix epoch, and when the planet is not empty,
+`sky`, `mars` or `moon`. The altitude and the roll are only parsed.
+
+The script prints one line per problem and a summary to standard output, and writes no
+files. Blank lines are skipped. It takes no arguments.
 
 Usage:
-    nmeasim run --stdout --encoding viewsync --quiet --duration 2 | python3 tools/check_viewsync_stream.py
+    nmeasim run --stdout --quiet --duration 2 --encoding viewsync \
+        | python3 tools/check_viewsync_stream.py
+
+Exit status:
+    0 when every packet passes, 1 when a packet fails or no packet was read.
 """
 import sys
 
+#: Seconds from 0001-01-01T00:00:00Z to the Unix epoch, the offset between Unix time and the
+#: time Google Earth counts from the year 1. A smaller time points to a sender that wrote Unix
+#: time without the offset.
 SECONDS_BEFORE_UNIX_EPOCH = 62135596800
 
 
 def main() -> int:
+    """Check the packets read from standard input and print the summary.
+
+    Returns:
+        The exit status: 0 when the stream passes, 1 when it fails.
+    """
     packets = 0
     failures = 0
     expected_counter = None
@@ -35,6 +60,8 @@ def main() -> int:
         if expected_counter is not None and counter != expected_counter:
             print(f"counter {counter}, expected {expected_counter}")
             failures += 1
+        # Continue from the packet received, so that one gap is reported once, not for every
+        # packet after it.
         expected_counter = counter + 1
         if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
             print(f"position out of range: {line}")

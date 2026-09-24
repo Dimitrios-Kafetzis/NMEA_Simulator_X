@@ -1,10 +1,20 @@
-name: Release Please
-
+# SPDX-License-Identifier: GPL-3.0-only
 # Opens and maintains a release pull request from Conventional Commits on main. Merging that
 # pull request tags a release and updates CHANGELOG.md and the project version; the packages
 # job then builds and attaches the installers (release.yml, ADR 0015).
 # Requires "Allow GitHub Actions to create and approve pull requests" in the repository's
 # Actions settings.
+#
+# Triggers: every push to main, including the merge of the release pull request itself.
+#
+# Permissions: contents: write to push the release branch, the tag and the release, and
+# pull-requests: write to open and update the release pull request; the packages job hands
+# contents: write on to release.yml. Release Please works with the workflow's GITHUB_TOKEN; no
+# other secrets and no repository variables.
+#
+# Neither job is a required check.
+
+name: Release Please
 
 on:
   push:
@@ -21,6 +31,9 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      # Reads the release rules and the extra files to bump (CMakeLists.txt, vcpkg.json) from
+      # the configuration, and the last released version from the manifest. On the merge of a
+      # release pull request it creates the tag and the release and sets release_created.
       - id: release
         uses: googleapis/release-please-action@v5
         with:

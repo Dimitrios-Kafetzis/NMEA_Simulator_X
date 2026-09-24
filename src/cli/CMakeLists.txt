@@ -17,8 +17,7 @@ qt_add_executable(nmeasim_cli
 set_target_properties(nmeasim_cli PROPERTIES OUTPUT_NAME "nmeasim")
 
 target_link_libraries(nmeasim_cli
-    PRIVATE nmeasim::core nmeasim::io CLI11::CLI11 Qt6::Core nmeasim::warnings
-            nmeasim::documentation_warnings nmeasim::sanitizers
+    PRIVATE nmeasim::core nmeasim::io CLI11::CLI11 Qt6::Core nmeasim::warnings nmeasim::sanitizers
 )
 
 if(APPLE AND NMEASIM_BUILD_APP)
