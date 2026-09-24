@@ -23,3 +23,6 @@ site/
 .venv/
 venv/
 __pycache__/
+
+# Log written by aqtinstall in the directory it runs from
+aqtinstall.log
