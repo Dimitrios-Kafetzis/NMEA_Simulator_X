@@ -41,7 +41,10 @@ Each line is handled on its own, so the shapes below can be mixed in one file.
 | No `$` or `!` on the line | Skipped and counted |
 
 A sentence with a checksum that does not match is skipped and counted. A sentence without a
-checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
+checksum is accepted. The same holds for a TAG block: when it ends in `*hh`, the checksum of
+the text between its backslashes must match, or the whole line is skipped and counted, and
+a block without a checksum is accepted; a block that is not closed by a second backslash is
+skipped and counted as well. Trailing `<CR>`, `<LF>` and spaces are ignored.
 
 ### How replay timing is derived
 
@@ -51,10 +54,16 @@ checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
    gets the predecessor's offset.
 2. **Sentence times.** Otherwise, when sentences carry a UTC time field (RMC, GGA, GLL,
    ZDA, GNS, GST, GBS, GRS), offsets follow those times. Sentences without a time field share
-   the offset of the last one that had it. A jump back across midnight is treated as the
-   next day; any other backwards jump is ignored.
+   the offset of the last one that had it. A jump back of more than 12 hours is taken as
+   crossing midnight into the next day. A shorter jump back holds the replay: the offset
+   stays where it is until the times pass the latest time seen before the jump, and only
+   the time beyond it is added, so no time is counted twice.
 3. **Fixed interval.** Otherwise the entries are spaced by a fixed interval, 100 ms by
-   default, configurable per profile.
+   default, configurable per profile. A negative interval is rejected.
+
+[ADR 0012](../adr/0012-log-file-format.md) names RMC, GGA, GLL and ZDA as the sentences whose
+time fields are used; the reader also uses the other sentences listed above, and this page
+is the reference for the current behaviour.
 
 The duration of a log is the offset of its last entry.
 
