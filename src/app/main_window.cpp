@@ -637,6 +637,7 @@ bool MainWindow::set_profile(const io::Profile& profile, const QString& path) {
     map_->clear_track();
     const bool delta = profile_.mode == io::SimulationMode::Delta;
     dashboard_->set_overrides_enabled(delta);
+    dashboard_->set_rudder_limit(profile_.delta.max_rudder_angle_deg);
     if (!delta) {
         // Steering needs the delta source; unticked here, it is not carried into the next
         // delta profile either.

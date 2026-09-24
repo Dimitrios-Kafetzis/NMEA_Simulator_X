@@ -4,16 +4,20 @@
 ///
 /// Covers the relative-angle helpers `nmeasim::app::signed_relative_angle` and
 /// `nmeasim::app::format_wind_angle`, how `nmeasim::app::DashboardWidget` passes a vessel
-/// state to both dials, and that the dials paint their face in the night and the daylight
+/// state to both dials and writes the apparent wind on its tile in the same form, the
+/// override controls of the rudder (its limit, and staying disabled outside steering mode),
+/// and that the dials paint their face in the night and the daylight
 /// theme on the offscreen platform. The file reads no fixtures.
 
 #include "widgets/dials.hpp"
 
 #include "theme/theme.hpp"
 #include "widgets/dashboard_widget.hpp"
+#include "widgets/instrument_tile.hpp"
 
 #include <nmeasim/core/model/vessel_state.hpp>
 
+#include <QDoubleSpinBox>
 #include <QImage>
 #include <QPoint>
 #include <QRegion>
@@ -61,6 +65,8 @@ TEST_CASE("the dashboard feeds the compass and the wind dial", "[app][dials]") {
     CHECK(compass->course() == Approx(47.0));
     CHECK_FALSE(compass->bearing().has_value());
     CHECK(dashboard.wind_dial()->apparent_angle() == Approx(255.8));
+    // The tile writes the angle as the dial does: 255.8 clockwise is 104 degrees to port.
+    CHECK(dashboard.apparent_wind_text() == QStringLiteral("104°P at 8.7 kn"));
     // True wind from 270 with the bow at 045 is 225 degrees clockwise from the bow.
     CHECK(dashboard.wind_dial()->true_angle() == Approx(225.0));
 
@@ -103,4 +109,29 @@ TEST_CASE("the dials paint in both themes", "[app][dials]") {
             CHECK(face > 20);
         }
     }
+}
+
+TEST_CASE("the rudder control keeps to its limit and stays disabled outside steering mode",
+          "[app][dials]") {
+    using nmeasim::core::simulation::Parameter;
+    nmeasim::app::DashboardWidget dashboard;
+    auto* rudder = dashboard.control(Parameter::RudderAngle);
+    auto* spin = rudder->findChild<QDoubleSpinBox*>();
+    REQUIRE(spin != nullptr);
+    // The default limit of a delta simulation, 35 degrees either side.
+    CHECK(spin->maximum() == 35.0);
+    dashboard.set_rudder_limit(20.0);
+    CHECK(spin->minimum() == -20.0);
+    CHECK(spin->maximum() == 20.0);
+
+    // Outside steering mode the rudder control is disabled; an override set from elsewhere
+    // ticks it without enabling the spin box.
+    dashboard.set_steering_mode(false);
+    rudder->set_override(true, 40.0);
+    CHECK(rudder->override_active());
+    CHECK_FALSE(spin->isEnabled());
+    CHECK(rudder->override_value() == 20.0);
+
+    dashboard.set_steering_mode(true);
+    CHECK(spin->isEnabled());
 }

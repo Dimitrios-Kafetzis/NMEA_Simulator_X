@@ -136,8 +136,9 @@ public:
     /// A running simulation is stopped, the profile applied and the run started again. On
     /// success the map's sailed track is cleared, the route of a track is drawn, the map is
     /// centred on the vessel, the dashboard overrides and *Steering mode* are enabled only in
-    /// delta mode (in track and replay mode *Steering mode* is also unticked), and the title, the
-    /// transport controls and the outputs table are refreshed.
+    /// delta mode (in track and replay mode *Steering mode* is also unticked), the *Rudder*
+    /// override is limited to the profile's maximum rudder angle, and the title, the transport
+    /// controls and the outputs table are refreshed.
     ///
     /// @param profile The profile to use; copied.
     /// @param path File the profile came from and *Save profile* writes to. Empty means the

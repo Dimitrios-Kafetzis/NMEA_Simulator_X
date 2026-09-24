@@ -79,11 +79,22 @@ public:
     /// Sets the control without emitting `override_changed`.
     ///
     /// Used to reflect overrides set elsewhere, such as keyboard nudges. The value is clamped
-    /// to the range given to `enable_override`. Does nothing on a display-only tile.
+    /// to the range of the spin box. The spin box stays disabled while the control is
+    /// disabled (see `set_override_enabled`). Does nothing on a display-only tile.
     ///
     /// @param active True to tick the check box and draw the tile as overridden.
     /// @param value Value for the spin box, in the tile's unit.
     void set_override(bool active, double value);
+    /// Changes the range of the override spin box, for example to the rudder limit of a
+    /// profile.
+    ///
+    /// A value outside the new range is clamped into it without emitting `override_changed`.
+    /// Does nothing on a display-only tile.
+    ///
+    /// @param minimum Smallest value the spin box accepts, in the tile's unit.
+    /// @param maximum Largest value the spin box accepts, in the tile's unit; not below
+    ///   `minimum`.
+    void set_override_range(double minimum, double maximum);
     /// Enables or disables the override control, for example the rudder outside steering
     /// mode.
     ///

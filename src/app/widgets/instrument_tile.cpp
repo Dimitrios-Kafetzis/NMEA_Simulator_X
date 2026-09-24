@@ -114,7 +114,8 @@ void InstrumentTile::enable_override(double minimum, double maximum, double step
     static_cast<QVBoxLayout*>(layout())->addLayout(row);
 
     connect(override_check_, &QCheckBox::toggled, this, [this](bool checked) {
-        override_spin_->setEnabled(checked);
+        // A disabled control stays disabled, also when set_override ticks its box.
+        override_spin_->setEnabled(checked && override_check_->isEnabled());
         mark_overridden(checked);
         if (!suppress_signals_) {
             emit override_changed(checked, override_spin_->value());
@@ -143,6 +144,15 @@ void InstrumentTile::set_override(bool active, double value) {
     override_spin_->setValue(value);
     override_check_->setChecked(active);
     mark_overridden(active);
+    suppress_signals_ = false;
+}
+
+void InstrumentTile::set_override_range(double minimum, double maximum) {
+    if (override_spin_ == nullptr) {
+        return;
+    }
+    suppress_signals_ = true;
+    override_spin_->setRange(minimum, maximum);
     suppress_signals_ = false;
 }
 

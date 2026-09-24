@@ -21,6 +21,7 @@
 #include "map/tile_cache.hpp"
 #include "widgets/console_widget.hpp"
 #include "widgets/dashboard_widget.hpp"
+#include "widgets/instrument_tile.hpp"
 #include "widgets/outputs_widget.hpp"
 
 #include <nmeasim/core/log/log_file.hpp>
@@ -28,6 +29,7 @@
 #include <nmeasim/core/version.hpp>
 
 #include <QDir>
+#include <QDoubleSpinBox>
 #include <QFile>
 #include <QKeyEvent>
 #include <QMenuBar>
@@ -94,6 +96,27 @@ TEST_CASE("positions are formatted as degrees and decimal minutes", "[app]") {
           QStringLiteral("37°59.028'N  023°43.650'E"));
     CHECK(nmeasim::app::format_position({-38.9997, -151.5001}) ==
           QStringLiteral("38°59.982'S  151°30.006'W"));
+    // 0.99999999 degrees is 59.9999994 minutes, which rounds to 60.000: the carry goes into
+    // the degrees. A longitude that rounds to zero has no west.
+    CHECK(nmeasim::app::format_position({37.99999999, -0.0000001}) ==
+          QStringLiteral("38°00.000'N  000°00.000'E"));
+    CHECK(nmeasim::app::format_position({-89.9999999, 179.99999999}) ==
+          QStringLiteral("90°00.000'S  180°00.000'E"));
+    CHECK(nmeasim::app::format_position({0.0, -179.9999999}) ==
+          QStringLiteral("00°00.000'N  180°00.000'W"));
+}
+
+TEST_CASE("the rudder control follows the rudder limit of the profile", "[app]") {
+    nmeasim::app::MainWindow window;
+    window.map_view()->cache()->set_online(false);
+    auto profile = quick_profile();
+    profile.delta.max_rudder_angle_deg = 25.0;
+    REQUIRE(window.set_profile(profile));
+    const auto* spin =
+        window.dashboard()->control(sim::Parameter::RudderAngle)->findChild<QDoubleSpinBox*>();
+    REQUIRE(spin != nullptr);
+    CHECK(spin->minimum() == -25.0);
+    CHECK(spin->maximum() == 25.0);
 }
 
 TEST_CASE("the main window runs a profile and shows sentences and outputs", "[app][integration]") {
