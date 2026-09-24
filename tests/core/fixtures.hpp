@@ -163,9 +163,12 @@ inline core::model::VesselState fixture_state_extreme() {
 ///
 /// @param sentence A sentence such as `$GPHDT,45.0,T*0C`, without line terminator.
 /// @return The text between the first character and the last `*`, such as `GPHDT,45.0,T`;
-///   everything after the first character when there is no `*`.
-/// @throws std::out_of_range When `sentence` is empty.
+///   everything after the first character when there is no `*`; empty when `sentence` is
+///   empty, so that a test comparing the body of a missing sentence fails instead of throwing.
 inline std::string body_of(std::string_view sentence) {
+    if (sentence.empty()) {
+        return {};
+    }
     const auto star = sentence.rfind('*');
     return std::string{
         sentence.substr(1, star == std::string_view::npos ? sentence.npos : star - 1)};

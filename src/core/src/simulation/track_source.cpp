@@ -148,11 +148,15 @@ const model::VesselState& TrackSource::advance(std::chrono::milliseconds dt) {
     progress_s_ += seconds;
     elapsed_s_ += seconds;
     if (progress_s_ >= total_s_) {
-        if (config_.end == EndBehaviour::Loop && total_s_ > 0.0) {
-            progress_s_ = std::fmod(progress_s_, total_s_);
-        } else {
+        if (config_.end == EndBehaviour::Stop) {
             progress_s_ = total_s_;
             finished_ = true;
+        } else if (total_s_ > 0.0) {
+            // Every whole lap the step spans is sailed, and the rest carries into the next.
+            progress_s_ = std::fmod(progress_s_, total_s_);
+        } else {
+            // A looping track without duration, such as a single point, stays where it is.
+            progress_s_ = 0.0;
         }
     }
     update_state(seconds);

@@ -335,7 +335,8 @@ void SimulationRunner::emit_sentences(
         simulation_ ? simulation_->state().time_utc : std::chrono::system_clock::now();
     for (const auto& sentence : sentences) {
         const QString id = QString::fromStdString(sentence.id);
-        const QByteArray line = QByteArray::fromStdString(sentence.text + "\r\n");
+        const std::string framed = sentence.text + "\r\n";
+        const QByteArray line = QByteArray::fromStdString(framed);
         ++sentences_emitted_;
         for (auto& channel : outputs_) {
             if (!channel.carries_sentences() || !channel.transport->is_open() ||
@@ -343,9 +344,9 @@ void SimulationRunner::emit_sentences(
                 continue;
             }
             if (channel.config.tag_block.enabled) {
-                channel.transport->write(QByteArray::fromStdString(core::nmea0183::format_tag_block(
-                                             channel.config.tag_block.options, time)) +
-                                         line);
+                channel.transport->write(
+                    QByteArray::fromStdString(core::nmea0183::prepend_tag_block(
+                        framed, channel.config.tag_block.options, time)));
             } else {
                 channel.transport->write(line);
             }

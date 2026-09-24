@@ -77,12 +77,24 @@ TileKey tile_at(QPointF tile, int zoom) noexcept {
     if (x < 0) {
         x += n;
     }
-    const int y = static_cast<int>(std::floor(tile.y()));
+    const int y = static_cast<int>(std::clamp(std::floor(tile.y()), 0.0, n - 1.0));
     return {zoom, x, y};
 }
 
 TileKey parent_of(TileKey key) noexcept {
+    if (key.zoom <= 0) {
+        return {0, 0, 0};
+    }
     return {key.zoom - 1, key.x >> 1, key.y >> 1};
+}
+
+double wrap_longitude(double longitude_deg) noexcept {
+    double wrapped = std::fmod(longitude_deg + 180.0, 360.0);
+    if (wrapped < 0.0) {
+        wrapped += 360.0;
+    }
+    // fmod of a value just below a multiple of 360 plus 360 can round to exactly 360.
+    return wrapped >= 360.0 ? -180.0 : wrapped - 180.0;
 }
 
 double metres_per_pixel(double latitude_deg, int zoom) noexcept {

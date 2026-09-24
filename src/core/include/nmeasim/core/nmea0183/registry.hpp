@@ -124,19 +124,19 @@ private:
 /// Runs the encoder of a sentence, lowering the position precision until every sentence fits
 /// the NMEA 0183 length limit.
 ///
-/// The encoder is first run with `options.position_decimals`. While any resulting sentence is
-/// longer than `kMaxSentenceLengthWithoutTerminator`, it is run again with one decimal fewer,
-/// down to two decimals; the result of the last attempt is returned even if it is still too
-/// long.
+/// The encoder is first run with `options.position_decimals`, raised to 2 when it is lower.
+/// While any resulting sentence is longer than `kMaxSentenceLengthWithoutTerminator`, it is
+/// run again with one decimal fewer, down to two decimals; the result of the last attempt is
+/// returned even if it is still too long, so a sentence is never dropped for its length.
 ///
 /// @param descriptor The sentence to encode.
 /// @param state The vessel state to encode; it is only used during the call.
 /// @param talker Two-character talker identifier to send, already resolved from the profile.
 /// @param options Formatting options; `options.position_decimals` is the preferred number of
-///                fractional minute digits and must be at least 2.
+///                fractional minute digits, of which at least 2 are used.
 /// @return The sentences of one emission, framed with checksums and without line terminator.
-///         Empty when the encoder has nothing to report, for example APB without a
-///         destination, or when `options.position_decimals` is below 2.
+///         Empty only when the encoder has nothing to report, for example APB without a
+///         destination.
 [[nodiscard]] std::vector<std::string> encode_within_limit(const SentenceDescriptor& descriptor,
                                                            const model::VesselState& state,
                                                            std::string_view talker,

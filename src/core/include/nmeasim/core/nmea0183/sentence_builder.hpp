@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <nmeasim/core/nmea0183/checksum.hpp>
+
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -19,7 +21,11 @@ namespace nmeasim::core::nmea0183 {
 
 /// Maximum length of a sentence in bytes without the terminating CR LF: 80, that is
 /// `kMaxSentenceLength` less the two terminator bytes.
-inline constexpr std::size_t kMaxSentenceLengthWithoutTerminator{80};
+///
+/// Derived from `kMaxSentenceLength`, the single definition of the NMEA 0183 limit; every
+/// length check (`fits_limit`, encode_within_limit(), the custom sentence validation) uses
+/// this value.
+inline constexpr std::size_t kMaxSentenceLengthWithoutTerminator{kMaxSentenceLength - 2};
 
 /// Tells whether a character may appear in a sentence field.
 ///
