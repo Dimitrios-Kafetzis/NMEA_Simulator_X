@@ -37,11 +37,15 @@ jobs:
       - name: Check out sources
         uses: actions/checkout@v7
 
-      # Same Qt as QT_VERSION in ci.yml; keep them equal.
-      - name: Install Qt
+      # QT_VERSION, the Qt that ci.yml builds with, from .github/versions.env.
+      - name: Read the pinned tool versions
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/versions.env >> "$GITHUB_ENV"
+
+      - name: Install Qt ${{ env.QT_VERSION }}
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.10.3
+          version: ${{ env.QT_VERSION }}
           host: linux
           arch: linux_gcc_64
           modules: qtserialport qtwebsockets
