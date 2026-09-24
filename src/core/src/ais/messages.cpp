@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Packing of the own-vessel AIS messages 1 to 3 and 5, and their framing into sentences.
+///
+/// The field layouts follow ITU-R M.1371-5, Annex 8; docs/reference/ais.md lists every value
+/// sent.
+
 #include <nmeasim/core/ais/messages.hpp>
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/sentence_builder.hpp>
@@ -11,20 +18,35 @@ namespace nmeasim::core::ais {
 
 namespace {
 
-/// Longest payload put in one sentence, chosen so that a two-fragment sentence such as
-/// `!AIVDM,2,1,3,A,<payload>,0*hh` stays within 82 bytes.
+/// Longest payload, in characters, put in one sentence.
+///
+/// Chosen so that a fragment such as `!AIVDM,2,1,3,A,<payload>,0*hh` stays within the 82
+/// bytes, CR LF included, that NMEA 0183 allows for a sentence.
 constexpr std::size_t kMaxPayloadPerSentence{60};
 
+/// Returns the UTC second within the minute, the AIS time stamp field.
+///
+/// @param time Instant in UTC.
+/// @return The second in [0, 59]; fractions are truncated.
 std::uint32_t seconds_of_minute(std::chrono::system_clock::time_point time) {
     using namespace std::chrono;
     const auto since_midnight = time - floor<days>(time);
     return static_cast<std::uint32_t>(duration_cast<seconds>(since_midnight).count() % 60);
 }
 
+/// Rounds to the nearest integer, halves away from zero.
+///
+/// @param value Value to round; it must fit an `std::int32_t`.
+/// @return The rounded value.
 std::int32_t round_to(double value) {
     return static_cast<std::int32_t>(std::lround(value));
 }
 
+/// Rounds to the nearest integer and clamps the result to an unsigned field range.
+///
+/// @param value Value to round, in field units; negative values give 0.
+/// @param maximum Largest value the field may carry.
+/// @return The rounded value in [0, `maximum`].
 std::uint32_t clamp_unsigned(double value, std::uint32_t maximum) {
     return static_cast<std::uint32_t>(
         std::clamp(std::lround(value), 0L, static_cast<long>(maximum)));

@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Apparent wind from the true wind and the vessel's velocity, by vector subtraction.
+
 #include <nmeasim/core/geo/geodesic.hpp>
 #include <nmeasim/core/physics/wind.hpp>
 
@@ -8,7 +12,9 @@ namespace nmeasim::core::physics {
 
 namespace {
 
+/// Factor converting degrees to radians.
 constexpr double kDegToRad = std::numbers::pi / 180.0;
+/// Factor converting radians to degrees.
 constexpr double kRadToDeg = 180.0 / std::numbers::pi;
 
 }  // namespace
@@ -31,6 +37,8 @@ ApparentWind apparent_wind(double true_direction_deg, double true_speed_kn, doub
 
     ApparentWind result;
     result.speed_kn = std::hypot(apparent_east, apparent_north);
+    // A zero vector has no direction: reporting the true wind direction keeps the output
+    // steady instead of jumping to whatever atan2 makes of rounding noise.
     if (result.speed_kn < 1e-9) {
         result.direction_true_deg = geo::normalize_bearing(true_direction_deg);
         result.angle_relative_deg = geo::normalize_bearing(true_direction_deg - heading_true_deg);

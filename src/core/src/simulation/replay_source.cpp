@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `ReplaySource`: the replay clock, its end and loop handling, stepping
+/// and seeking.
+
 #include <nmeasim/core/nmea0183/decoder.hpp>
 #include <nmeasim/core/simulation/replay_source.hpp>
 

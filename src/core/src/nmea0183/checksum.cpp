@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Computation, formatting and verification of NMEA 0183 checksums.
+///
+/// Implements the functions declared in `checksum.hpp`, with the hexadecimal and
+/// line-terminator helpers they share.
+
 #include <nmeasim/core/nmea0183/checksum.hpp>
 
 #include <array>
@@ -7,9 +14,17 @@ namespace nmeasim::core::nmea0183 {
 
 namespace {
 
+/// Upper-case hexadecimal digits indexed by their value, used to write checksums.
 constexpr std::array<char, 16> kHexDigits{'0', '1', '2', '3', '4', '5', '6', '7',
                                           '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
+/// Returns the value of one hexadecimal digit.
+///
+/// Lower-case digits are accepted as well, so that `verify_checksum` accepts `*1d` as
+/// readily as `*1D`.
+///
+/// @param c The character to convert.
+/// @return The value in [0, 15], or `std::nullopt` when `c` is not a hexadecimal digit.
 std::optional<std::uint8_t> hex_value(char c) noexcept {
     if (c >= '0' && c <= '9') {
         return static_cast<std::uint8_t>(c - '0');
@@ -23,6 +38,11 @@ std::optional<std::uint8_t> hex_value(char c) noexcept {
     return std::nullopt;
 }
 
+/// Removes every trailing CR and LF character from a sentence.
+///
+/// @param sentence The sentence, with or without its line terminator.
+/// @return A view of `sentence` without the trailing CR and LF characters; it refers to the
+///         same characters as `sentence`.
 std::string_view strip_line_terminator(std::string_view sentence) noexcept {
     while (!sentence.empty() && (sentence.back() == '\r' || sentence.back() == '\n')) {
         sentence.remove_suffix(1);
@@ -48,6 +68,7 @@ std::string format_checksum(std::uint8_t checksum) {
 std::string append_checksum(std::string_view sentence) {
     std::string result{sentence};
     result += kChecksumDelimiter;
+    // The checksum does not cover the start delimiter.
     result += format_checksum(compute_checksum(sentence.substr(1)));
     return result;
 }

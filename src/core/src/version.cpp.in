@@ -1,5 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Definition of `version_description`, filled in with the git description at build time.
+///
+/// cmake/GitDescribe.cmake runs on every build and replaces the placeholder with the version
+/// alone for a release tag or a tree without git metadata, and with the version followed by
+/// the `git describe` output otherwise. The generated file is rewritten only when that text
+/// changes, so an unchanged commit triggers no recompile.
 // Generated from version.cpp.in by cmake/GitDescribe.cmake at build time. Do not edit the
 // generated file.
+
 #include <nmeasim/core/version.hpp>
 
 #include <string_view>

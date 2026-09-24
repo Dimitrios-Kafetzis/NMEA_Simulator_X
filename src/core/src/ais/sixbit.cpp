@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Bit packing, six-bit text codes and payload armouring for AIS messages.
+
 #include <nmeasim/core/ais/sixbit.hpp>
 
 #include <algorithm>
@@ -49,6 +53,8 @@ Payload armor(const std::vector<bool>& bits) {
                 value = static_cast<std::uint8_t>(value | 1U);
             }
         }
+        // The armouring alphabet skips the eight characters `X` to `_` between `W` and
+        // the backquote, hence the two offsets.
         payload.text += static_cast<char>(value < 40 ? value + 48 : value + 56);
     }
     payload.fill_bits = static_cast<int>((6 - bits.size() % 6) % 6);

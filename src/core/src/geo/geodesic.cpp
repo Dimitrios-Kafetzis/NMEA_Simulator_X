@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Geodesic calculations on the WGS 84 ellipsoid, delegated to GeographicLib.
+
 #include <nmeasim/core/geo/geodesic.hpp>
 
 #include <GeographicLib/Geodesic.hpp>
@@ -11,10 +15,11 @@ double normalize_bearing(double bearing_deg) noexcept {
     if (normalized < 0.0) {
         normalized += 360.0;
     }
-    // fmod can yield -0.0 or exactly 360.0 after the adjustment above.
+    // A tiny negative remainder plus 360 rounds to exactly 360.0, which is outside the range.
     if (normalized >= 360.0) {
         normalized = 0.0;
     }
+    // fmod keeps the sign of a zero: adding 0.0 turns -0.0 into +0.0.
     return normalized + 0.0;
 }
 

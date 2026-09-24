@@ -1,3 +1,11 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// The standard sentence catalogue and the encoding within the NMEA 0183 length limit.
+///
+/// Implements the functions declared in `registry.hpp`. The table in
+/// `SentenceRegistry::standard` holds the ids, default talkers, periods and descriptions
+/// documented on the sentence reference page; changing an entry changes the output.
+
 #include <nmeasim/core/nmea0183/registry.hpp>
 #include <nmeasim/core/nmea0183/sentence_builder.hpp>
 
@@ -34,6 +42,8 @@ std::string_view to_string(SentenceGroup group) noexcept {
 }
 
 const SentenceRegistry& SentenceRegistry::standard() {
+    // The VDM entries repeat the VDO reports, framed as received, for consumers that ignore
+    // VDO; they are therefore off by default (see ADR 0013 and the AIS reference page).
     static const SentenceRegistry registry{{
         {"RMC", "RMC", "GP", SentenceGroup::Gnss, 1000ms, true,
          "Recommended minimum navigation data: time, position, speed, course, date, variation",
@@ -109,11 +119,13 @@ const SentenceDescriptor* SentenceRegistry::find(std::string_view id) const noex
 std::vector<std::string> encode_within_limit(const SentenceDescriptor& descriptor,
                                              const model::VesselState& state,
                                              std::string_view talker, EncoderOptions options) {
+    // Two decimals of a minute still resolve about 18 m; the profile never goes below this.
     constexpr int kMinimumPositionDecimals = 2;
     std::vector<std::string> sentences;
     for (int decimals = options.position_decimals; decimals >= kMinimumPositionDecimals;
          --decimals) {
         options.position_decimals = decimals;
+        // An empty result (nothing to report) also satisfies all_of and ends the loop.
         sentences = descriptor.encoder(EncoderContext{state, talker, options});
         if (std::ranges::all_of(sentences, [](const std::string& s) { return fits_limit(s); })) {
             break;

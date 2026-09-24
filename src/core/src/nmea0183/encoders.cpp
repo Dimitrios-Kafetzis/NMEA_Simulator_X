@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of the NMEA 0183 sentence encoders declared in `encoders.hpp`.
+///
+/// Every encoder builds its fields with SentenceBuilder from the vessel state. The private
+/// helpers here hold what several encoders share: the simulated satellite constellation for
+/// GSA and GSV, the position fields, the leg solution for the autopilot sentences, the AIS
+/// framing and the engine numbering.
+
 #include <nmeasim/core/ais/messages.hpp>
 #include <nmeasim/core/geo/route.hpp>
 #include <nmeasim/core/nmea0183/encoders.hpp>
@@ -18,26 +27,53 @@ namespace {
 
 using model::VesselState;
 
-/// Pseudo-random noise numbers reported for the simulated GPS constellation.
+/// PRNs (pseudo-random noise numbers) of the simulated GPS constellation, in the order GSA
+/// and GSV list them.
+///
+/// A fixed set of twelve GPS PRNs, one per GSA slot, so that the output is deterministic;
+/// the first `satellites_in_use` of them are reported as used.
 constexpr std::array<int, 12> kSatellitePrns{2, 5, 7, 9, 12, 15, 19, 21, 24, 25, 29, 30};
+/// Largest number of satellites reported: the size of the simulated constellation, which
+/// matches the twelve PRN slots of GSA.
 constexpr int kMaxSatellites{static_cast<int>(kSatellitePrns.size())};
+/// Satellites per GSV sentence, fixed by the GSV field layout.
 constexpr int kSatellitesPerGsvSentence{4};
 
+/// Clamps a satellite count to what the simulated constellation can report.
+///
+/// @param count Satellites requested by the state, of any value.
+/// @return `count` clamped to [0, kMaxSatellites].
 int clamp_satellites(int count) {
     return std::clamp(count, 0, kMaxSatellites);
 }
 
-/// Synthetic but stable elevation, azimuth and signal strength per satellite.
+/// Synthetic but stable elevation, azimuth and signal strength of one satellite, as GSV
+/// reports them.
 struct SatelliteView {
-    int elevation_deg;
-    int azimuth_deg;
-    int snr_db;
+    int elevation_deg;  ///< Elevation above the horizon, in [15, 84].
+    int azimuth_deg;    ///< Azimuth, degrees true, in [0, 360).
+    int snr_db;         ///< Signal-to-noise ratio, in [30, 44].
 };
 
+/// Returns the synthetic view of a satellite.
+///
+/// The values are derived from the PRN alone, so a satellite keeps its place in the sky and
+/// the GSV output stays deterministic; they are plausible, not a real almanac.
+///
+/// @param prn The satellite's PRN, a positive number.
+/// @return The elevation, azimuth and SNR to report for `prn`.
 SatelliteView satellite_view(int prn) {
     return {15 + (prn * 7) % 70, (prn * 37) % 360, 30 + prn % 15};
 }
 
+/// Appends the vessel's latitude, its `N` or `S`, longitude and its `E` or `W`.
+///
+/// The coordinates use `context.options.position_decimals` fractional minutes. Without a fix
+/// the four fields are appended empty.
+///
+/// @param[in,out] builder The sentence being built.
+/// @param context The state and options to encode with.
+/// @return `builder`, for chaining.
 SentenceBuilder& add_position(SentenceBuilder& builder, const EncoderContext& context) {
     const auto& navigation = context.state.navigation;
     if (!context.state.gnss.has_fix) {
@@ -50,21 +86,36 @@ SentenceBuilder& add_position(SentenceBuilder& builder, const EncoderContext& co
     return builder.field(lat.value).field(lat.hemisphere).field(lon.value).field(lon.hemisphere);
 }
 
+/// Converts an angle from degrees to radians.
+///
+/// @param degrees The angle in degrees, of any value.
+/// @return The angle in radians.
 double degrees_to_radians(double degrees) {
     return degrees * std::numbers::pi / 180.0;
 }
 
-/// Values shared by the autopilot sentences for the current destination.
+/// Values shared by the autopilot sentences APB, RMB and XTE for the current destination.
 struct AutopilotView {
+    /// Destination name after sanitize_waypoint_name().
     std::string name;
+    /// Bearings and distances of the leg and of the vessel relative to it.
     geo::LegSolution leg;
-    /// Cross-track error magnitude in nautical miles and the side to steer to.
+    /// Cross-track error magnitude in nautical miles, never negative.
     double cross_track_nm;
+    /// Direction to steer to regain the leg: `L` when the vessel is to the right of it, `R`
+    /// otherwise, including when it is on the leg.
     char steer;
+    /// True when the vessel is within the destination's arrival radius.
     bool arrived;
+    /// True when the vessel is level with or beyond the destination along the leg.
     bool perpendicular_passed;
 };
 
+/// Solves the leg to the current destination and derives what the autopilot sentences send.
+///
+/// @param state The vessel state, which must have a destination.
+/// @return The values for APB, RMB and XTE.
+/// @pre `state.destination` has a value.
 AutopilotView autopilot_view(const model::VesselState& state) {
     const auto& destination = *state.destination;
     AutopilotView view;
@@ -78,18 +129,35 @@ AutopilotView autopilot_view(const model::VesselState& state) {
     return view;
 }
 
+/// Returns the NMEA 0183 status letter for a flag.
+///
+/// @param flag The condition to report.
+/// @return `A` when `flag` is true, `V` otherwise.
 char valid(bool flag) noexcept {
     return flag ? 'A' : 'V';
 }
 
-/// Sequential message id of a multi-sentence AIS message, derived from the clock so that the
-/// fragments of one message share it and consecutive messages differ.
+/// Returns the sequential message id of a multi-sentence AIS message.
+///
+/// The id is derived from the simulated clock so that the fragments of one message share it
+/// and messages sent in consecutive seconds differ, without keeping a counter.
+///
+/// @param state The vessel state whose `time_utc` is used.
+/// @return The UTC seconds modulo 10, in [0, 9], also for times before 1970.
 int ais_sequence(const model::VesselState& state) {
     const auto seconds =
         std::chrono::duration_cast<std::chrono::seconds>(state.time_utc.time_since_epoch()).count();
     return static_cast<int>(((seconds % 10) + 10) % 10);
 }
 
+/// Packs an AIS own-vessel message, armours it and frames it as VDO or VDM sentences.
+///
+/// @param context The state and talker to encode with.
+/// @param formatter `VDO` for the own vessel or `VDM` for the received form.
+/// @param static_data True for the static and voyage data report (message type 5), false for
+///     the position report (message type 1, 2 or 3).
+/// @return One sentence for a position report, two for a static data report.
+/// @see ITU-R M.1371-5, Annex 8, messages 1, 2, 3 and 5.
 std::vector<std::string> encode_ais(const EncoderContext& context, std::string_view formatter,
                                     bool static_data) {
     const auto packer = static_data ? ais::pack_static_data(context.state)
@@ -98,13 +166,21 @@ std::vector<std::string> encode_ais(const EncoderContext& context, std::string_v
                               ais_sequence(context.state));
 }
 
-/// The engine number sent in RPM: engines are numbered from 1 in profile order.
+/// Returns the engine number sent in RPM, which counts engines from 1 in profile order.
+///
+/// @param index Zero-based position of the engine in `VesselState::engines`.
+/// @return `index` plus one.
 int engine_number(std::size_t index) noexcept {
     return static_cast<int>(index) + 1;
 }
 
-/// The transducer identifier sent in XDR, following the ENGINE#n convention of Signal K and
-/// common gateways, numbered from 0 in profile order.
+/// Returns the transducer identifier sent in XDR for an engine.
+///
+/// Follows the `ENGINE#n` convention of Signal K and common gateways, which numbers engines
+/// from 0 in profile order.
+///
+/// @param index Zero-based position of the engine in `VesselState::engines`.
+/// @return `ENGINE#` followed by `index`, for example `ENGINE#0`.
 std::string transducer_id(std::size_t index) {
     return "ENGINE#" + std::to_string(index);
 }
@@ -160,7 +236,7 @@ std::vector<std::string> encode_gga(const EncoderContext& context) {
     } else {
         builder.field(0).field(0, 2).empty().empty().field('M').empty().field('M');
     }
-    builder.empty(2);  // age of differential data, differential station id
+    builder.empty(2);  // No differential corrections are simulated: no age and no station id.
     return {builder.build()};
 }
 
@@ -300,8 +376,9 @@ std::vector<std::string> encode_vhw(const EncoderContext& context) {
 
 std::vector<std::string> encode_vbw(const EncoderContext& context) {
     const auto& navigation = context.state.navigation;
-    // Ground speed is resolved onto the vessel's axes using the drift angle between course
-    // over ground and heading. Water speed is assumed to have no leeway.
+    // The ground speed is resolved onto the vessel's axes through the drift angle between
+    // course over ground and heading. The model has no leeway, so the water speed is all
+    // longitudinal.
     const double drift =
         degrees_to_radians(navigation.course_over_ground_deg - navigation.heading_true_deg);
     const double ground_longitudinal = navigation.speed_over_ground_kn * std::cos(drift);

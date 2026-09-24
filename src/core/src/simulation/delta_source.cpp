@@ -1,3 +1,8 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of `DeltaSource`: bounded random drift, overrides, rudder steering and
+/// geodesic dead reckoning.
+
 #include <nmeasim/core/physics/wind.hpp>
 #include <nmeasim/core/simulation/delta_source.hpp>
 #include <nmeasim/core/units.hpp>
@@ -11,6 +16,10 @@ namespace nmeasim::core::simulation {
 
 namespace {
 
+/// Returns the slot of a parameter in `DeltaSource::overrides_`.
+///
+/// @param parameter The parameter.
+/// @return The enumerator's underlying value, in [0, 9).
 constexpr std::size_t index_of(Parameter parameter) noexcept {
     return static_cast<std::size_t>(parameter);
 }
@@ -105,11 +114,13 @@ void DeltaSource::set_position(geo::Position position) {
 }
 
 void DeltaSource::set_destination(std::optional<model::Destination> destination) {
+    // Stored in the seed as well, so that `reset` keeps it.
     config_.seed.destination = destination;
     state_.destination = std::move(destination);
 }
 
 void DeltaSource::set_engine(std::size_t index, model::Engine engine) {
+    // Engines are edited in the seed as well as the state, so that `reset` keeps the edit.
     for (auto* engines : {&config_.seed.engines, &state_.engines}) {
         if (index < engines->size()) {
             (*engines)[index] = engine;

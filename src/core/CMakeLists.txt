@@ -67,5 +67,6 @@ target_compile_features(nmeasim_core PUBLIC cxx_std_20)
 
 target_link_libraries(nmeasim_core
     PUBLIC GeographicLib::GeographicLib
-    PRIVATE pugixml::pugixml nmeasim::warnings nmeasim::sanitizers
+    PRIVATE pugixml::pugixml nmeasim::warnings nmeasim::documentation_warnings
+            nmeasim::sanitizers
 )

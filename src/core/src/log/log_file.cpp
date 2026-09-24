@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Log parsing with its timing rules, log loading, and formatting of recorder lines.
+///
+/// The time prefix and TAG block helpers here decide which lines carry an absolute time.
+
 #include <nmeasim/core/log/log_file.hpp>
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/decoder.hpp>
@@ -16,6 +22,11 @@ namespace {
 using std::chrono::milliseconds;
 using std::chrono::system_clock;
 
+/// Removes leading and trailing whitespace.
+///
+/// @param text The text to trim.
+/// @return A view into `text` without the whitespace, as classified by `std::isspace`, at
+///         either end.
 std::string_view trim(std::string_view text) noexcept {
     while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0) {
         text.remove_prefix(1);
@@ -26,7 +37,12 @@ std::string_view trim(std::string_view text) noexcept {
     return text;
 }
 
-/// A Unix time in seconds (with optional fraction) or milliseconds.
+/// Parses a Unix time in seconds (with optional fraction) or in milliseconds.
+///
+/// @param text The number; surrounding whitespace is ignored. Only digits and `.` are
+///        allowed, so signs, exponents and any other character reject it.
+/// @return The time point, rounded to the millisecond, or `std::nullopt` when `text` is not
+///         such a number or is not positive. A value above 1e11 is taken as milliseconds.
 std::optional<system_clock::time_point> parse_unix_time(std::string_view text) {
     text = trim(text);
     if (text.empty() || !std::all_of(text.begin(), text.end(),
@@ -37,14 +53,21 @@ std::optional<system_clock::time_point> parse_unix_time(std::string_view text) {
     if (!value || *value <= 0.0) {
         return std::nullopt;
     }
-    // Anything beyond the year 5000 in seconds is a millisecond count.
+    // 1e11 seconds is past the year 5000, while 1e11 milliseconds is in 1973, so larger
+    // values are millisecond counts.
     const double seconds = *value > 1e11 ? *value / 1000.0 : *value;
     return system_clock::time_point{
         milliseconds{static_cast<milliseconds::rep>(std::llround(seconds * 1000.0))}};
 }
 
-/// Absolute time from the text before the sentence: ISO 8601 or Unix time, possibly
-/// followed by a separator. Anything else is ignored.
+/// Reads an absolute time from the text before a sentence.
+///
+/// Trailing `,`, `;`, `:`, tab and space separators are removed first. The remaining text is
+/// tried as a whole, as ISO 8601 and then as Unix time, and then its last
+/// whitespace-separated word the same way.
+///
+/// @param prefix The text of the line before the `$` or `!`, after any TAG block.
+/// @return The time, or `std::nullopt` when the prefix is empty or holds no recognised time.
 std::optional<system_clock::time_point> parse_prefix_time(std::string_view prefix) {
     prefix = trim(prefix);
     while (!prefix.empty() &&
@@ -58,8 +81,8 @@ std::optional<system_clock::time_point> parse_prefix_time(std::string_view prefi
     if (const auto iso = time::parse_iso8601(prefix)) {
         return iso;
     }
-    // The last whitespace-separated token may be the time ("2026-09-23 10:00:00" is one
-    // token pair, so try the whole prefix first and then the tail).
+    // The time may be the last word of a longer prefix. The whole prefix is tried first
+    // because an ISO 8601 time with a space separator ("2026-09-23 10:00:00") is two words.
     if (const auto unix = parse_unix_time(prefix)) {
         return unix;
     }
@@ -74,7 +97,14 @@ std::optional<system_clock::time_point> parse_prefix_time(std::string_view prefi
     return std::nullopt;
 }
 
-/// The `c:` parameter of a TAG block, in seconds or milliseconds since the epoch.
+/// Reads the time from the `c:` parameter of a TAG block.
+///
+/// @param block The TAG block between its two backslashes; the `*hh` checksum, when present,
+///        is ignored and not verified.
+/// @return The time of the first `c:` parameter, read by `parse_unix_time` as seconds or
+///         milliseconds since the Unix epoch, or `std::nullopt` when there is no `c:`
+///         parameter or its value is not a positive number.
+/// @see IEC 61162-450, TAG block parameter "c".
 std::optional<system_clock::time_point> tag_block_time(std::string_view block) {
     const auto star = block.find('*');
     block = block.substr(0, star);
@@ -93,12 +123,21 @@ std::optional<system_clock::time_point> tag_block_time(std::string_view block) {
     return std::nullopt;
 }
 
+/// A valid sentence line as read by the first pass of `parse_log`, before offsets are
+/// assigned.
 struct RawEntry {
+    /// The sentence text, from its `$` or `!`, trimmed.
     std::string sentence;
+    /// The absolute time of the line, from its TAG block or prefix; empty when it had none.
     std::optional<system_clock::time_point> recorded_at;
+    /// The UTC time field of the sentence, when its formatter carries one and it is valid.
     std::optional<nmea0183::SentenceTime> sentence_time;
 };
 
+/// Stores an error message when the caller asked for one.
+///
+/// @param error Destination of the message; nothing is stored when it is null.
+/// @param message The one-line reason.
 void set_error(std::string* error, std::string message) {
     if (error != nullptr) {
         *error = std::move(message);
@@ -116,6 +155,7 @@ const char* to_string(TimingSource source) noexcept {
         case TimingSource::FixedInterval:
             return "fixed interval";
     }
+    // Reached only for a value outside the enumeration, which a cast can produce.
     return "unknown";
 }
 
@@ -149,6 +189,7 @@ std::optional<Log> parse_log(std::string_view text, const LogParseOptions& optio
                     continue;
                 }
             }
+            // The version follows the 20 characters of "NMEA Simulator X log".
             if (body.starts_with("NMEA Simulator X log")) {
                 log.header["format"] = std::string{trim(body.substr(20))};
             }
@@ -220,6 +261,7 @@ std::optional<Log> parse_log(std::string_view text, const LogParseOptions& optio
                 const auto now = entry.sentence_time->since_midnight;
                 if (previous_time_of_day) {
                     auto delta = now - *previous_time_of_day;
+                    // A large step back is the time of day wrapping at midnight.
                     if (delta < -std::chrono::hours{12}) {
                         delta += std::chrono::hours{24};
                     }
@@ -259,12 +301,17 @@ std::optional<Log> load_log(const std::string& path, const LogParseOptions& opti
     return log;
 }
 
+// Doxygen cannot match this definition to its declaration through the local
+// `system_clock` alias and would list it as a second, undocumented function, so it is
+// hidden from Doxygen; the documentation is in log_file.hpp.
+/// @cond
 std::string format_log_line(system_clock::time_point recorded_at, std::string_view sentence) {
     std::string line = time::format_iso8601(recorded_at);
     line += ' ';
     line += sentence;
     return line;
 }
+/// @endcond
 
 std::string format_header_line(std::string_view key, std::string_view value) {
     std::string line{"# "};

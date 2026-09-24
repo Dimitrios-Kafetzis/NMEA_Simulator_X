@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Formatting of IEC 61162-450 TAG blocks and sanitising of their source identifier.
+///
+/// Implements the functions declared in `tag_block.hpp`.
+
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/tag_block.hpp>
 
@@ -8,6 +14,11 @@ namespace nmeasim::core::nmea0183 {
 
 namespace {
 
+/// Maximum number of characters of the `s:` source identifier that are sent; longer
+/// identifiers are truncated.
+///
+/// The limit is part of the documented output format (sentence reference, section "TAG
+/// blocks").
 constexpr std::size_t kMaxSourceLength{15};
 
 }  // namespace
@@ -15,6 +26,9 @@ constexpr std::size_t kMaxSourceLength{15};
 std::string sanitize_tag_source(std::string_view source) {
     std::string result;
     for (const char c : source) {
+        // Keep the identifier to printable ASCII without spaces. The reserved characters would
+        // be read as a parameter separator (`,`), the checksum or block delimiter (`*` and the
+        // backslash) or the start of a sentence (`!`, `$`).
         const bool printable = c > ' ' && c <= '~';
         const bool reserved = c == ',' || c == '*' || c == '\\' || c == '!' || c == '$';
         if (printable && !reserved) {
@@ -38,6 +52,7 @@ std::string format_tag_block(const TagBlockOptions& options,
                 : std::chrono::duration_cast<std::chrono::seconds>(since_epoch).count();
         body += std::format(",c:{}", value);
     }
+    // The checksum covers the text between the backslashes, as for a sentence.
     return "\\" + body + "*" + format_checksum(compute_checksum(body)) + "\\";
 }
 

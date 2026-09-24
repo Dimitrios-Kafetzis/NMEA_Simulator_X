@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Implementation of the NMEA 0183 decoder declared in `decoder.hpp`.
+///
+/// apply_sentence() dispatches on the formatter to one `decode_` function per sentence type.
+/// Each reads the fields it knows, by their zero-based position after the address, and
+/// writes only those that parse, so a partial or malformed sentence never clears a value.
+/// The number parsers are written by hand rather than with the standard library so that the
+/// result does not depend on the process locale.
+
 #include <nmeasim/core/geo/geodesic.hpp>
 #include <nmeasim/core/nmea0183/checksum.hpp>
 #include <nmeasim/core/nmea0183/decoder.hpp>
@@ -13,6 +23,10 @@ namespace nmeasim::core::nmea0183 {
 
 namespace {
 
+/// Removes leading and trailing whitespace, including CR and LF.
+///
+/// @param text The text to trim.
+/// @return A view into `text` without the surrounding whitespace, possibly empty.
 std::string_view trim(std::string_view text) noexcept {
     while (!text.empty() && std::isspace(static_cast<unsigned char>(text.front())) != 0) {
         text.remove_prefix(1);
@@ -23,11 +37,21 @@ std::string_view trim(std::string_view text) noexcept {
     return text;
 }
 
+/// Tells whether a text consists of ASCII digits only.
+///
+/// @param text The text to check.
+/// @return True when `text` is not empty and every character is `0` to `9`.
 bool all_digits(std::string_view text) noexcept {
     return !text.empty() &&
            std::all_of(text.begin(), text.end(), [](char c) { return c >= '0' && c <= '9'; });
 }
 
+/// Returns the value of a string of decimal digits.
+///
+/// @param text Digits only, few enough for the value to fit an `int`; callers pass at most
+///     three.
+/// @return The decimal value, 0 for an empty text.
+/// @pre all_digits() is true for `text`, or `text` is empty.
 int digits_value(std::string_view text) noexcept {
     int value = 0;
     for (const char c : text) {
@@ -36,7 +60,13 @@ int digits_value(std::string_view text) noexcept {
     return value;
 }
 
-/// Applies a signed east/west quantity such as variation.
+/// Parses a magnitude and its `E` or `W` letter, such as a magnetic variation, into a signed
+/// value.
+///
+/// @param value The magnitude field.
+/// @param direction The letter field: `W` makes the value negative; any other letter, or
+///     none, leaves it positive.
+/// @return The value, positive east; or `std::nullopt` when `value` is empty or malformed.
 std::optional<double> signed_east_west(std::string_view value, std::string_view direction) {
     const auto magnitude = parse_number_field(value);
     if (!magnitude) {
@@ -45,7 +75,14 @@ std::optional<double> signed_east_west(std::string_view value, std::string_view 
     return direction == "W" ? -*magnitude : *magnitude;
 }
 
-/// Sets `state.time_utc` from a time of day, keeping the date of the current state time.
+/// Sets `state.time_utc` from the time a sentence carries.
+///
+/// With a date that exists, the date and time are both replaced. Without a date, or with one
+/// that does not exist, only the time of day is replaced and the date of the current
+/// `state.time_utc` is kept, even when the time of day has wrapped past midnight.
+///
+/// @param[in,out] state The state whose `time_utc` is set.
+/// @param time The time of day and optional date read by sentence_time().
 void apply_time(model::VesselState& state, const SentenceTime& time) {
     using namespace std::chrono;
     if (time.date) {
@@ -60,6 +97,15 @@ void apply_time(model::VesselState& state, const SentenceTime& time) {
     state.time_utc = floor<days>(state.time_utc) + time.since_midnight;
 }
 
+/// Reads a latitude, its hemisphere, a longitude and its hemisphere from four consecutive
+/// fields into the vessel position.
+///
+/// The position is updated only when both coordinates parse, so a sentence without a fix
+/// leaves the last position in place rather than moving the vessel to zero.
+///
+/// @param sentence The parsed sentence.
+/// @param first_field Zero-based index of the latitude field.
+/// @param[in,out] state The state whose `navigation.position` is set.
 void apply_position(const ParsedSentence& sentence, std::size_t first_field,
                     model::VesselState& state) {
     const auto latitude =
@@ -71,6 +117,11 @@ void apply_position(const ParsedSentence& sentence, std::size_t first_field,
     }
 }
 
+/// Assigns a decoded value when there is one.
+///
+/// @tparam T The type of the value.
+/// @param value The decoded value, `std::nullopt` when the field was empty or malformed.
+/// @param[out] target The state member to set; left unchanged when `value` is empty.
 template <typename T>
 void assign(std::optional<T> value, T& target) {
     if (value) {
@@ -78,6 +129,12 @@ void assign(std::optional<T> value, T& target) {
     }
 }
 
+/// Parses a wind speed and its unit letter into knots.
+///
+/// @param value The speed field.
+/// @param unit The unit field: `K` km/h, `M` metres per second, `S` statute miles per hour;
+///     `N` and anything else are taken as knots.
+/// @return The speed in knots, or `std::nullopt` when `value` is empty or malformed.
 std::optional<double> wind_speed_knots(std::string_view value, std::string_view unit) {
     const auto speed = parse_number_field(value);
     if (!speed) {
@@ -90,11 +147,21 @@ std::optional<double> wind_speed_knots(std::string_view value, std::string_view 
         return units::mps_to_knots(*speed);
     }
     if (unit == "S") {
-        return *speed / 1.15078;  // statute miles per hour
+        return *speed / 1.15078;  // Statute miles per hour in one knot, 1852 m / 1609.344 m.
     }
     return *speed;
 }
 
+/// Applies RMC: fix status, time and date, position, speed and course over ground, magnetic
+/// variation and the fix quality implied by the mode indicator.
+///
+/// Status `A` or `V` sets `gnss.has_fix`. Mode `D` sets a differential fix and mode `A` a
+/// GPS fix; other modes leave the quality alone.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence RMC.
 bool decode_rmc(const ParsedSentence& s, model::VesselState& state) {
     const auto status = s.field(1);
     if (status == "A" || status == "V") {
@@ -115,6 +182,18 @@ bool decode_rmc(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies GGA: time of day, position, fix quality, satellites in use, HDOP, altitude and
+/// geoid separation.
+///
+/// Quality `0` clears `gnss.has_fix` and sets model::FixQuality::Invalid, `2` sets a
+/// differential fix and any other code a GPS fix. The satellites in view are raised to at
+/// least the satellites in use. Altitude and geoid separation are taken as metres without
+/// checking their unit fields.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence GGA.
 bool decode_gga(const ParsedSentence& s, model::VesselState& state) {
     if (const auto time = sentence_time(s)) {
         apply_time(state, *time);
@@ -138,6 +217,12 @@ bool decode_gga(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies GLL: position, time of day and fix status (`A` or `V`); the mode is ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence GLL.
 bool decode_gll(const ParsedSentence& s, model::VesselState& state) {
     apply_position(s, 0, state);
     if (const auto time = sentence_time(s)) {
@@ -150,6 +235,16 @@ bool decode_gll(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies GSA: fix type, satellites in use and PDOP, HDOP and VDOP.
+///
+/// Fix type 2 (2D) or 3 (3D) sets `gnss.has_fix`, 1 clears it. The satellites in use are the
+/// number of non-empty PRN slots, applied only when at least one is filled; the satellites
+/// in view are raised to at least that number.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence GSA.
 bool decode_gsa(const ParsedSentence& s, model::VesselState& state) {
     if (const auto fix_type = parse_number_field(s.field(1))) {
         state.gnss.has_fix = *fix_type >= 2.0;
@@ -170,6 +265,12 @@ bool decode_gsa(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies GSV: the number of satellites in view; the per-satellite blocks are ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence GSV.
 bool decode_gsv(const ParsedSentence& s, model::VesselState& state) {
     if (const auto in_view = parse_number_field(s.field(2))) {
         state.gnss.satellites_in_view = static_cast<int>(*in_view);
@@ -177,12 +278,26 @@ bool decode_gsv(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies VTG: course over ground in degrees true and speed over ground in knots.
+///
+/// The magnetic course, the speed in km/h and the mode are ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence VTG.
 bool decode_vtg(const ParsedSentence& s, model::VesselState& state) {
     assign(parse_number_field(s.field(0)), state.navigation.course_over_ground_deg);
     assign(parse_number_field(s.field(4)), state.navigation.speed_over_ground_kn);
     return true;
 }
 
+/// Applies ZDA: the UTC time and date; the local zone is ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence ZDA.
 bool decode_zda(const ParsedSentence& s, model::VesselState& state) {
     if (const auto time = sentence_time(s)) {
         apply_time(state, *time);
@@ -190,6 +305,12 @@ bool decode_zda(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies HDT: the true heading, normalised to [0, 360).
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence HDT.
 bool decode_hdt(const ParsedSentence& s, model::VesselState& state) {
     if (const auto heading = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg = geo::normalize_bearing(*heading);
@@ -197,6 +318,16 @@ bool decode_hdt(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies HDG: deviation, variation and the heading.
+///
+/// Deviation and variation are applied first, positive east; the true heading is then the
+/// sensor heading plus variation plus deviation, normalised to [0, 360), using the values
+/// just read or the previous ones where those fields are empty.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence HDG.
 bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
     assign(signed_east_west(s.field(1), s.field(2)), state.navigation.magnetic_deviation_deg);
     assign(signed_east_west(s.field(3), s.field(4)), state.navigation.magnetic_variation_deg);
@@ -208,6 +339,16 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies HDM: the heading, converted to true with the variation and deviation already in
+/// the state.
+///
+/// The true heading is the sent heading plus variation plus deviation, normalised to
+/// [0, 360), the inverse of what encode_hdm() sends.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence HDM.
 bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     if (const auto magnetic = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg =
@@ -217,11 +358,27 @@ bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies ROT: the rate of turn in degrees per minute, negative to port; the status field is
+/// not checked.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence ROT.
 bool decode_rot(const ParsedSentence& s, model::VesselState& state) {
     assign(parse_number_field(s.field(0)), state.navigation.rate_of_turn_deg_per_min);
     return true;
 }
 
+/// Applies VHW: the true heading, normalised to [0, 360), and the speed through the water in
+/// knots.
+///
+/// The magnetic heading and the speed in km/h are ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence VHW.
 bool decode_vhw(const ParsedSentence& s, model::VesselState& state) {
     if (const auto heading = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg = geo::normalize_bearing(*heading);
@@ -230,6 +387,12 @@ bool decode_vhw(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies VBW: the longitudinal water speed, unless its status is `V`.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence VBW.
 bool decode_vbw(const ParsedSentence& s, model::VesselState& state) {
     // Only the water speed is taken: the ground speed is resolved onto the vessel's axes
     // and rounded, so RMC and VTG carry it more precisely.
@@ -239,12 +402,25 @@ bool decode_vbw(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies DPT: the depth below the transducer and the transducer offset, both in metres.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence DPT.
 bool decode_dpt(const ParsedSentence& s, model::VesselState& state) {
     assign(parse_number_field(s.field(0)), state.water.depth_below_transducer_m);
     assign(parse_number_field(s.field(1)), state.water.transducer_offset_m);
     return true;
 }
 
+/// Applies DBT: the depth below the transducer, from the metres field or, when that is
+/// empty, from the feet field; the fathoms field is ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence DBT.
 bool decode_dbt(const ParsedSentence& s, model::VesselState& state) {
     if (const auto metres = parse_number_field(s.field(2))) {
         state.water.depth_below_transducer_m = *metres;
@@ -254,11 +430,29 @@ bool decode_dbt(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies MTW: the water temperature, taken as degrees Celsius without checking the unit.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence MTW.
 bool decode_mtw(const ParsedSentence& s, model::VesselState& state) {
     assign(parse_number_field(s.field(0)), state.water.temperature_c);
     return true;
 }
 
+/// Applies MWV: the true or the apparent wind, depending on the reference field.
+///
+/// A sentence with status `V` is ignored. With reference `T` the angle relative to the bow
+/// is added to the current true heading to give the true wind direction, and the speed sets
+/// the true wind speed. Any other reference, normally `R`, sets the apparent wind angle,
+/// normalised to [0, 360), and speed. Speeds in km/h, metres per second and statute miles
+/// per hour are converted to knots.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence MWV.
 bool decode_mwv(const ParsedSentence& s, model::VesselState& state) {
     if (s.field(4) == "V") {
         return true;
@@ -280,6 +474,15 @@ bool decode_mwv(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies MWD: the true wind direction, normalised to [0, 360), and the true wind speed.
+///
+/// The speed is read in knots or, when that field is empty, in metres per second. The
+/// magnetic direction is ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence MWD.
 bool decode_mwd(const ParsedSentence& s, model::VesselState& state) {
     if (const auto direction = parse_number_field(s.field(0))) {
         state.wind.true_direction_deg = geo::normalize_bearing(*direction);
@@ -292,12 +495,30 @@ bool decode_mwd(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// APB and XTE repeat what RMB carries without the destination position, so they are
-/// recognised but leave the state alone.
+/// Accepts APB and XTE without changing the state.
+///
+/// Both repeat what RMB carries but without the destination position, so they are
+/// recognised, which makes apply_sentence() return true, and otherwise ignored. The sentence
+/// and the state are not used.
+///
+/// @return Always true.
+/// @see NMEA 0183, sentences APB and XTE.
 bool decode_nothing(const ParsedSentence& /*s*/, model::VesselState& /*state*/) {
     return true;
 }
 
+/// Applies RMB: the destination name and position.
+///
+/// Only a sentence with status `A` and a destination position that parses is applied. An
+/// empty name becomes `WPT`. For the same name as the current destination the origin and the
+/// arrival radius are kept; for a new destination the leg starts at the vessel's current
+/// position and the arrival radius takes its default. Cross-track error, range, bearing and
+/// closing velocity are ignored, since they follow from the positions.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence RMB.
 bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
     if (s.field(0) != "A") {
         return true;
@@ -322,6 +543,14 @@ bool decode_rmb(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Returns the engine at an index, adding engines as needed.
+///
+/// Missing engines are appended with default values and the labels `Engine 1`, `Engine 2`,
+/// and so on, numbered by their position.
+///
+/// @param[in,out] state The state whose `engines` may grow.
+/// @param index Zero-based engine index; callers keep it below 100.
+/// @return The engine, valid until `state.engines` is next resized.
 model::Engine& engine_at(model::VesselState& state, std::size_t index) {
     while (state.engines.size() <= index) {
         model::Engine engine;
@@ -331,7 +560,11 @@ model::Engine& engine_at(model::VesselState& state, std::size_t index) {
     return state.engines[index];
 }
 
-/// Index of the engine named by an XDR transducer id such as "ENGINE#1".
+/// Returns the index of the engine named by an XDR transducer id.
+///
+/// @param transducer The transducer id field, such as `ENGINE#1`.
+/// @return The number after `ENGINE#`, which counts engines from 0; or `std::nullopt` when
+///     the id has another form or the number is not one to three digits.
 std::optional<std::size_t> engine_index(std::string_view transducer) {
     constexpr std::string_view kPrefix{"ENGINE#"};
     if (!transducer.starts_with(kPrefix)) {
@@ -344,6 +577,16 @@ std::optional<std::size_t> engine_index(std::string_view transducer) {
     return static_cast<std::size_t>(digits_value(digits));
 }
 
+/// Applies RPM: the revolutions of one engine.
+///
+/// Only a sentence with source `E` (engine, not shaft), status `A` and an engine number in
+/// [1, 100] is applied. Engine `n` is `state.engines[n - 1]`, added if missing; it is running
+/// when the revolutions are above zero.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence RPM.
 bool decode_rpm(const ParsedSentence& s, model::VesselState& state) {
     if (s.field(4) != "A" || s.field(0) != "E") {
         return true;
@@ -359,6 +602,17 @@ bool decode_rpm(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies XDR: coolant temperatures and revolutions of engines.
+///
+/// The fields are read in groups of four: type, value, unit and transducer id. A group with
+/// an id `ENGINE#n`, `n` in [0, 99], sets the coolant temperature of `state.engines[n]` for
+/// type `C` with unit `C`, and its revolutions and running flag for type `T` with unit `R`;
+/// engines are added if missing. Other groups are ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence XDR.
 bool decode_xdr(const ParsedSentence& s, model::VesselState& state) {
     for (std::size_t i = 0; i + 3 < s.fields.size(); i += 4) {
         const auto index = engine_index(s.field(i + 3));
@@ -377,6 +631,13 @@ bool decode_xdr(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
+/// Applies RSA: the starboard (or single) rudder angle, positive to starboard, when its status
+/// is `A`; the port rudder is ignored.
+///
+/// @param s The parsed sentence; the talker is ignored.
+/// @param[in,out] state The state to update.
+/// @return Always true: the formatter is recognised even when no field could be used.
+/// @see NMEA 0183, sentence RSA.
 bool decode_rsa(const ParsedSentence& s, model::VesselState& state) {
     if (s.field(1) == "A") {
         assign(parse_number_field(s.field(0)), state.steering.rudder_angle_deg);

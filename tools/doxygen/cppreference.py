@@ -389,7 +389,8 @@ class Model:
         for definition in files:
             path = definition.find("location").get("file", "")
             part = part_of_path(path)
-            if part is None:
+            # `.dox` files hold namespace comments only; the namespaces have pages of their own.
+            if part is None or path.endswith(".dox"):
                 continue
             compound = Compound(definition.get("id"), "file", path, definition,
                                 f"{ROOT}/files/{path}.md", part, posixpath.basename(path), path)
@@ -539,11 +540,14 @@ class Model:
             from_page: Path of the page that contains the link.
 
         Returns:
-            A relative link, or None for an entity outside the reference.
+            A relative link, or None for an entity outside the reference and for the page's
+            own subject.
         """
         refid = self.aliases.get(refid, refid)
         if refid in self.compounds:
-            return relative_link(from_page, self.compounds[refid].page)
+            page = self.compounds[refid].page
+            # A page's mention of its own subject stays plain text.
+            return None if page == from_page else relative_link(from_page, page)
         if refid in self.members:
             member = self.members[refid]
             return relative_link(from_page, member.page, member.anchor)
