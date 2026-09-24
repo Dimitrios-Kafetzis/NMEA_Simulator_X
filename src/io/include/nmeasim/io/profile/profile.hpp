@@ -334,10 +334,13 @@ struct Profile {
     /// Missing keys take the defaults of `default_profile`, except that the outputs default to
     /// none. A value of the wrong JSON type, or a fractional number for an integer key, is
     /// mostly treated as missing; a non-array `simulation.seed.engines` gives no engines and a
-    /// non-object `simulation.seed.destination` gives none. Reading stops at the first
-    /// problem: a missing, non-positive or too new `schema_version`, an unknown simulation
-    /// mode, output type, encoding, UDP mode or sentence id, a value outside its range, a
-    /// missing required path or serial port name, or an invalid custom sentence or AIS value.
+    /// non-object `simulation.seed.destination` gives none. `simulation.random_seed`
+    /// ([0, 4294967295]) and `simulation.seed.ais.mmsi` and `imo_number` ([0, 999999999])
+    /// are the exception: a number that is negative, too large or not whole is rejected.
+    /// Reading stops at the first problem: a missing, non-positive or too new
+    /// `schema_version`, an unknown simulation mode, output type, encoding, UDP mode or
+    /// sentence id, a value outside its range, a missing required path or serial port name,
+    /// or an invalid custom sentence or AIS value.
     /// Relative track and replay paths are kept as they are; `load` resolves them.
     ///
     /// @param json The profile document.
