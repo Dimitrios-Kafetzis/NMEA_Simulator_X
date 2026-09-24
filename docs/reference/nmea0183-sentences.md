@@ -14,10 +14,11 @@ a change to the output.
 - Fields are separated by commas. Empty fields are permitted and mean *no data*.
 - The checksum is the XOR of every byte between the start delimiter and `*`, written as two
   upper-case hexadecimal digits.
-- The total length including `$`, checksum and the terminating `<CR><LF>` never exceeds
+- The total length including `$`, checksum and the terminating `<CR><LF>` is at most
   82 bytes. When a sentence would exceed this, the number of decimals in latitude and
-  longitude is reduced, one digit at a time down to two, instead of emitting a non-compliant
-  line.
+  longitude is reduced, one digit at a time down to two. Every built-in sentence fits with
+  two decimals and its default talker; a sentence that still does not fit (possible only
+  with an unusually long talker) is sent as it is rather than dropped.
 - Numbers never carry a leading `+`, never render negative zero and use a fixed number of
   decimals per field. Positions use four decimal minutes by default (0.19 m resolution).
 - Talker IDs are configurable per sentence; the tables show the defaults.
