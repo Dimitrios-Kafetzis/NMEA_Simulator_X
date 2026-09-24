@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -79,7 +80,8 @@ std::optional<double> signed_east_west(std::string_view value, std::string_view 
 ///
 /// With a date that exists, the date and time are both replaced. Without a date, or with one
 /// that does not exist, only the time of day is replaced and the date of the current
-/// `state.time_utc` is kept, even when the time of day has wrapped past midnight.
+/// `state.time_utc` is kept, unless that would move the time back by more than 12 hours:
+/// then the time of day has wrapped past midnight and the date advances by one day.
 ///
 /// @param[in,out] state The state whose `time_utc` is set.
 /// @param time The time of day and optional date read by sentence_time().
@@ -94,7 +96,13 @@ void apply_time(model::VesselState& state, const SentenceTime& time) {
             return;
         }
     }
-    state.time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    auto time_utc = floor<days>(state.time_utc) + time.since_midnight;
+    // The same rule as the log reader's: a large step back is the next day, a small one is
+    // taken as sent.
+    if (time_utc < state.time_utc - hours{12}) {
+        time_utc += days{1};
+    }
+    state.time_utc = time_utc;
 }
 
 /// Reads a latitude, its hemisphere, a longitude and its hemisphere from four consecutive

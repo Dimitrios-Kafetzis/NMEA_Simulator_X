@@ -89,5 +89,10 @@ the state as it is.
 | XDR | `C`/`C` coolant temperature and `T`/`R` revolutions for transducer ids `ENGINE#n` |
 | VDO, VDM | Passed through unchanged; the AIS payload is not decoded |
 
+The simulated UTC time follows the time fields: RMC and ZDA with a valid date set the date and
+the time, the other time fields only the time of day. A time of day more than 12 hours
+earlier than the current time is taken as the next day, so a GGA just after midnight moves
+to the new date without waiting for the next RMC or ZDA.
+
 Replayed sentences are identified by their formatter (`MWV`, not `MWV-R`) for output
 filters and the console filter.

@@ -108,15 +108,15 @@ struct SentenceTime {
 ///
 /// A time field updates `state.time_utc`: RMC and ZDA with a valid date set date and time;
 /// GGA, GLL, and RMC or ZDA without a valid date, set the time of day and keep the date of
-/// the current `state.time_utc`.
+/// the current `state.time_utc`. When keeping the date would move the time back by more than
+/// 12 hours, the time of day has wrapped past midnight and the date advances by one day, so a
+/// GGA just after midnight lands on the new date before the next RMC or ZDA arrives.
 ///
 /// @param sentence The parsed sentence to apply.
 /// @param[in,out] state The state to update; values the sentence does not carry are kept.
 /// @return True when the formatter is recognised, even if no field could be used; false for
 ///     an unknown formatter or an encapsulated (`!`) sentence, in which case `state` is
 ///     unchanged.
-/// @note The date is not advanced when a time of day wraps past midnight: until a sentence
-///     with a date arrives, a time just after midnight is placed on the previous date.
 bool apply_sentence(const ParsedSentence& sentence, model::VesselState& state);
 
 /// Parses a sentence and applies it to a vessel state in one call.
