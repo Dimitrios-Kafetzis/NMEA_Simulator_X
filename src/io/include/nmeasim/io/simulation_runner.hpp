@@ -47,14 +47,16 @@ struct OutputChannel {
     /// Entries of the output's `filter`; empty admits everything.
     ///
     /// For an NMEA 0183 channel the entries are registry or custom sentence ids, for a
-    /// Signal K channel they are path prefixes, and a ViewSync channel ignores them.
+    /// Signal K channel they are paths or leading path segments, and a ViewSync channel
+    /// ignores them. Both kinds are matched without regard to case.
     QSet<QString> filter;
-    /// Lines written to the transport since the profile was applied: sentences, Signal K
-    /// deltas or ViewSync packets.
+    /// Lines written to the transport since the profile was applied: NMEA 0183 sentences for
+    /// an NMEA 0183 channel, Signal K deltas or ViewSync packets for the others, as the
+    /// encoding decides.
     ///
     /// Counts only lines handed to an open transport, and keeps counting across stop and
     /// start.
-    qint64 sentences_sent{0};
+    qint64 lines_sent{0};
     /// Simulated time, as `core::simulation::Simulation::elapsed` counts it, at which the
     /// next state message of a Signal K or ViewSync channel is due.
     ///
@@ -70,20 +72,23 @@ struct OutputChannel {
 
     /// Returns whether the filter admits an NMEA 0183 sentence.
     ///
-    /// @param id Registry or custom sentence id, such as `RMC` or `BARO`, compared exactly
-    ///   (case-sensitive) with the filter entries.
-    /// @return True when the filter is empty or contains `id`.
-    [[nodiscard]] bool admits(const QString& id) const {
-        return filter.isEmpty() || filter.contains(id);
-    }
+    /// Ids are compared without regard to case, like the paths of `admits_path`: registry
+    /// and custom sentence ids are upper case, so an entry such as `rmc` means `RMC`.
+    ///
+    /// @param id Registry or custom sentence id, such as `RMC` or `BARO`.
+    /// @return True when the filter is empty or one of its entries equals `id`, ignoring
+    ///   case.
+    [[nodiscard]] bool admits(const QString& id) const;
     /// Returns whether the filter admits a Signal K path.
     ///
-    /// The comparison is a case-insensitive string prefix match, not aligned to the dots
-    /// between path segments: the entry `navigation.speed` also admits
-    /// `navigation.speedThroughWater`.
+    /// An entry names whole path segments: it admits the path equal to it and every path
+    /// below it, so `environment.wind` admits `environment.wind.speedApparent` and
+    /// `navigation.speed` does not admit `navigation.speedThroughWater`. A trailing dot of
+    /// an entry is ignored, an empty entry admits every path, and case is ignored.
     ///
     /// @param path Full Signal K path, such as `environment.wind.speedApparent`.
-    /// @return True when the filter is empty or `path` starts with one of its entries.
+    /// @return True when the filter is empty or one of its entries is `path` or a leading run
+    ///   of its segments.
     [[nodiscard]] bool admits_path(const QString& path) const;
     /// Returns whether this channel carries NMEA 0183 sentences.
     ///
@@ -152,8 +157,10 @@ public:
     /// fields of its sentences. The count of emitted sentences is reset to zero; a recording
     /// is kept and takes the new profile name.
     ///
-    /// Transports that later fail to open are not a profile error: they are reported through
-    /// `output_error` when the run starts.
+    /// Every transport is built once, here. A Signal K WebSocket output gets a greeting
+    /// function that builds the Signal K hello from the current state and wall clock each
+    /// time a client connects. Transports that later fail to open are not a profile error:
+    /// they are reported through `output_error` when the run starts.
     ///
     /// @param profile The profile to run; copied, so it need not outlive the call.
     /// @param[out] error Receives the reason when the profile cannot be applied: a track or
@@ -167,8 +174,7 @@ public:
     ///
     /// Does nothing before a profile has been applied or while running. Outputs that fail to
     /// open are reported through `output_error`, synchronously from this call, and skipped;
-    /// the run proceeds with the rest. Signal K WebSocket outputs get a new hello greeting
-    /// built from the current state. ViewSync counters restart at zero and every state
+    /// the run proceeds with the rest. ViewSync counters restart at zero and every state
     /// message is due at the first tick. The simulation itself continues from where it was:
     /// starting again after `stop` does not rewind it.
     ///
@@ -186,9 +192,9 @@ public:
     void resume();
     /// Stops ticking and closes every output and the recording.
     ///
-    /// Safe to call in any state. Clears the paused flag without emitting `paused_changed`.
-    /// The simulation keeps its state and the channels keep their counters. Emits `stopped`
-    /// only when the run was going.
+    /// Safe to call in any state. Clears the paused flag, emitting `paused_changed` with
+    /// `false` when the run was paused. The simulation keeps its state and the channels keep
+    /// their counters. Emits `stopped` only when the run was going, after `paused_changed`.
     void stop();
 
     /// Takes the smallest step while paused: one recorded sentence during a replay, one tick
@@ -203,8 +209,9 @@ public:
     /// Moves a finite source to a position; the state changes at once.
     ///
     /// Endless sources (the delta simulation) keep their position, but in either case every
-    /// NMEA 0183 sentence becomes due again at the next tick; the schedule of Signal K and
-    /// ViewSync messages is not changed. Nothing is sent by the seek itself. Works whether
+    /// NMEA 0183 sentence and every Signal K and ViewSync message becomes due again at the
+    /// next tick, so that receivers see the new position at once. Nothing is sent by the seek
+    /// itself. Works whether
     /// running, paused or stopped. The wall-clock reference restarts, so the time since the
     /// previous tick is not handed to the simulation. Does nothing before a profile has been
     /// applied. Emits `ticked`.
@@ -226,18 +233,20 @@ public:
     /// Records every emitted sentence to a log file, in addition to the profile outputs.
     ///
     /// The recording uses the log format of ADR 0012 and holds the plain sentences, before any
-    /// filter and without TAG block; Signal K and ViewSync messages are not recorded. Any
-    /// previous recording is closed first. The file is truncated when the recording first
-    /// opens and continued across stop and start until the recording is cleared or replaced.
-    /// While running the file opens at once; otherwise it opens at the next `start`, and only
-    /// then is a failure reported.
+    /// filter and without TAG block; Signal K and ViewSync messages are not recorded. The file
+    /// is truncated when the recording first opens and continued across stop and start until
+    /// the recording is cleared or replaced. While running the file opens at once, and the
+    /// previous recording, if any, is closed and replaced only once it has; otherwise the
+    /// recording is set at once and the file opens at the next `start`, where a failure is
+    /// reported through `output_error` and leaves the recording set.
     ///
-    /// Emits `recording_changed` with `path`, also when opening failed, and `output_error`
-    /// synchronously when the file cannot be opened.
+    /// Emits `recording_changed` with `path` when the recording was set or cleared. When the
+    /// file cannot be opened at once, emits `output_error` synchronously instead and changes
+    /// nothing.
     ///
     /// @param path Log file to record to; an empty path stops recording.
-    /// @return False when the file was opened at once and that failed; the recording then
-    ///   stays set (`is_recording` is true) in the failed state. True otherwise.
+    /// @return False when the file was opened at once and that failed; the previous recording,
+    ///   or none, then stays. True otherwise.
     /// @see docs/reference/log-format.md
     bool set_recording(const QString& path);
     /// Returns the path of the current recording.
@@ -246,8 +255,8 @@ public:
     [[nodiscard]] QString recording_path() const;
     /// Returns whether a recording is set, whether or not the run is going.
     ///
-    /// @return True from a `set_recording` call with a non-empty path until one with an empty
-    ///   path, even when the file could not be opened.
+    /// @return True from a successful `set_recording` call with a non-empty path until one
+    ///   with an empty path, also when the file failed to open at a later `start`.
     [[nodiscard]] bool is_recording() const noexcept { return recorder_ != nullptr; }
     /// Returns the log transport of the recording, for its state and counters.
     ///
@@ -288,23 +297,30 @@ public:
     /// @return The runner's copy, replaced by the next successful `apply_profile`; a
     ///   default-constructed profile before the first one.
     [[nodiscard]] const Profile& profile() const noexcept { return profile_; }
-    /// Returns the number of lines produced since the profile was applied.
+    /// Returns the number of NMEA 0183 sentences produced since the profile was applied.
     ///
     /// @return Every sentence the simulation emitted, before filtering and whether or not an
-    ///   output was open, plus every Signal K or ViewSync message sent, counted once per
-    ///   channel. Equal to the number of `sentence_emitted` signals since the profile was
-    ///   applied; kept across stop and start.
+    ///   output was open; Signal K and ViewSync messages are counted by
+    ///   `state_messages_sent`. Kept across stop and start.
     [[nodiscard]] qint64 sentences_emitted() const noexcept { return sentences_emitted_; }
+    /// Returns the number of Signal K deltas and ViewSync packets sent since the profile was
+    /// applied.
+    ///
+    /// @return The state messages sent, counted once per channel that sent one. Together
+    ///   with `sentences_emitted`, the number of `sentence_emitted` signals since the profile
+    ///   was applied. Kept across stop and start.
+    [[nodiscard]] qint64 state_messages_sent() const noexcept { return state_messages_sent_; }
 
 signals:
     /// Emitted when the outputs have been opened and ticking began, from `start` or from
     /// `step` on a runner that was not running.
     void started();
-    /// Emitted when the run is paused or resumed, from `pause`, `resume` or `step`.
+    /// Emitted when the run is paused or resumed, from `pause`, `resume` or `step`, and with
+    /// `false` when `stop` ends a paused run.
     ///
-    /// Not emitted when the flag does not change, nor when `stop` clears it.
+    /// Not emitted when the flag does not change.
     ///
-    /// @param paused True when the run was paused, false when it was resumed.
+    /// @param paused True when the run was paused, false when it was resumed or stopped.
     void paused_changed(bool paused);
     /// Emitted when a running simulation stopped and its outputs were closed, from `stop`,
     /// `apply_profile`, the destructor, or after `finished` at the end of a finite source.
@@ -336,7 +352,8 @@ signals:
     /// Emitted when the track or log reached its end and does not loop, from a tick or from
     /// `step`; `stopped` follows immediately.
     void finished();
-    /// Emitted when `set_recording` is called, whether or not the file could be opened.
+    /// Emitted when `set_recording` sets or clears the recording; not when it fails to open
+    /// the file at once.
     ///
     /// @param path The new recording path, or empty when the recording was cleared.
     void recording_changed(const QString& path);
@@ -350,8 +367,9 @@ private:
     void tick();
     /// Writes sentences to the admitting NMEA 0183 channels and to the recording.
     ///
-    /// The TAG block, where enabled, carries the simulated UTC time of the current state as
-    /// its `c:` parameter. Emits `sentence_emitted` for every sentence.
+    /// The TAG block, where enabled, is put in front of the sentence by
+    /// `core::nmea0183::prepend_tag_block` and carries the simulated UTC time of the current
+    /// state as its `c:` parameter. Emits `sentence_emitted` for every sentence.
     ///
     /// @param sentences The sentences the simulation produced, in order, without line
     ///   terminator.
@@ -367,15 +385,13 @@ private:
     /// Emits `finished` and stops the run (emitting `stopped`) when the source has reached
     /// its end.
     void finish_if_done();
-    /// Sets the Signal K hello message, built from the current state and the current wall
-    /// clock, as the greeting of every Signal K WebSocket output.
-    ///
-    /// @see https://signalk.org/specification/1.7.0/doc/streaming_api.html
-    void refresh_greetings();
     /// Restarts the wall-clock reference of the tick, so that the time before this call is
     /// never handed to the simulation.
     void restart_wall_clock();
     /// Creates the transport for an output, closed.
+    ///
+    /// The path of a file or log output is resolved with `Profile::resolve_path` of
+    /// `profile_`, so a relative path names a file next to the profile file.
     ///
     /// @param config The output to build the transport for.
     /// @return A new transport without a Qt parent; null for an output type the runner does
@@ -383,7 +399,8 @@ private:
     std::unique_ptr<Transport> make_transport(const OutputConfig& config) const;
     /// Creates the source of a profile's mode, seeded with the profile's start time.
     ///
-    /// @param profile The profile whose mode, seed, track or replay settings to use.
+    /// @param profile The profile whose mode, seed, track or replay settings to use; the
+    ///   track or log path is resolved with its `Profile::resolve_path`.
     /// @param[out] error Receives the reason when a track or log cannot be loaded; may be
     ///   null.
     /// @return The new source; null when the track or log cannot be loaded.
@@ -407,8 +424,10 @@ private:
     std::chrono::nanoseconds wall_consumed_{0};
     /// True while a running simulation is paused.
     bool paused_{false};
-    /// Lines produced since the profile was applied, as `sentences_emitted` returns.
+    /// Sentences produced since the profile was applied, as `sentences_emitted` returns.
     qint64 sentences_emitted_{0};
+    /// State messages sent since the profile was applied, as `state_messages_sent` returns.
+    qint64 state_messages_sent_{0};
 };
 
 }  // namespace nmeasim::io

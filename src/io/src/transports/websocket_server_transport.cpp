@@ -86,8 +86,8 @@ void WebSocketServerTransport::accept_connections() {
         connect(client, &QWebSocket::disconnected, this, [this, client] { drop_client(client); });
         connect(client, &QWebSocket::errorOccurred, this,
                 [this, client](QAbstractSocket::SocketError) { drop_client(client); });
-        if (!greeting_.isEmpty()) {
-            count_bytes(client->sendTextMessage(greeting_));
+        if (const QString text = greeting(); !text.isEmpty()) {
+            count_bytes(client->sendTextMessage(text));
         }
         emit client_count_changed(client_count());
     }

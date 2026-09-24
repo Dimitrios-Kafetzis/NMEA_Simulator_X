@@ -4,7 +4,9 @@
 ///
 /// The cases cover a `LineString` as an untimed track, `gx:Track` elements concatenated
 /// with their timestamps, a `MultiGeometry` whose lines are kept and whose polygon is
-/// skipped, and every reason a file is rejected.
+/// skipped, every reason a file is rejected, the name of the placemark holding the first
+/// geometry, an empty `gx:Track` that does not make a KML track, point numbers counted
+/// across the file, and altitudes that are not numbers.
 ///
 /// Fixture files, all under tests/fixtures/tracks: linestring.kml, gx_track.kml,
 /// multi_geometry.kml, and the rejected malformed.kml, no_geometry.kml, bad_coordinates.kml
@@ -81,7 +83,7 @@ TEST_CASE("malformed KML files are rejected with a reason", "[track][kml]") {
     CHECK(error.find("LineString") != std::string::npos);
 
     CHECK_FALSE(track::parse_kml(read_fixture("tracks/bad_coordinates.kml"), &error).has_value());
-    CHECK(error.find("coordinate 2") != std::string::npos);
+    CHECK(error.find("point 2") != std::string::npos);
 
     CHECK_FALSE(track::parse_kml(read_fixture("tracks/timestamped.gpx"), &error).has_value());
     CHECK(error.find("<kml>") != std::string::npos);
@@ -96,4 +98,82 @@ TEST_CASE("malformed KML files are rejected with a reason", "[track][kml]") {
                                  &error)
                     .has_value());
     CHECK(error.find("noon") != std::string::npos);
+}
+
+TEST_CASE("a KML track is named after the placemark that holds its first geometry",
+          "[track][kml]") {
+    std::string error;
+    // The named placemark before the line holds only a point, so the line's own unnamed
+    // placemark gives no name and the document name is used.
+    const auto parsed = track::parse_kml(
+        "<kml><Document><name>Passage</name>"
+        "<Placemark><name>Harbour</name><Point><coordinates>23.6,37.9</coordinates></Point>"
+        "</Placemark>"
+        "<Placemark><LineString><coordinates>23.6,37.9 23.61,37.91</coordinates></LineString>"
+        "</Placemark></Document></kml>",
+        &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->name == "Passage");
+
+    const auto named = track::parse_kml(
+        "<kml><Document><name>Passage</name>"
+        "<Placemark><name>Harbour</name><Point><coordinates>23.6,37.9</coordinates></Point>"
+        "</Placemark>"
+        "<Placemark><name>Leg</name><LineString><coordinates>23.6,37.9 23.61,37.91"
+        "</coordinates></LineString></Placemark></Document></kml>",
+        &error);
+    REQUIRE(named.has_value());
+    CHECK(named->name == "Leg");
+}
+
+TEST_CASE("a KML file is a KML track only when a gx:Track provides points", "[track][kml]") {
+    std::string error;
+    const auto parsed = track::parse_kml(
+        "<kml><Placemark><gx:Track></gx:Track><LineString><coordinates>23.6,37.9 23.61,37.91"
+        "</coordinates></LineString></Placemark></kml>",
+        &error);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->kind == track::TrackKind::KmlLineString);
+}
+
+TEST_CASE("KML errors number points across the whole file, as GPX errors do", "[track][kml]") {
+    std::string error;
+    // Two points in the first line, so the bad second tuple of the next one is point 4.
+    CHECK_FALSE(track::parse_kml("<kml><Placemark><LineString><coordinates>1,2 3,4"
+                                 "</coordinates></LineString><LineString><coordinates>5,6 x,y"
+                                 "</coordinates></LineString></Placemark></kml>",
+                                 &error)
+                    .has_value());
+    CHECK(error == "point 4: 'x,y' is not numeric");
+    CHECK_FALSE(track::parse_kml("<kml><Placemark><LineString><coordinates>1,2 3,4"
+                                 "</coordinates></LineString><LineString><coordinates>200,0"
+                                 "</coordinates></LineString></Placemark></kml>",
+                                 &error)
+                    .has_value());
+    CHECK(error == "point 3: coordinates 0, 200 are out of range");
+    CHECK_FALSE(track::parse_kml("<kml><Placemark><LineString><coordinates>1,2 3,4"
+                                 "</coordinates></LineString><LineString><coordinates>5"
+                                 "</coordinates></LineString></Placemark></kml>",
+                                 &error)
+                    .has_value());
+    CHECK(error == "point 3: expected longitude and latitude");
+    CHECK_FALSE(track::parse_kml("<kml><Placemark><LineString><coordinates>1,2 3,4"
+                                 "</coordinates></LineString><gx:Track><when>2026-09-23T10:00:00Z"
+                                 "</when><when>noon</when><gx:coord>5 6</gx:coord><gx:coord>7 8"
+                                 "</gx:coord></gx:Track></Placemark></kml>",
+                                 &error)
+                    .has_value());
+    CHECK(error == "point 4: 'noon' is not an ISO 8601 time");
+}
+
+TEST_CASE("unreadable KML altitudes are left absent", "[track][kml]") {
+    std::string error;
+    const auto parsed = track::parse_kml(
+        "<kml><Placemark><LineString><coordinates>1,2,high 3,4,5"
+        "</coordinates></LineString></Placemark></kml>",
+        &error);
+    REQUIRE(parsed.has_value());
+    REQUIRE(parsed->points.size() == 2);
+    CHECK_FALSE(parsed->points[0].elevation_m.has_value());
+    CHECK(parsed->points[1].elevation_m == Approx(5.0));
 }

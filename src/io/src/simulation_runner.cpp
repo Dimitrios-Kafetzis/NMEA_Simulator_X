@@ -24,11 +24,14 @@
 
 #include <QDateTime>
 #include <QHostAddress>
+#include <QStringView>
 
 #include <algorithm>
 #include <chrono>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace nmeasim::io {
 
@@ -60,16 +63,33 @@ core::simulation::EndBehaviour end_behaviour(bool loop) {
 
 }  // namespace
 
+bool OutputChannel::admits(const QString& id) const {
+    if (filter.isEmpty()) {
+        return true;
+    }
+    return std::any_of(filter.begin(), filter.end(), [&id](const QString& entry) {
+        return entry.compare(id, Qt::CaseInsensitive) == 0;
+    });
+}
+
 bool OutputChannel::admits_path(const QString& path) const {
     if (filter.isEmpty()) {
         return true;
     }
-    for (const auto& prefix : filter) {
-        if (path.startsWith(prefix, Qt::CaseInsensitive)) {
+    return std::any_of(filter.begin(), filter.end(), [&path](const QString& entry) {
+        QStringView prefix{entry};
+        while (prefix.endsWith(QLatin1Char('.'))) {
+            prefix.chop(1);
+        }
+        // An empty entry keeps admitting every path, as the plain prefix match it replaces
+        // did. Otherwise the prefix must end at a segment boundary of the path: at its end or
+        // at a dot.
+        if (prefix.isEmpty()) {
             return true;
         }
-    }
-    return false;
+        return path.startsWith(prefix, Qt::CaseInsensitive) &&
+               (path.size() == prefix.size() || path.at(prefix.size()) == QLatin1Char('.'));
+    });
 }
 
 SimulationRunner::SimulationRunner(QObject* parent) : QObject(parent) {
@@ -97,11 +117,13 @@ std::unique_ptr<Transport> SimulationRunner::make_transport(const OutputConfig& 
         case OutputConfig::Type::Serial:
             return std::make_unique<SerialTransport>(config.serial);
         case OutputConfig::Type::File:
-            return std::make_unique<FileTransport>(config.path, config.append);
+            return std::make_unique<FileTransport>(profile_.resolve_path(config.path),
+                                                   config.append);
         case OutputConfig::Type::Stdout:
             return std::make_unique<StdoutTransport>();
         case OutputConfig::Type::Log: {
-            auto log = std::make_unique<LogTransport>(config.path, config.append);
+            auto log =
+                std::make_unique<LogTransport>(profile_.resolve_path(config.path), config.append);
             log->set_profile_name(profile_.name);
             return log;
         }
@@ -123,7 +145,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
         }
         case SimulationMode::Track: {
             std::string reason;
-            auto track = core::track::load_track(profile.track.path.toStdString(), &reason);
+            auto track = core::track::load_track(
+                profile.resolve_path(profile.track.path).toStdString(), &reason);
             if (!track) {
                 if (error) {
                     *error = QString::fromStdString(reason);
@@ -142,7 +165,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
             std::string reason;
             core::log::LogParseOptions options;
             options.fixed_interval = std::chrono::milliseconds{profile.replay.fixed_interval_ms};
-            auto log = core::log::load_log(profile.replay.path.toStdString(), options, &reason);
+            auto log = core::log::load_log(profile.resolve_path(profile.replay.path).toStdString(),
+                                           options, &reason);
             if (!log) {
                 if (error) {
                     *error = QString::fromStdString(reason);
@@ -161,31 +185,30 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
 
 bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
     stop();
-    // Validate everything before touching the members, so that a rejected profile leaves the
+    // Build everything before replacing the members, so that a rejected profile leaves the
     // previous simulation and outputs in place.
+    auto source = make_source(profile, error);
+    if (!source) {
+        return false;
+    }
+    // make_transport reads the profile being applied from profile_; the previous one comes
+    // back if an output cannot be built.
+    Profile previous = std::exchange(profile_, profile);
+    std::vector<OutputChannel> channels;
     for (const auto& output : profile.outputs) {
-        if (output.enabled && make_transport(output) == nullptr) {
+        if (!output.enabled) {
+            continue;
+        }
+        OutputChannel channel;
+        channel.config = output;
+        channel.transport = make_transport(output);
+        if (!channel.transport) {
+            profile_ = std::move(previous);
             if (error) {
                 *error = QStringLiteral("Unsupported output type");
             }
             return false;
         }
-    }
-    auto source = make_source(profile, error);
-    if (!source) {
-        return false;
-    }
-
-    profile_ = profile;
-    simulation_ =
-        std::make_unique<core::simulation::Simulation>(std::move(source), profile.make_scheduler());
-
-    outputs_.clear();
-    for (const auto& output : profile.outputs) {
-        if (!output.enabled) {
-            continue;
-        }
-        OutputChannel channel{output, make_transport(output), {}, 0, {}, 0};
         for (const auto& id : output.filter) {
             channel.filter.insert(id);
         }
@@ -194,32 +217,35 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
                 [this, transport](const QString& message) {
                     emit output_error(transport->description(), message);
                 });
-        outputs_.push_back(std::move(channel));
+        if (output.encoding == OutputConfig::Encoding::SignalK) {
+            if (auto* websocket = dynamic_cast<WebSocketServerTransport*>(transport)) {
+                // Built when each client connects, so that its time and state are current.
+                websocket->set_greeting_function([this, options = output.signalk] {
+                    return simulation_ ? QString::fromStdString(core::signalk::encode_hello(
+                                             options, simulation_->state(),
+                                             std::chrono::system_clock::now()))
+                                       : QString{};
+                });
+            }
+        }
+        channels.push_back(std::move(channel));
     }
+
+    simulation_ =
+        std::make_unique<core::simulation::Simulation>(std::move(source), profile.make_scheduler());
+    outputs_ = std::move(channels);
     if (recorder_) {
         recorder_->set_profile_name(profile_.name);
     }
     sentences_emitted_ = 0;
+    state_messages_sent_ = 0;
     return true;
-}
-
-void SimulationRunner::refresh_greetings() {
-    for (auto& channel : outputs_) {
-        if (channel.config.encoding != OutputConfig::Encoding::SignalK) {
-            continue;
-        }
-        if (auto* websocket = dynamic_cast<WebSocketServerTransport*>(channel.transport.get())) {
-            websocket->set_greeting(QString::fromStdString(core::signalk::encode_hello(
-                channel.config.signalk, simulation_->state(), std::chrono::system_clock::now())));
-        }
-    }
 }
 
 void SimulationRunner::start() {
     if (!simulation_ || is_running()) {
         return;
     }
-    refresh_greetings();
     for (auto& channel : outputs_) {
         channel.next_due = simulation_->elapsed();
         channel.counter = 0;
@@ -257,6 +283,7 @@ void SimulationRunner::resume() {
 
 void SimulationRunner::stop() {
     const bool was_running = is_running();
+    const bool was_paused = paused_;
     tick_timer_.stop();
     paused_ = false;
     for (auto& channel : outputs_) {
@@ -264,6 +291,9 @@ void SimulationRunner::stop() {
     }
     if (recorder_) {
         recorder_->close();
+    }
+    if (was_paused) {
+        emit paused_changed(false);
     }
     if (was_running) {
         emit stopped();
@@ -290,6 +320,11 @@ void SimulationRunner::seek(std::chrono::milliseconds position) {
         return;
     }
     simulation_->seek(position);
+    // Like the sentences, whose schedule the seek resets, the state messages describe the new
+    // position at the next step rather than up to one period later.
+    for (auto& channel : outputs_) {
+        channel.next_due = simulation_->elapsed();
+    }
     restart_wall_clock();
     emit ticked();
 }
@@ -303,26 +338,31 @@ std::chrono::milliseconds SimulationRunner::position() const {
 }
 
 bool SimulationRunner::set_recording(const QString& path) {
-    if (recorder_) {
-        recorder_->close();
-        recorder_.reset();
-    }
     if (path.isEmpty()) {
+        if (recorder_) {
+            recorder_->close();
+            recorder_.reset();
+        }
         emit recording_changed({});
         return true;
     }
-    recorder_ = std::make_unique<LogTransport>(path, false);
-    recorder_->set_profile_name(profile_.name);
-    auto* transport = recorder_.get();
+    auto recorder = std::make_unique<LogTransport>(path, false);
+    recorder->set_profile_name(profile_.name);
+    auto* transport = recorder.get();
     connect(transport, &Transport::error_occurred, this, [this, transport](const QString& message) {
         emit output_error(transport->description(), message);
     });
-    bool ok = true;
-    if (is_running()) {
-        ok = recorder_->open();
+    // A file that cannot be opened is reported through output_error and changes nothing: the
+    // previous recording, if any, goes on.
+    if (is_running() && !recorder->open()) {
+        return false;
     }
+    if (recorder_) {
+        recorder_->close();
+    }
+    recorder_ = std::move(recorder);
     emit recording_changed(path);
-    return ok;
+    return true;
 }
 
 QString SimulationRunner::recording_path() const {
@@ -335,7 +375,8 @@ void SimulationRunner::emit_sentences(
         simulation_ ? simulation_->state().time_utc : std::chrono::system_clock::now();
     for (const auto& sentence : sentences) {
         const QString id = QString::fromStdString(sentence.id);
-        const QByteArray line = QByteArray::fromStdString(sentence.text + "\r\n");
+        const std::string framed = sentence.text + "\r\n";
+        const QByteArray line = QByteArray::fromStdString(framed);
         ++sentences_emitted_;
         for (auto& channel : outputs_) {
             if (!channel.carries_sentences() || !channel.transport->is_open() ||
@@ -343,13 +384,13 @@ void SimulationRunner::emit_sentences(
                 continue;
             }
             if (channel.config.tag_block.enabled) {
-                channel.transport->write(QByteArray::fromStdString(core::nmea0183::format_tag_block(
-                                             channel.config.tag_block.options, time)) +
-                                         line);
+                channel.transport->write(
+                    QByteArray::fromStdString(core::nmea0183::prepend_tag_block(
+                        framed, channel.config.tag_block.options, time)));
             } else {
                 channel.transport->write(line);
             }
-            ++channel.sentences_sent;
+            ++channel.lines_sent;
         }
         if (recorder_ && recorder_->is_open()) {
             recorder_->write(line);
@@ -387,8 +428,8 @@ void SimulationRunner::emit_state_messages() {
             ++channel.counter;
         }
         channel.transport->write(QByteArray::fromStdString(message + "\r\n"));
-        ++channel.sentences_sent;
-        ++sentences_emitted_;
+        ++channel.lines_sent;
+        ++state_messages_sent_;
         emit sentence_emitted(id, QString::fromStdString(message));
     }
 }

@@ -69,7 +69,7 @@ until the file provides one. The `variation` values are not used in those modes.
 | `wind_true_direction_deg` | number | `270` | degrees true, the direction the wind blows from |
 | `wind_true_speed_kn` | number | `12` | knots |
 | `gnss.fix` | boolean | `true` | `false` simulates a receiver without a fix |
-| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"` |
+| `gnss.quality` | string | `"gps"` | `"invalid"`, `"gps"` or `"differential"`; any other text is rejected |
 | `gnss.satellites_in_use`, `gnss.satellites_in_view` | integer | `8`, `10` | 0 to 12 |
 | `gnss.hdop`, `gnss.pdop`, `gnss.vdop` | number | `0.9`, `1.7`, `1.4` | dilution of precision |
 | `gnss.geoid_separation_m` | number | `0` | metres |
@@ -80,7 +80,7 @@ until the file provides one. The `variation` values are not used in those modes.
 ### `simulation.seed.destination`
 
 `null` (or a missing key) means no destination: APB, RMB and XTE are not sent and the Signal K
-course paths are absent. See the [simulation model](../explanation/simulation-model.md#destination).
+course paths are absent. An object without a numeric `latitude` and `longitude` is rejected. See the [simulation model](../explanation/simulation-model.md#destination).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -141,7 +141,7 @@ value. See the [simulation model](../explanation/simulation-model.md).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | `""` | GPX or KML [track file](track-files.md). Required in `track` mode. A relative path is resolved against the directory of the profile file when the profile is loaded from disk. |
+| `path` | string | `""` | GPX or KML [track file](track-files.md). Required in `track` mode. A relative path is relative to the directory of the profile file, see [paths](#paths). |
 | `speed_kn` | number | `6` | Speed along legs whose points have neither timestamps nor a recorded speed; must be positive |
 | `use_timestamps` | boolean | `true` | `false` ignores the track's timestamps and sails every leg at `speed_kn` or the recorded point speed |
 | `loop` | boolean | `false` | Start again at the first point instead of stopping at the last |
@@ -150,7 +150,7 @@ value. See the [simulation model](../explanation/simulation-model.md).
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `path` | string | `""` | [Log file](log-format.md) to replay. Required in `replay` mode; relative paths are resolved like `track.path`. |
+| `path` | string | `""` | [Log file](log-format.md) to replay. Required in `replay` mode; a relative path is relative to the directory of the profile file. |
 | `loop` | boolean | `false` | Start again at the first entry instead of stopping at the last |
 | `fixed_interval_ms` | integer | `100` | Spacing of the entries when the log has no time information at all, 1 to 60000 |
 
@@ -169,8 +169,9 @@ value. See the [simulation model](../explanation/simulation-model.md).
 | `settings` | object | `{}` | Per-sentence overrides keyed by registry id |
 | `custom` | array | `[]` | Sentences typed in by the operator, see below |
 
-Each entry of `settings` may contain `enabled` (boolean), `talker` (two characters, empty for
-the default) and `period_ms` (integer). Ids and defaults are listed by `nmeasim sentences`
+Each entry of `settings` may contain `enabled` (boolean), `talker` (two upper-case letters
+such as `GN`, empty for the default) and `period_ms` (integer, 50 to 3600000). A talker or
+period outside these is rejected when the profile is loaded. Ids and defaults are listed by `nmeasim sentences`
 and on the [sentence reference](nmea0183-sentences.md).
 
 ```json
@@ -189,7 +190,7 @@ Each entry is one [custom sentence](nmea0183-sentences.md#custom-sentences):
 
 | Key | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `id` | string | `""` | Identifier for filters and the console, upper-cased; empty gives `CUSTOM-n`; must not be a registry id |
+| `id` | string | `""` | Identifier for filters and the console, upper-cased; empty gives `CUSTOM-n`, `n` being the entry's 1-based position; must not be a registry id nor the id of another entry, including the `CUSTOM-n` of an entry without id |
 | `body` | string | required | The sentence without checksum, for example `$PXYZ,1,2,3`; validated when the profile is loaded |
 | `period_ms` | integer | `1000` | Emission period, 50 to 3600000 |
 | `enabled` | boolean | `true` | |
@@ -209,8 +210,8 @@ decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.m
 
 | `encoding` | Carries | `filter` matches | Extra keys |
 | --- | --- | --- | --- |
-| `nmea0183` (default) | The sentences the simulation emits | Registry ids and custom sentence ids; empty sends everything | `tag_block` |
-| `signalk` | One [Signal K delta](signalk.md) built from the state every `period_ms` | Path prefixes such as `navigation` or `environment.wind`; empty sends every path | `period_ms`, `signalk` |
+| `nmea0183` (default) | The sentences the simulation emits | Registry ids and custom sentence ids, ignoring case; empty sends everything | `tag_block` |
+| `signalk` | One [Signal K delta](signalk.md) built from the state every `period_ms` | Paths or leading path segments such as `navigation` or `environment.wind`, ignoring case; empty sends every path | `period_ms`, `signalk` |
 | `viewsync` | One [ViewSync packet](viewsync.md) built from the state every `period_ms` | not used | `period_ms`, `viewsync` |
 
 | Key | Type | Default | Meaning |
@@ -225,17 +226,19 @@ decides what the output carries ([ADR 0014](../adr/0014-multi-encoding-outputs.m
 | `viewsync.camera_altitude_m` | number | `500` | Camera height above the vessel |
 | `viewsync.tilt_deg` | number | `60` | Camera tilt |
 | `viewsync.roll_deg` | number | `0` | Camera roll |
-| `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon` |
+| `viewsync.planet` | string | `""` | Empty for Earth, or `sky`, `mars`, `moon`; commas, control characters and non-ASCII bytes are removed when it is sent |
 
-The other keys depend on the type.
+The other keys depend on the type. Each type reads and checks only its own keys, so a key of
+another type is ignored; a value outside the range given below, or a name that is not listed,
+is rejected when the profile is loaded.
 
 | `type` | Keys |
 | --- | --- |
-| `tcp-server` | `bind_address` (default `0.0.0.0`), `port` (default `10110`) |
-| `tcp-client` | `host` (default `127.0.0.1`), `port`, `reconnect_ms` (default `2000`) |
-| `udp` | `mode` (`unicast`, `broadcast`, `multicast`), `address`, `port`, `interface`, `multicast_ttl` |
+| `tcp-server` | `bind_address` (default `0.0.0.0`), `port` (default `10110`, 0 to 65535) |
+| `tcp-client` | `host` (default `127.0.0.1`), `port`, `reconnect_ms` (default `2000`, 1 to 3600000) |
+| `udp` | `mode` (`unicast` (default), `broadcast`, `multicast`), `address`, `port`, `interface`, `multicast_ttl` (default `1`, 1 to 255) |
 | `websocket-server` | `bind_address`, `port` |
-| `serial` | `port_name` (required), `baud_rate` (default `4800`), `data_bits` (5 to 8), `parity` (`none`, `even`, `odd`, `mark`, `space`), `stop_bits` (`1`, `1.5`, `2`), `flow_control` (`none`, `hardware`, `software`) |
+| `serial` | `port_name` (required), `baud_rate` (default `4800`, positive), `data_bits` (5 to 8, default `8`), `parity` (`none` (default), `even`, `odd`, `mark`, `space`), `stop_bits` (`"1"` (default), `"1.5"`, `"2"`, as strings), `flow_control` (`none` (default), `hardware`, `software`) |
 | `file` | `path` (required), `append` (default `true`) |
 | `log` | `path` (required), `append` (default `true`); a timestamped recording in the [log format](log-format.md) |
 | `stdout` | none |
@@ -250,4 +253,16 @@ The other keys depend on the type.
 ]
 ```
 
-Behaviour of each transport is described on the [transports reference](transports.md).
+Behaviour of each transport is described on the [transports reference](transports.md). A
+relative `path` of a `file` or `log` output is relative to the directory of the profile file,
+see [paths](#paths).
+
+## Paths
+
+`simulation.track.path`, `simulation.replay.path` and the `path` of `file` and `log` outputs
+may be absolute or relative. A relative path is relative to the directory that holds the
+profile file, so a profile and the files it names can be moved together; it is resolved when
+the profile is run, not when it is loaded. Saving a profile writes the paths as
+they were written; saving it into another directory (*Save profile as...*) rewrites the
+relative paths so that they still name the same files. Paths given on the command line
+(`--track`, `--replay`, `--file`, `--record`) are relative to the working directory.

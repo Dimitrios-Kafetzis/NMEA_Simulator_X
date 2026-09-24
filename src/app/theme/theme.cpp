@@ -213,10 +213,10 @@ Mode mode_from_string(const QString& text) {
     return Mode::Night;
 }
 
-const Colors& colors_for(Mode resolved) {
+const Colors& colors_for(Mode mode) {
     static const Colors night = night_colors();
     static const Colors day = day_colors();
-    return resolved == Mode::Day ? day : night;
+    return Theme::resolve(mode) == Mode::Day ? day : night;
 }
 
 QString style_sheet(const Colors& colors) {
@@ -271,16 +271,24 @@ Mode Theme::resolve(Mode mode) {
 }
 
 void Theme::apply(Mode mode) {
+    const Mode resolved = resolve(mode);
     mode_ = mode;
-    resolved_ = resolve(mode);
+    if (applied_ && resolved == resolved_) {
+        // The look in use already: installing it again would re-polish every widget.
+        return;
+    }
+    // Fusion is platform-independent and honours the palette, which native styles partly
+    // ignore, so both looks render alike on Windows, macOS and Linux. It is installed once:
+    // the application takes ownership of it, and a later style sheet only wraps it.
+    if (!applied_) {
+        if (auto* fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
+            QApplication::setStyle(fusion);
+        }
+    }
+    resolved_ = resolved;
+    applied_ = true;
     const Colors& c = colors_for(resolved_);
 
-    // Fusion is platform-independent and honours the palette, which native styles partly
-    // ignore, so both looks render alike on Windows, macOS and Linux. The application takes
-    // ownership of the style and deletes the previous one.
-    if (auto* fusion = QStyleFactory::create(QStringLiteral("Fusion"))) {
-        QApplication::setStyle(fusion);
-    }
     QPalette palette;
     palette.setColor(QPalette::Window, c.window);
     palette.setColor(QPalette::WindowText, c.text);

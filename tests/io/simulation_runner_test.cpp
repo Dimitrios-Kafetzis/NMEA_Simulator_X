@@ -5,8 +5,9 @@
 ///
 /// Covers applying a profile, starting, pausing, resuming, stepping, seeking and stopping in
 /// the delta, track and replay modes; output filters and disabled outputs; a failing output
-/// that does not stop the run; the profile start time; recording to a log; and the Signal K,
-/// ViewSync and TAG block encodings together with custom sentences.
+/// that does not stop the run; the profile start time; the relative paths of a loaded
+/// profile; recording to a log; and the Signal K, ViewSync and TAG block encodings together
+/// with custom sentences.
 ///
 /// Fixtures read from `tests/fixtures/`: `tracks/timestamped.gpx` (five timed points over
 /// 12 min 0.5 s), `tracks/malformed.gpx`, `logs/plain.nmea` (four rounds of eight sentences,
@@ -25,7 +26,9 @@
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
 #include <nmeasim/io/transports/websocket_server_transport.hpp>
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -167,9 +170,9 @@ TEST_CASE("the runner streams filtered sentences to its outputs", "[io][runner][
         CHECK(nmeasim::core::nmea0183::verify_checksum(line.toStdString()));
     }
     CHECK(runner.sentences_emitted() >= all_lines.size());
-    CHECK(emitted.count() == runner.sentences_emitted());
-    CHECK(runner.outputs()[0].sentences_sent >= all_lines.size());
-    CHECK(runner.outputs()[1].sentences_sent < runner.outputs()[0].sentences_sent);
+    CHECK(emitted.count() == runner.sentences_emitted() + runner.state_messages_sent());
+    CHECK(runner.outputs()[0].lines_sent >= all_lines.size());
+    CHECK(runner.outputs()[1].lines_sent < runner.outputs()[0].lines_sent);
 }
 
 TEST_CASE("pausing stops emission and resuming continues it", "[io][runner][integration]") {
@@ -201,9 +204,19 @@ TEST_CASE("pausing stops emission and resuming continues it", "[io][runner][inte
     // One emission for the pause and one for the resumption.
     CHECK(paused.count() == 2);
 
+    // Stopping a paused run clears the flag and says so.
+    runner.pause();
+    REQUIRE(paused.count() == 3);
     QSignalSpy stopped(&runner, &SimulationRunner::stopped);
     runner.stop();
     CHECK(stopped.count() == 1);
+    CHECK_FALSE(runner.is_paused());
+    REQUIRE(paused.count() == 4);
+    CHECK_FALSE(paused.last().at(0).toBool());
+    // Stopping a run that is not paused emits nothing.
+    runner.start();
+    runner.stop();
+    CHECK(paused.count() == 4);
     CHECK(runner.outputs().front().transport->state() == nmeasim::io::Transport::State::Closed);
 }
 
@@ -235,6 +248,54 @@ TEST_CASE("a failing output is reported and the run continues on the others",
     runner.stop();
 }
 
+TEST_CASE("sentences and state messages are counted apart", "[io][runner]") {
+    Profile profile = fast_profile();
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig nmea;
+    nmea.type = OutputConfig::Type::File;
+    nmea.path = directory.filePath(QStringLiteral("sentences.nmea"));
+    profile.outputs.append(nmea);
+    OutputConfig signalk = nmea;
+    signalk.path = directory.filePath(QStringLiteral("signalk.jsonl"));
+    signalk.encoding = OutputConfig::Encoding::SignalK;
+    profile.outputs.append(signalk);
+    OutputConfig viewsync = nmea;
+    viewsync.path = directory.filePath(QStringLiteral("viewsync.txt"));
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    profile.outputs.append(viewsync);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    runner.step();
+    runner.stop();
+    qint64 sentences = 0;
+    qint64 messages = 0;
+    for (const auto& call : emitted) {
+        const auto id = call.at(0).toString();
+        if (id == QStringLiteral("SIGNALK") || id == QStringLiteral("VIEWSYNC")) {
+            ++messages;
+        } else {
+            ++sentences;
+        }
+    }
+    // The first step sends every due sentence, one Signal K delta and one ViewSync packet.
+    REQUIRE(sentences > 0);
+    CHECK(messages == 2);
+    CHECK(runner.sentences_emitted() == sentences);
+    CHECK(runner.state_messages_sent() == messages);
+    CHECK(runner.outputs()[0].lines_sent == sentences);
+    CHECK(runner.outputs()[1].lines_sent == 1);
+    CHECK(runner.outputs()[2].lines_sent == 1);
+
+    // Applying a profile starts both counts again.
+    REQUIRE(runner.apply_profile(profile, &error));
+    CHECK(runner.sentences_emitted() == 0);
+    CHECK(runner.state_messages_sent() == 0);
+}
+
 TEST_CASE("the simulated clock starts from the profile start time", "[io][runner]") {
     Profile profile = fast_profile();
     profile.start_time = QDateTime(QDate(2026, 9, 22), QTime(12, 34, 56), QTimeZone::utc());
@@ -244,6 +305,83 @@ TEST_CASE("the simulated clock starts from the profile start time", "[io][runner
     const auto expected = std::chrono::system_clock::time_point{
         std::chrono::milliseconds{profile.start_time->toMSecsSinceEpoch()}};
     CHECK(runner.simulation()->state().time_utc == expected);
+}
+
+TEST_CASE("a TAG block goes in front of each sentence byte for byte", "[io][runner][integration]") {
+    Profile profile = fast_profile();
+    profile.start_time = QDateTime(QDate(2026, 9, 22), QTime(12, 34, 56), QTimeZone::utc());
+    OutputConfig tagged;
+    tagged.type = OutputConfig::Type::TcpServer;
+    // Port 0 lets the operating system pick a free port.
+    tagged.port = 0;
+    tagged.bind_address = QStringLiteral("127.0.0.1");
+    tagged.filter = {QStringLiteral("RMC")};
+    tagged.tag_block.enabled = true;
+    tagged.tag_block.options.source = "GP0001";
+    tagged.tag_block.options.milliseconds = true;
+    profile.outputs.append(tagged);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    runner.start();
+    runner.pause();
+    const auto* server =
+        dynamic_cast<const nmeasim::io::TcpServerTransport*>(runner.outputs()[0].transport.get());
+    REQUIRE(server != nullptr);
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, server->port());
+    REQUIRE(wait_until([&] { return server->client_count() == 1; }));
+
+    QSignalSpy emitted(&runner, &SimulationRunner::sentence_emitted);
+    runner.step();
+    QString rmc;
+    for (const auto& call : emitted) {
+        if (call.at(0).toString() == QStringLiteral("RMC")) {
+            rmc = call.at(1).toString();
+        }
+    }
+    REQUIRE_FALSE(rmc.isEmpty());
+    REQUIRE(wait_until([&] { return client.bytesAvailable() > 0; }));
+    runner.stop();
+    // The step of one 20 ms tick puts the sentence at 12:34:56.020 UTC, Unix time
+    // 1790080496020 ms; 14 is the XOR of the characters of `s:GP0001,c:1790080496020`, both
+    // computed in Python.
+    CHECK(client.readAll() ==
+          QByteArray("\\s:GP0001,c:1790080496020*14\\") + rmc.toLatin1() + QByteArray("\r\n"));
+}
+
+TEST_CASE("a loaded profile finds its track and writes its files next to the profile file",
+          "[io][runner][track]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    Profile profile = fast_profile();
+    profile.mode = SimulationMode::Track;
+    // Relative to the directory of the profile file, not to the working directory.
+    profile.track.path = QDir(directory.path()).relativeFilePath(fixture("tracks/timestamped.gpx"));
+    OutputConfig file;
+    file.type = OutputConfig::Type::File;
+    file.path = QStringLiteral("sentences.nmea");
+    profile.outputs.append(file);
+    OutputConfig log = file;
+    log.type = OutputConfig::Type::Log;
+    log.path = QStringLiteral("record.log");
+    profile.outputs.append(log);
+    const QString path = directory.filePath(QStringLiteral("profile.json"));
+    QString error;
+    REQUIRE(profile.save(path, &error));
+    const auto loaded = Profile::load(path, &error);
+    REQUIRE(loaded.has_value());
+
+    SimulationRunner runner;
+    REQUIRE(runner.apply_profile(*loaded, &error));
+    CHECK(runner.duration() == 12min + 500ms);
+    runner.step();
+    runner.stop();
+    CHECK(QFileInfo(directory.filePath(QStringLiteral("sentences.nmea"))).size() > 0);
+    CHECK(QFileInfo(directory.filePath(QStringLiteral("record.log"))).size() > 0);
+    CHECK(runner.outputs()[0].transport->description() ==
+          QStringLiteral("File %1").arg(directory.filePath(QStringLiteral("sentences.nmea"))));
 }
 
 TEST_CASE("a track profile drives a track source and ends the run at the last point",
@@ -305,6 +443,9 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     Profile profile = fast_profile();
     profile.mode = SimulationMode::Replay;
     profile.replay.path = fixture("logs/plain.nmea");
+    // The log was recorded from the default seed, so every value in it equals the seed. A
+    // seed speed the log does not contain tells a decoded RMC apart from the seed.
+    profile.delta.seed.navigation.speed_over_ground_kn = 3.0;
     QTemporaryDir directory;
     REQUIRE(directory.isValid());
     OutputConfig file;
@@ -338,7 +479,7 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     runner.step();
     CHECK(emitted.count() == 2);
     CHECK(emitted.last().at(0).toString() == QStringLiteral("GGA"));
-    // The log's RMC sentences report 6.5 kn.
+    // The log's RMC sentences report 6.5 kn, not the seed's 3.0 kn.
     CHECK(runner.simulation()->state().navigation.speed_over_ground_kn == Catch::Approx(6.5));
 
     // Seeking skips the rest of the first round; resuming plays the remaining three rounds.
@@ -372,6 +513,32 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     CHECK(error.contains(QStringLiteral("No valid NMEA sentence")));
 }
 
+TEST_CASE("output filters match whole Signal K path segments and ignore case",
+          "[io][runner][signalk]") {
+    nmeasim::io::OutputChannel channel;
+    CHECK(channel.admits(QStringLiteral("RMC")));
+    CHECK(channel.admits_path(QStringLiteral("navigation.speedOverGround")));
+
+    channel.filter = {QStringLiteral("navigation.speed"), QStringLiteral("Environment.Wind."),
+                      QStringLiteral("rmc"), QStringLiteral("BARO")};
+    // A path entry names whole segments: it admits itself and the paths below it, not a path
+    // that merely starts with the same letters.
+    CHECK(channel.admits_path(QStringLiteral("navigation.speed")));
+    CHECK(channel.admits_path(QStringLiteral("navigation.speed.overGround")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation.speedThroughWater")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation.speedOverGround")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation")));
+    // Case is ignored, and a trailing dot is allowed.
+    CHECK(channel.admits_path(QStringLiteral("environment.wind.speedApparent")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("environment.windy")));
+    // Sentence ids are matched without regard to case too.
+    CHECK(channel.admits(QStringLiteral("RMC")));
+    CHECK(channel.admits(QStringLiteral("BARO")));
+    CHECK(channel.admits(QStringLiteral("baro")));
+    CHECK_FALSE(channel.admits(QStringLiteral("GGA")));
+    CHECK_FALSE(channel.admits(QStringLiteral("RMCX")));
+}
+
 TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored", "[io][runner]") {
     Profile profile = fast_profile();
     SimulationRunner runner;
@@ -390,6 +557,36 @@ TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored",
     CHECK(runner.simulation()->state().time_utc - start == 40ms);
     runner.stop();
     CHECK_FALSE(runner.is_paused());
+}
+
+TEST_CASE("seeking makes the Signal K and ViewSync messages due at the next step", "[io][runner]") {
+    Profile profile = fast_profile();
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig signalk;
+    signalk.type = OutputConfig::Type::File;
+    signalk.path = directory.filePath(QStringLiteral("signalk.jsonl"));
+    signalk.encoding = OutputConfig::Encoding::SignalK;
+    // A period far longer than the steps below, so that only a seek makes a message due.
+    signalk.period_ms = 60'000;
+    profile.outputs.append(signalk);
+    OutputConfig viewsync = signalk;
+    viewsync.path = directory.filePath(QStringLiteral("viewsync.txt"));
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    profile.outputs.append(viewsync);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    runner.step();
+    runner.step();
+    CHECK(read_sentences(signalk.path).size() == 1);
+    CHECK(read_sentences(viewsync.path).size() == 1);
+    runner.seek(0ms);
+    runner.step();
+    CHECK(read_sentences(signalk.path).size() == 2);
+    CHECK(read_sentences(viewsync.path).size() == 2);
+    runner.stop();
 }
 
 TEST_CASE("recording writes every emitted sentence to a log next to the outputs",
@@ -443,11 +640,22 @@ TEST_CASE("recording writes every emitted sentence to a log next to the outputs"
     CHECK(recording.count() == 2);
     CHECK(recording.last().at(0).toString().isEmpty());
 
-    // An unwritable path is reported, and the run still works.
+    // An unwritable path is reported, sets no recording and leaves a running recording alone;
+    // the run still works.
     QSignalSpy errors(&runner, &SimulationRunner::output_error);
     runner.start();
     CHECK_FALSE(runner.set_recording(directory.filePath(QStringLiteral("no/such/dir/x.log"))));
     CHECK(errors.count() == 1);
+    CHECK_FALSE(runner.is_recording());
+    CHECK(recording.count() == 2);
+    const QString second = directory.filePath(QStringLiteral("second.log"));
+    REQUIRE(runner.set_recording(second));
+    CHECK(recording.count() == 3);
+    CHECK_FALSE(runner.set_recording(directory.filePath(QStringLiteral("no/such/dir/x.log"))));
+    CHECK(errors.count() == 2);
+    CHECK(runner.recording_path() == second);
+    CHECK(runner.recorder()->is_open());
+    CHECK(recording.count() == 3);
     CHECK(runner.is_running());
     runner.stop();
 }
@@ -489,6 +697,9 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     CHECK(server->greeting().contains(
         QStringLiteral("\"self\":\"aircraft.urn:mrn:signalk:uuid:test\"")));
 
+    // The hello is built when the client connects, not when the run started.
+    wait_until([] { return false; }, 300);
+    const auto connecting = QDateTime::currentDateTimeUtc();
     QWebSocket client;
     QStringList received;
     QObject::connect(&client, &QWebSocket::textMessageReceived, &client,
@@ -497,7 +708,14 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     // The greeting followed by at least three deltas.
     REQUIRE(wait_until([&] { return received.size() >= 4; }, 5000));
     runner.stop();
-    CHECK(received.first() == server->greeting());
+    const auto hello = QJsonDocument::fromJson(received.first().toUtf8()).object();
+    CHECK(hello.value(QStringLiteral("name")).toString() == QStringLiteral("NMEASimulatorX"));
+    CHECK(hello.value(QStringLiteral("self")).toString() ==
+          QStringLiteral("aircraft.urn:mrn:signalk:uuid:test"));
+    const auto hello_time = QDateTime::fromString(
+        hello.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
+    REQUIRE(hello_time.isValid());
+    CHECK(hello_time >= connecting);
     const auto delta = QJsonDocument::fromJson(received.at(1).toUtf8());
     REQUIRE(delta.isObject());
     CHECK(delta.object().value(QStringLiteral("context")).toString() ==
@@ -531,7 +749,7 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
         signalk_seen = signalk_seen || call.at(0).toString() == QStringLiteral("SIGNALK");
     }
     CHECK(signalk_seen);
-    CHECK(runner.outputs()[1].sentences_sent == static_cast<qint64>(lines.size()));
+    CHECK(runner.outputs()[1].lines_sent == static_cast<qint64>(lines.size()));
 }
 
 TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
@@ -559,7 +777,7 @@ TEST_CASE("ViewSync, TAG blocks and custom sentences reach the outputs",
     QString error;
     REQUIRE(runner.apply_profile(profile, &error));
     runner.start();
-    REQUIRE(wait_until([&] { return runner.outputs()[0].sentences_sent >= 3; }, 5000));
+    REQUIRE(wait_until([&] { return runner.outputs()[0].lines_sent >= 3; }, 5000));
     runner.stop();
 
     const auto packets = read_sentences(viewsync.path);

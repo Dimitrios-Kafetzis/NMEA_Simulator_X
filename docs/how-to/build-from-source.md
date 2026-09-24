@@ -8,7 +8,7 @@
 | CMake | 3.25 or newer | Presets are used throughout |
 | Ninja | any recent | Optional on Windows if you use the Visual Studio preset |
 | vcpkg | current `master` | Provides GeographicLib, pugixml, CLI11 and Catch2 through `vcpkg.json` |
-| Qt | 6.10.3 | Modules: Core, Gui, Widgets, Network, SerialPort, WebSockets |
+| Qt | 6.10.3 | Modules: Core, Gui, Widgets, Network, SerialPort, WebSockets; CI pins the version in `.github/versions.env` |
 | Python | 3.10+ | Only for `clang-format` and the documentation site |
 
 Two environment variables tell the presets where the toolchain lives:

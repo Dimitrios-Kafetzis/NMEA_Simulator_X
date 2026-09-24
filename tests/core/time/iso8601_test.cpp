@@ -4,8 +4,8 @@
 ///
 /// The cases cover the accepted variants (fractions, missing seconds or time, space
 /// separator, surrounding white space, UTC offsets in three spellings, a leap day), the
-/// rejected texts, and formatting with milliseconds and its round trip. No fixture file is
-/// read.
+/// rejected texts, hour 24 as the end of the day, and formatting with milliseconds and its round
+/// trip. No fixture file is read.
 
 #include <nmeasim/core/time/iso8601.hpp>
 
@@ -60,6 +60,21 @@ TEST_CASE("invalid ISO 8601 text is rejected", "[time]") {
                              "2026-09-23T25:00:00Z", "2026-09-23T10:61:00Z", "2026-09-23X10:00:00Z",
                              "2026-09-23T10:00:00.Z", "2026-09-23T10:00:00+25:00",
                              "2026-09-23T10:00:00Zjunk", "26-09-23T10:00:00Z", "2026-9-23"}) {
+        INFO(text);
+        CHECK_FALSE(iso::parse_iso8601(text).has_value());
+    }
+}
+
+TEST_CASE("hour 24 is only the exact end of the day", "[time]") {
+    // 24:00, 24:00:00 and a fraction of zeros are the midnight that ends the day.
+    CHECK(iso::parse_iso8601("2026-09-23T24:00Z") == at(2026, 9, 24, 0, 0, 0));
+    CHECK(iso::parse_iso8601("2026-09-23T24:00:00Z") == at(2026, 9, 24, 0, 0, 0));
+    CHECK(iso::parse_iso8601("2026-09-23T24:00:00.000Z") == at(2026, 9, 24, 0, 0, 0));
+    CHECK(iso::parse_iso8601("2026-09-23T24:00:00,0") == at(2026, 9, 24, 0, 0, 0));
+    // Any time after it, even below the millisecond that is kept, does not exist.
+    for (const char* text :
+         {"2026-09-23T24:00:00.500Z", "2026-09-23T24:00:00.001Z", "2026-09-23T24:00:00.0001Z",
+          "2026-09-23T24:00:01Z", "2026-09-23T24:01Z"}) {
         INFO(text);
         CHECK_FALSE(iso::parse_iso8601(text).has_value());
     }

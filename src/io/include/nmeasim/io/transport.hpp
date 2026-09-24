@@ -25,8 +25,8 @@ namespace nmeasim::io {
 /// `State::Open` and back to `State::Closed`, or to `State::Failed` when opening fails or the
 /// device goes away. Only an open transport delivers what `write` is given; every
 /// implementation silently drops lines in any other state. Transports send the payload as
-/// given, except `FileTransport`, which writes in text mode and so translates line endings on
-/// Windows.
+/// given, byte for byte, except `LogTransport`, which records each line with a timestamp in
+/// front and a single line feed at the end.
 ///
 /// Implementations use Qt sockets, devices and timers, so a transport is used from the thread
 /// that created it, and that thread runs a Qt event loop: asynchronous events (a client

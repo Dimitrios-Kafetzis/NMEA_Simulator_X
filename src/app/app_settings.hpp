@@ -14,6 +14,8 @@
 #include <QSettings>
 #include <QString>
 
+#include <optional>
+
 namespace nmeasim::app {
 
 /// Persistent application preferences (not the simulation profile), stored with `QSettings`
@@ -31,7 +33,9 @@ namespace nmeasim::app {
 /// | `simulation/autostart` | `autostart`, `set_autostart` | `false` |
 /// | `map/online` | `map_online`, `set_map_online` | `true` |
 /// | `map/tile_url` | `map_tile_url`, `set_map_tile_url` | empty |
+/// | `map/tile_attribution` | `map_tile_attribution`, `set_map_tile_attribution` | unset |
 /// | `map/zoom` | `map_zoom`, `set_map_zoom` | `12` |
+/// | `map/cache_directory` | `map_cache_directory`, `set_map_cache_directory` | empty |
 /// | `appearance/theme` | `theme`, `set_theme` | `night` |
 ///
 /// The store is chosen by `QSettings` from the organisation and application names that
@@ -106,6 +110,20 @@ public:
     /// @param url A URL with `{z}`, `{x}` and `{y}` placeholders; empty returns to the
     ///   OpenStreetMap server at the next start.
     void set_map_tile_url(const QString& url);
+    /// Returns the attribution the map draws for the tile server (key `map/tile_attribution`).
+    ///
+    /// The application has no control for this key; it is edited in the settings store,
+    /// usually together with `map/tile_url`.
+    ///
+    /// @return The stored text, empty to draw no attribution; `std::nullopt` when the key was
+    ///   never set, in which case the map credits OpenStreetMap for the OpenStreetMap tile
+    ///   servers and draws nothing for any other server (see `map::default_attribution`).
+    [[nodiscard]] std::optional<QString> map_tile_attribution() const;
+    /// Stores the attribution the map draws for the tile server (key `map/tile_attribution`).
+    ///
+    /// @param attribution Text to draw, empty to draw none; `std::nullopt` removes the key, so
+    ///   that the map returns to its default at the next start.
+    void set_map_tile_attribution(const std::optional<QString>& attribution);
     /// Returns the map zoom level of the last session (key `map/zoom`).
     ///
     /// @return A whole slippy map zoom level as stored, not checked here; 12 when it was never
@@ -115,6 +133,22 @@ public:
     ///
     /// @param zoom A whole slippy map zoom level, stored unchecked.
     void set_map_zoom(int zoom);
+    /// Returns the directory chosen for the map tile cache (key `map/cache_directory`).
+    ///
+    /// The application has no control for this key; it is edited in the settings store. The
+    /// tests set it to a temporary directory.
+    ///
+    /// @return The directory as stored, under which `tile_cache_directory` keeps its `tiles`
+    ///   sub-directory; empty when it was never set, in which case the platform's cache
+    ///   directory is used.
+    [[nodiscard]] QString map_cache_directory() const;
+    /// Stores the directory for the map tile cache (key `map/cache_directory`).
+    ///
+    /// Takes effect at the next start, when `MainWindow` opens the tile cache.
+    ///
+    /// @param directory An existing or creatable directory, stored unchecked; empty returns
+    ///   to the platform's cache directory.
+    void set_map_cache_directory(const QString& directory);
 
     /// Returns the look chosen under *View → Theme* (key `appearance/theme`).
     ///
@@ -135,10 +169,15 @@ public:
     [[nodiscard]] static QString profiles_directory();
     /// Returns the directory where downloaded map tiles are kept, creating it when missing.
     ///
-    /// @return The `tiles` sub-directory of the application's cache directory
-    ///   (`QStandardPaths::CacheLocation`), on Linux
-    ///   `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles`. A failure to create it is ignored;
-    ///   the path is returned anyway.
+    /// Reads `map/cache_directory` from the settings store of the application and
+    /// organisation names set at the time of the call.
+    ///
+    /// @return The `tiles` sub-directory of `map/cache_directory` when that key is set, else
+    ///   of the application's cache directory (`QStandardPaths::CacheLocation`), on Linux
+    ///   `~/.cache/NMEASimulatorX/NMEASimulatorX/tiles`. The `tiles` level keeps
+    ///   *Clear map tile cache*, which deletes this directory, away from the other contents
+    ///   of a chosen directory. A failure to create it is ignored; the path is returned
+    ///   anyway.
     [[nodiscard]] static QString tile_cache_directory();
 
 private:

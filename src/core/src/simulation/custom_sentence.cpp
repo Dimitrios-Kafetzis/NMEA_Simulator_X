@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <string>
 
 namespace nmeasim::core::simulation {
@@ -98,7 +99,7 @@ Normalised normalise(std::string_view text) {
     result.body = std::string{text};
     // Framing adds four characters: the start delimiter, the `*` and the two checksum digits.
     if (result.body.size() + 4 > nmea0183::kMaxSentenceLengthWithoutTerminator) {
-        result.error = "The sentence exceeds 82 characters with its checksum";
+        result.error = "The sentence exceeds 80 characters with its checksum";
         return result;
     }
     return result;
@@ -116,6 +117,20 @@ std::optional<std::string> frame_custom_sentence(std::string_view body) {
         return std::nullopt;
     }
     return nmea0183::append_checksum(std::string{normalised.delimiter} + normalised.body);
+}
+
+std::string effective_custom_id(const CustomSentence& sentence, std::size_t index) {
+    return sentence.id.empty() ? "CUSTOM-" + std::to_string(index + 1) : sentence.id;
+}
+
+std::optional<std::size_t> find_duplicate_custom_id(const std::vector<CustomSentence>& sentences) {
+    std::set<std::string> seen;
+    for (std::size_t i = 0; i < sentences.size(); ++i) {
+        if (!seen.insert(effective_custom_id(sentences[i], i)).second) {
+            return i;
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace nmeasim::core::simulation

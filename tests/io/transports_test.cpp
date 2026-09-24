@@ -271,6 +271,31 @@ TEST_CASE("file transport appends lines and flushes immediately", "[io][transpor
     CHECK(bad.state() == Transport::State::Failed);
 }
 
+TEST_CASE("file transport writes the bytes as given and truncates only on its first open",
+          "[io][transport]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("output.nmea"));
+    {
+        QFile existing(path);
+        REQUIRE(existing.open(QIODevice::WriteOnly));
+        existing.write("old contents\n");
+    }
+    nmeasim::io::FileTransport file(path, false);
+    REQUIRE(file.open());
+    file.write(kLine);
+    // Stopping and starting a run closes and reopens the transport: the file is continued,
+    // not emptied again.
+    file.close();
+    REQUIRE(file.open());
+    file.write(kLine);
+    file.close();
+    QFile reader(path);
+    // Binary mode on both sides: CR LF must reach the file unchanged on every platform.
+    REQUIRE(reader.open(QIODevice::ReadOnly));
+    CHECK(reader.readAll() == kLine + kLine);
+}
+
 TEST_CASE("serial transport fails cleanly on a missing device", "[io][transport]") {
     nmeasim::io::SerialConfig config;
     config.port_name = QStringLiteral("/dev/nmeasim-no-such-port");

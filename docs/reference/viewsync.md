@@ -26,7 +26,7 @@ One packet per output period, a single line of comma-separated values:
 | 7 | Roll | Configured camera roll, degrees (0 by default) |
 | 8 | Start time | Simulated clock, seconds since 0001-01-01T00:00:00Z |
 | 9 | End time | Same as the start time |
-| 10 | Planet | Empty for Earth; `sky`, `mars` or `moon` when configured |
+| 10 | Planet | Empty for Earth; `sky`, `mars` or `moon` when configured. Commas, control characters and non-ASCII bytes are removed from the configured name, so it cannot add a field or a line |
 
 The times are the Unix time plus 62 135 596 800 seconds, the offset Google Earth uses.
 Packets are sent with a trailing line terminator like every other line; Google Earth ignores

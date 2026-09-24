@@ -4,11 +4,12 @@
 ///
 /// Covers nmeasim::core::ais::BitPacker, nmeasim::core::ais::sixbit_code(),
 /// nmeasim::core::ais::armor(), nmeasim::core::ais::unarmor(),
-/// nmeasim::core::ais::rate_of_turn_code() and nmeasim::core::ais::frame_payload(), and the
-/// position and static data reports that nmeasim::core::nmea0183::encode_vdo_position(),
-/// encode_vdm_position(), encode_vdo_static() and encode_vdm_static() build from the fixture
-/// states of `tests/core/fixtures.hpp`. As ADR 0013 describes, every payload is read back field
-/// by field with `BitReader`, a decoder written for these tests independently of the encoder.
+/// nmeasim::core::ais::rate_of_turn_code(), nmeasim::core::ais::heading_code() and
+/// nmeasim::core::ais::frame_payload(), and the position and static data reports that
+/// nmeasim::core::nmea0183::encode_vdo_position(), encode_vdm_position(), encode_vdo_static()
+/// and encode_vdm_static() build from the fixture states of `tests/core/fixtures.hpp`. As ADR 0013
+/// describes, every payload is read back field by field with `BitReader`, a decoder written for
+/// these tests independently of the encoder.
 ///
 /// No fixture file is read. The golden VDO lines checked here are also the contents of
 /// `tests/fixtures/ais/own_vessel.nmea`, which CI decodes with the third-party pyais library
@@ -26,8 +27,12 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 using Catch::Approx;
@@ -78,15 +83,19 @@ public:
 
     /// Reads the next field as a two's complement signed integer.
     ///
-    /// @param count Field width in bits, in [1, 31].
+    /// Fails the running test case (`REQUIRE`) for a width outside [1, 32], which no
+    /// `std::int32_t` field has.
+    ///
+    /// @param count Field width in bits, in [1, 32].
     /// @return The field value, negative when its most significant bit is set.
     /// @throws std::out_of_range when fewer than `count` bits remain.
     std::int32_t signed_value(int count) {
-        const auto raw = unsigned_value(count);
-        const auto sign = std::uint32_t{1} << static_cast<unsigned>(count - 1);
-        return (raw & sign) != 0U
-                   ? static_cast<std::int32_t>(raw) - static_cast<std::int32_t>(sign << 1U)
-                   : static_cast<std::int32_t>(raw);
+        REQUIRE(count >= 1);
+        REQUIRE(count <= 32);
+        const std::int64_t raw = unsigned_value(count);
+        // 2^count and 2^(count - 1) fit an int64 for every width up to 32.
+        const std::int64_t range = std::int64_t{1} << count;
+        return static_cast<std::int32_t>(raw >= range / 2 ? raw - range : raw);
     }
 
     /// Reads the next field as six-bit AIS text.
@@ -161,6 +170,46 @@ TEST_CASE("the bit packer writes fields most significant bit first", "[ais]") {
     CHECK(packer.bits() == expected);
 }
 
+TEST_CASE("the bit packer handles fields of 32 bits and more", "[ais]") {
+    ais::BitPacker packer;
+    packer.append_unsigned(0xFFFFFFFFU, 32);
+    packer.append_signed(-1, 32);
+    packer.append_signed(std::numeric_limits<std::int32_t>::min(), 32);
+    CHECK(packer.size() == 96U);
+    // Wider fields extend the value: zeros above an unsigned one, copies of the sign bit
+    // above a signed one. Widths of zero or less append nothing.
+    packer.append_unsigned(0xFFFFFFFFU, 40);
+    packer.append_signed(-2, 40);
+    packer.append_signed(5, 40);
+    packer.append_unsigned(1, 0);
+    packer.append_signed(1, 0);
+    packer.append_unsigned(1, -4);
+    packer.append_signed(1, -4);
+    REQUIRE(packer.size() == 96U + 120U);
+    const auto& bits = packer.bits();
+    const auto count = [&bits](std::size_t first, std::size_t length) {
+        return std::count(bits.begin() + static_cast<std::ptrdiff_t>(first),
+                          bits.begin() + static_cast<std::ptrdiff_t>(first + length), true);
+    };
+    CHECK(count(0, 64) == 64);  // 0xFFFFFFFF, then -1
+    CHECK(bits[64]);  // std::numeric_limits<std::int32_t>::min(): the sign bit, then 31 zeros
+    CHECK(count(65, 31) == 0);
+    CHECK(count(96, 8) == 0);  // zero extension
+    CHECK(count(104, 32) == 32);
+    CHECK(count(136, 39) == 39);  // -2: 39 ones and a zero
+    CHECK_FALSE(bits[175]);
+    CHECK(count(176, 37) == 0);  // 5 on 40 bits: 101 at the end
+    CHECK(bits[213]);
+    CHECK_FALSE(bits[214]);
+    CHECK(bits[215]);
+
+    // The test reader reads the same widths back.
+    BitReader reader(ais::armor(packer.bits()).text);
+    CHECK(reader.unsigned_value(32) == 0xFFFFFFFFU);
+    CHECK(reader.signed_value(32) == -1);
+    CHECK(reader.signed_value(32) == std::numeric_limits<std::int32_t>::min());
+}
+
 TEST_CASE("six-bit text codes cover the AIS alphabet", "[ais]") {
     CHECK(ais::sixbit_code('@') == 0);
     CHECK(ais::sixbit_code('A') == 1);
@@ -207,6 +256,43 @@ TEST_CASE("rate of turn is coded on the AIS square-root scale", "[ais]") {
     CHECK(ais::rate_of_turn_code(10.0) == 15);
     CHECK(ais::rate_of_turn_code(-720.0) == -126);
     CHECK(ais::rate_of_turn_code(9999.0) == 126);
+    // 708 deg/min, the largest rate the scale resolves, is the last value below 126:
+    // 4.733 * sqrt(708) = 125.94.
+    CHECK(ais::rate_of_turn_code(708.0) == 126);
+    CHECK(ais::rate_of_turn_code(700.0) == 125);
+    // A rate that is not a number is "not available", -128.
+    CHECK(ais::rate_of_turn_code(std::numeric_limits<double>::quiet_NaN()) == -128);
+    CHECK(ais::rate_of_turn_code(std::numeric_limits<double>::infinity()) == -128);
+    CHECK(ais::rate_of_turn_code(-std::numeric_limits<double>::infinity()) == -128);
+}
+
+TEST_CASE("the position report normalises the heading and flags missing values",
+          "[ais][nmea0183][encoders]") {
+    // Reads the heading and the rate of turn of a position report encoded from a state.
+    const auto heading_and_rot = [](const nmeasim::core::model::VesselState& state) {
+        BitReader reader(
+            joined_payload(nmea::encode_vdo_position(nmea::EncoderContext{state, "AI"})));
+        for (const int width : {6, 2, 30, 4}) {  // type, repeat, MMSI, status
+            reader.unsigned_value(width);
+        }
+        const auto rot = reader.signed_value(8);
+        for (const int width : {10, 1, 28, 27, 12}) {  // speed, accuracy, position, course
+            reader.unsigned_value(width);
+        }
+        return std::pair{reader.unsigned_value(9), rot};
+    };
+    auto state = nmeasim::test::fixture_state();
+    state.navigation.heading_true_deg = -10.0;
+    CHECK(heading_and_rot(state).first == 350U);
+    state.navigation.heading_true_deg = 359.6;
+    CHECK(heading_and_rot(state).first == 0U);
+    state.navigation.heading_true_deg = 725.3;
+    CHECK(heading_and_rot(state).first == 5U);
+    // A heading or rate of turn that is not a number is sent as "not available": 511 and
+    // -128.
+    state.navigation.heading_true_deg = std::numeric_limits<double>::quiet_NaN();
+    state.navigation.rate_of_turn_deg_per_min = std::numeric_limits<double>::quiet_NaN();
+    CHECK(heading_and_rot(state) == std::pair{511U, -128});
 }
 
 TEST_CASE("the position report carries the fixture vessel", "[ais][nmea0183][encoders]") {
@@ -294,7 +380,7 @@ TEST_CASE("the static data report spans two sentences and carries the vessel par
     // Golden lines, decoded independently with pyais in the CI cross-check. The sequential
     // message id is the UTC second of the fixture clock modulo 10 (12:34:56 -> 6).
     CHECK(sentences[0] ==
-          "!AIVDO,2,1,6,A,53SsIh@00001<TmP000plD61<TmDh5@u:1P0000U1P43340Ht4PAAjCP@000,0*7A");
+          "!AIVDO,2,1,6,A,53SsIhH00001<TmP000plD61<TmDh5@u:1P0000U1P43340Ht4PAAjCP@000,0*72");
     CHECK(sentences[1] == "!AIVDO,2,2,6,A,00000000000,2*20");
     const auto first = nmea::parse_sentence(sentences[0]);
     const auto second = nmea::parse_sentence(sentences[1]);
@@ -313,7 +399,7 @@ TEST_CASE("the static data report spans two sentences and carries the vessel par
     CHECK(reader.unsigned_value(6) == 5);
     CHECK(reader.unsigned_value(2) == 0);
     CHECK(reader.unsigned_value(30) == 239000001);
-    CHECK(reader.unsigned_value(2) == 0);   // AIS version indicator
+    CHECK(reader.unsigned_value(2) == 2);   // AIS version indicator: ITU-R M.1371-5
     CHECK(reader.unsigned_value(30) == 0);  // IMO
     // Call sign, name, ship type and dimensions are the AisStatic defaults.
     CHECK(reader.text(7) == "SIMX");
