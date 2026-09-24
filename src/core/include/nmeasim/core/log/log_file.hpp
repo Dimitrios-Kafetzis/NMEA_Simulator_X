@@ -86,8 +86,8 @@ struct Log {
     /// Where the entry offsets came from.
     TimingSource timing{TimingSource::FixedInterval};
     /// Number of lines that are neither blank nor comments and yield no valid sentence: no
-    /// `$` or `!`, an unterminated TAG block, or a sentence that fails
-    /// `nmea0183::parse_sentence` (such as a checksum mismatch).
+    /// `$` or `!`, an unterminated TAG block or one whose checksum does not match, or a
+    /// sentence that fails `nmea0183::parse_sentence` (such as a checksum mismatch).
     std::size_t skipped_lines{0};
 
     /// Returns the length of a replay of the log.
@@ -101,8 +101,8 @@ struct LogParseOptions {
     /// Spacing between consecutive entries, used only when the log carries no time
     /// information at all (`TimingSource::FixedInterval`).
     ///
-    /// The 100 ms default is the one ADR 0012 specifies. The value is not validated: zero
-    /// puts every entry at offset zero and a negative value makes the offsets decrease.
+    /// The 100 ms default is the one ADR 0012 specifies. Zero puts every entry at offset
+    /// zero; `parse_log` rejects a negative value.
     std::chrono::milliseconds fixed_interval{100};
 };
 
@@ -116,8 +116,10 @@ struct LogParseOptions {
 ///   are ignored. Comments are not counted as skipped;
 /// - a line starting with `\` has an IEC 61162-450 TAG block up to the next `\`; its first
 ///   `c:` parameter, a positive Unix time in seconds (with optional fraction) or in
-///   milliseconds, gives the line's time. The block's checksum is not verified. A line
-///   whose block is not closed is skipped;
+///   milliseconds, gives the line's time. A `*hh` checksum at the end of the block must
+///   match, as for a sentence, and a block without one is accepted. A line whose block is
+///   not closed or has a checksum that does not match is skipped and counted in
+///   `Log::skipped_lines`;
 /// - the sentence starts at the first `$` or `!` and must pass
 ///   `nmea0183::parse_sentence`: a checksum, when present, must match, and a sentence
 ///   without one is accepted. A line without `$` or `!`, or with a rejected sentence, is
@@ -137,22 +139,26 @@ struct LogParseOptions {
 ///    replay instead of reversing it.
 /// 2. `TimingSource::SentenceTimes`, when any sentence carries a valid UTC time of day
 ///    (RMC, GGA, GLL, ZDA, GNS, GST, GBS, GRS; see `nmea0183::sentence_time`). Each such
-///    sentence advances the offset by its time minus the previous sentence time; a step
-///    back of more than 12 hours is taken as crossing midnight and gets 24 hours added, and
-///    any other step back leaves the offset unchanged. Dates are ignored. Sentences without
-///    a time share the offset of the previous entry.
+///    sentence advances the offset by its time minus the latest sentence time seen so far;
+///    a step back of more than 12 hours is taken as crossing midnight and gets 24 hours
+///    added. Any other step back leaves the offset unchanged and does not lower the latest
+///    time, so the replay holds until the times have caught up and no time is counted
+///    twice. Dates are ignored. Sentences without a time share the offset of the previous
+///    entry.
 /// 3. `TimingSource::FixedInterval` otherwise: entry `i` is at `i` times
 ///    `options.fixed_interval`.
 ///
 /// @param text The complete log text.
-/// @param options Parsing options; only the fixed interval.
+/// @param options Parsing options; only the fixed interval, which must not be negative.
 /// @param error Receives the reason when the log is rejected; left unchanged on success.
-///        May be null. It is `The log is empty` when no line was counted as skipped (the
-///        text holds only blank and comment lines, or nothing), and
+///        May be null. It is `The fixed interval must not be negative` for a negative
+///        `options.fixed_interval`, `The log is empty` when no line was counted as skipped
+///        (the text holds only blank and comment lines, or nothing), and
 ///        `No valid NMEA sentence found in the log` when lines were skipped.
 /// @return The log, with at least one entry, or `std::nullopt` when no sentence could be
-///         read. Malformed lines never reject the log on their own.
-/// @see IEC 61162-450, TAG block parameter "c".
+///         read or the options are invalid. Malformed lines never reject the log on their
+///         own.
+/// @see IEC 61162-450, TAG block parameter "c" and checksum.
 /// @see docs/reference/log-format.md
 [[nodiscard]] std::optional<Log> parse_log(std::string_view text, const LogParseOptions& options,
                                            std::string* error);
