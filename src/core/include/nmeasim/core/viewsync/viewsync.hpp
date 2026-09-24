@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 /// ViewSync output, part of the `nmeasim::core` library.
 ///
@@ -29,8 +30,8 @@ struct ViewSyncOptions {
     double tilt_deg{60.0};
     /// Camera roll in degrees.
     double roll_deg{0.0};
-    /// Planet name: empty for Earth, otherwise `sky`, `mars` or `moon`. It is sent as given,
-    /// so it must not contain a comma.
+    /// Planet name: empty for Earth, otherwise `sky`, `mars` or `moon`. It is sent through
+    /// sanitize_planet(), so a comma or a line break in it cannot corrupt the packet.
     std::string planet;
 };
 
@@ -38,13 +39,24 @@ struct ViewSyncOptions {
 /// the origin of ViewSync times.
 inline constexpr std::int64_t kSecondsBeforeUnixEpoch{62135596800};
 
+/// Returns a planet name without the characters that would corrupt a packet.
+///
+/// Commas (the field separator), control characters such as CR and LF, DEL and bytes outside
+/// ASCII are removed; every other character is kept, so the valid names `sky`, `mars` and
+/// `moon` and any other name Google Earth may accept are sent unchanged.
+///
+/// @param planet The configured planet name, of any content.
+/// @return The name with only printable ASCII characters other than the comma; empty when
+///     none is left, which Google Earth takes as Earth.
+[[nodiscard]] std::string sanitize_planet(std::string_view planet);
+
 /// Encodes one packet: `counter,latitude,longitude,altitude,heading,tilt,roll,start,end,planet`.
 ///
 /// Latitude and longitude are the vessel's position in degrees with seven decimals; the
 /// altitude is the vessel's altitude plus `options.camera_altitude_m`; the heading is the
 /// vessel's true heading, so the camera looks along it. Altitude, heading, tilt and roll have
 /// two decimals. Start and end are both the simulated clock in whole seconds since
-/// 0001-01-01T00:00:00Z.
+/// 0001-01-01T00:00:00Z. The planet is `options.planet` after sanitize_planet().
 ///
 /// @param state Vessel state that places the camera.
 /// @param options Camera settings.
