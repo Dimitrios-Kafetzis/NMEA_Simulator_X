@@ -50,8 +50,7 @@ target_compile_definitions(nmeasim_core_tests PRIVATE
     NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
 
 target_link_libraries(nmeasim_core_tests
-    PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings
-            nmeasim::documentation_warnings nmeasim::sanitizers
+    PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings nmeasim::sanitizers
 )
 
 # PRE_TEST discovery runs the test binary at ctest time rather than at build time, which keeps
@@ -72,7 +71,7 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
         NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
     target_link_libraries(nmeasim_io_tests
         PRIVATE nmeasim::io Catch2::Catch2 Qt6::Core Qt6::Network Qt6::Test Qt6::WebSockets
-                nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
+                nmeasim::warnings nmeasim::sanitizers
     )
     catch_discover_tests(nmeasim_io_tests DISCOVERY_MODE PRE_TEST)
 endif()
@@ -92,8 +91,7 @@ if(NMEASIM_BUILD_APP)
     target_compile_definitions(nmeasim_app_tests PRIVATE
         NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(nmeasim_app_tests
-        PRIVATE nmeasim::app_lib Catch2::Catch2 Qt6::Widgets Qt6::Test nmeasim::warnings
-                nmeasim::documentation_warnings nmeasim::sanitizers
+        PRIVATE nmeasim::app_lib Catch2::Catch2 Qt6::Widgets Qt6::Test nmeasim::warnings nmeasim::sanitizers
     )
     catch_discover_tests(nmeasim_app_tests DISCOVERY_MODE PRE_TEST
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

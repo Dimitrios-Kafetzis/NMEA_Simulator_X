@@ -1,14 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Builds the MkDocs site with the C++ reference, as the Documentation job of ci.yml does, and
+# deploys it to GitHub Pages.
+#
+# Triggers: pushes to main that change the site or the sources it documents (paths below), and
+# manual dispatch. Deployments run one at a time, and the one in progress is never cancelled.
+#
+# Permissions: read access to the contents, and pages: write and id-token: write, with which
+# actions/deploy-pages publishes the site. No secrets. Repository variable: DEPLOY_DOCS; a push
+# deploys only when it is "true", a manual dispatch always does.
+#
+# Its job is not a required check.
+
 name: Publish documentation
 
-# Deploys the MkDocs site to GitHub Pages. Requires the repository to be public (or on a paid
-# plan), Pages configured with source "GitHub Actions", and the repository variable
-# DEPLOY_DOCS set to "true". Until then this workflow only runs on manual dispatch.
+# Deploying requires the repository to be public (or on a paid plan), Pages configured with
+# source "GitHub Actions", and the repository variable DEPLOY_DOCS set to "true". Until then
+# this workflow only runs on manual dispatch.
 
 on:
   push:
     branches: [main]
     # The C++ reference is generated from every source and test file, so a change to any of
-    # them, or to the tools that generate the site, republishes it.
+    # them, or to the tools that generate the site, republishes it. CMakeLists.txt holds the
+    # project version that the reference is generated with.
     paths:
       - "docs/**"
       - "mkdocs.yml"
@@ -19,6 +33,8 @@ on:
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
+# Pinned Doxygen and the SHA-256 of its release archive; keep both equal to ci.yml, which
+# explains the pin.
 env:
   DOXYGEN_VERSION: 1.18.0
   DOXYGEN_SHA256: 14fa81bdc34171edb5f1f02b1d60e74802f0439b77fa44e592565d517d72df90
@@ -33,6 +49,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Builds and deploys the site. Skipped on push until DEPLOY_DOCS is "true". The github-pages
+  # environment is the one that actions/deploy-pages deploys to; its URL is shown on the run.
   deploy:
     if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DOCS == 'true'
     runs-on: ubuntu-24.04
@@ -50,6 +68,7 @@ jobs:
           cache: pip
           cache-dependency-path: docs/requirements.txt
 
+      # The release binary of the pinned version, verified against its SHA-256 before use.
       - name: Install Doxygen
         run: |
           curl -sSfL -o doxygen.tar.gz \
@@ -61,6 +80,8 @@ jobs:
       - name: Install MkDocs
         run: pip install -r docs/requirements.txt
 
+      # NMEASIM_REQUIRE_DOXYGEN makes a missing Doxygen an error instead of placeholder pages,
+      # so that the published site always carries the C++ reference.
       - name: Build site and C++ reference
         env:
           NMEASIM_REQUIRE_DOXYGEN: "1"

@@ -1,10 +1,17 @@
+# SPDX-License-Identifier: GPL-3.0-only
 # nmeasim::io - transports, scheduling and persistence built on the non-GUI Qt modules.
 # Both the CLI and the desktop application link this library; only the desktop application
 # adds Qt Widgets on top.
+#
+# Builds the static library nmeasim_io (alias nmeasim::io) on nmeasim::core and Qt Core,
+# Network, Serial Port and WebSockets. The top-level CMakeLists.txt adds this directory only
+# when NMEASIM_BUILD_CLI or NMEASIM_BUILD_APP is ON.
 
 find_package(Qt6 REQUIRED COMPONENTS Core Network SerialPort WebSockets)
+# Turns on AUTOMOC for this directory: the transports and the simulation runner are QObjects.
 qt_standard_project_setup()
 
+# The headers are listed so that AUTOMOC finds the Q_OBJECT classes declared in them.
 add_library(nmeasim_io STATIC
     include/nmeasim/io/network_interfaces.hpp
     include/nmeasim/io/profile/profile.hpp
@@ -41,5 +48,5 @@ target_include_directories(nmeasim_io
 
 target_link_libraries(nmeasim_io
     PUBLIC nmeasim::core Qt6::Core Qt6::Network Qt6::SerialPort Qt6::WebSockets
-    PRIVATE nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
+    PRIVATE nmeasim::warnings nmeasim::sanitizers
 )

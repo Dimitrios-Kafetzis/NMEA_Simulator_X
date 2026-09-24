@@ -1,24 +1,45 @@
 #!/usr/bin/env python3
-"""Validate a Signal K delta stream against the paths the simulator documents.
+# SPDX-License-Identifier: GPL-3.0-only
+r"""Validate a Signal K delta stream against the paths the simulator documents.
 
-Reads one JSON document per line from standard input and checks that every line is a delta
-of the documented shape (context, updates with source, timestamp and values), that every
-path is one the reference page lists, and that every value has the JSON type the Signal K
-specification gives that path. Optionally checks the context and the number of deltas.
+Reads one JSON document per line from standard input and checks that each is a delta of the
+Signal K specification 1.7.0 (https://signalk.org/specification/1.7.0/doc/) in the shape the
+simulator sends: a `context` string and a non-empty `updates` list whose entries carry a
+`source` object with a `label`, a UTC `timestamp` with milliseconds and a list of `values`.
+Every path must be one that docs/reference/signalk.md lists, and every value must have the
+JSON type the specification gives that path: a number, a string, or a position object with
+numeric `latitude` and `longitude`. Units and ranges are not checked. Optional arguments
+require a context, a minimum number of deltas and paths that must appear at least once.
+
+The script prints one line per problem, each path that was required but never sent and a
+summary to standard output, and writes no files. Blank lines are skipped.
 
 Usage:
-    nmeasim run --stdout --encoding signalk --quiet --duration 3 | python3 tools/check_signalk_stream.py
+    nmeasim run --stdout --quiet --duration 2 --encoding signalk \
+        --destination 37.7466,23.4275,AEGINA | python3 tools/check_signalk_stream.py \
+        --context vessels.urn:mrn:imo:mmsi:239000001 --require-path navigation.position
+    python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
+
+Exit status:
+    0 when every line passes, 1 when a line is not JSON, a delta has a problem, a required
+    path was never sent or fewer than `--min-deltas` deltas were read, and 2 for invalid
+    arguments. A line that is valid JSON but not an object, or whose updates or values are
+    not objects, ends the script with a traceback and status 1.
 """
 import argparse
 import json
 import re
 import sys
 
+#: Value kind of a JSON number, as an `isinstance` class tuple.
 NUMBER = (int, float)
+#: Value kind of a position object with numeric `latitude` and `longitude`.
 POSITION = "position"
+#: Value kind of a JSON string.
 TEXT = str
 
-# Path pattern -> expected value kind. Propulsion ids are free-form.
+#: Value kind of every documented path, by a regular expression that must match the whole
+#: path. Propulsion ids are free-form, so any lower-case alphanumeric id is accepted.
 EXPECTED = {
     r"navigation\.datetime": TEXT,
     r"navigation\.position": POSITION,
@@ -41,19 +62,45 @@ EXPECTED = {
     r"propulsion\.[a-z0-9]+\.(revolutions|temperature)": NUMBER,
     r"propulsion\.[a-z0-9]+\.state": TEXT,
 }
+#: Update timestamp: ISO 8601 UTC with exactly three decimals of a second, the form the
+#: simulator writes. The specification itself accepts any ISO 8601 date-time.
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 
 
 def check_value(kind, value) -> bool:
+    """Return whether a delta value has the expected JSON type.
+
+    Args:
+        kind: The expected kind: `NUMBER`, `POSITION` or `TEXT`.
+        value: The decoded `value` of a delta entry.
+
+    Returns:
+        True when the value is a number other than a boolean for `NUMBER`, a string for
+        `TEXT`, or an object with numeric `latitude` and `longitude` for `POSITION`.
+    """
     if kind is POSITION:
         return (isinstance(value, dict) and isinstance(value.get("latitude"), NUMBER)
                 and isinstance(value.get("longitude"), NUMBER))
     if kind is TEXT:
         return isinstance(value, str)
+    # JSON true and false decode to bool, a subclass of int, and are not numbers in Signal K.
     return isinstance(value, NUMBER) and not isinstance(value, bool)
 
 
 def check_delta(document, context: str | None) -> list[str]:
+    """Check one decoded document against the delta shape and the documented paths.
+
+    Args:
+        document: The decoded JSON object of one line.
+        context: The context every delta must have, or None to accept any string.
+
+    Returns:
+        One human-readable description per problem found; empty when the delta is valid.
+        When `updates` is missing, empty or not a list, the updates are not checked further.
+
+    Raises:
+        AttributeError: The document, an update or a value entry is not a JSON object.
+    """
     problems = []
     if context is not None and document.get("context") != context:
         problems.append(f"context is {document.get('context')!r}, expected {context!r}")
@@ -78,6 +125,11 @@ def check_delta(document, context: str | None) -> list[str]:
 
 
 def main() -> int:
+    """Check the deltas read from standard input and print the summary.
+
+    Returns:
+        The exit status: 0 when the stream passes, 1 when it fails.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", help="expected context of every delta")
     parser.add_argument("--min-deltas", type=int, default=1, help="minimum number of deltas")

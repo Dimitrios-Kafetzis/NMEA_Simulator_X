@@ -1,8 +1,17 @@
-# Installation extras and CPack configuration. `cpack` turns an install tree into:
+# SPDX-License-Identifier: GPL-3.0-only
+# Installation extras and CPack configuration, included at the end of the top-level
+# CMakeLists.txt. It installs the licence, the README and, on Linux, the AppStream metadata,
+# and configures `cpack` to turn the install tree into:
 #   Windows  NSIS installer and portable ZIP        (generators NSIS, ZIP)
 #   macOS    disk image with the ad-hoc signed app  (generator DragNDrop)
-#   Linux    AppImage built by linuxdeploy          (generator External, packaging/linux/appimage.cmake)
-# The release workflow calls `cpack` on every platform.
+#   Linux    AppImage built by linuxdeploy          (generator External,
+#            packaging/linux/appimage.cmake)
+# The release workflow calls `cpack` on every platform (ADR 0015); the Flatpak is built from
+# its own manifest instead.
+#
+# Reads NMEASIM_APP_ID, NMEASIM_INSTALL_BINDIR and NMEASIM_BUILD_APP. Sets the cache variable
+# NMEASIM_PACKAGE_VERSION, which the release workflow sets to the version of the tag or of the
+# dry run, and passes the CPACK_NMEASIM_* variables to the AppImage script.
 
 set(NMEASIM_PACKAGE_VERSION "${PROJECT_VERSION}"
     CACHE STRING "Version string used in package file names, e.g. 1.0.0-rc.1")
@@ -19,6 +28,7 @@ if(UNIX AND NOT APPLE AND NMEASIM_BUILD_APP)
                    "    <release version=\"${CMAKE_MATCH_1}\" date=\"${CMAKE_MATCH_2}\"/>\n")
         endif()
     endforeach()
+    # Drops the last line break, which the template already has after the placeholder.
     string(REGEX REPLACE "\n$" "" NMEASIM_METAINFO_RELEASES "${NMEASIM_METAINFO_RELEASES}")
     set(NMEASIM_METAINFO_FILE "${PROJECT_BINARY_DIR}/${NMEASIM_APP_ID}.metainfo.xml")
     configure_file("${PROJECT_SOURCE_DIR}/packaging/linux/${NMEASIM_APP_ID}.metainfo.xml.in"
@@ -26,6 +36,7 @@ if(UNIX AND NOT APPLE AND NMEASIM_BUILD_APP)
     install(FILES "${NMEASIM_METAINFO_FILE}" DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
 endif()
 
+# Windows packages have no share/doc tree; the documents go next to the executables.
 if(WIN32)
     set(NMEASIM_INSTALL_DOCDIR ".")
 else()
@@ -42,7 +53,8 @@ endif()
 
 if(WIN32)
     # The Microsoft C++ runtime DLLs go next to the executables so that the portable ZIP runs on
-    # a machine without the Visual C++ Redistributable.
+    # a machine without the Visual C++ Redistributable. The Universal C Runtime is part of
+    # Windows 10 and later and is not copied.
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION "${NMEASIM_INSTALL_BINDIR}")
     set(CMAKE_INSTALL_UCRT_LIBRARIES OFF)
     include(InstallRequiredSystemLibraries)
@@ -56,9 +68,13 @@ set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "NMEA Simulator X")
 set(CPACK_PACKAGE_EXECUTABLES "NMEASimulatorX" "NMEA Simulator X")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
+# cpack writes a .sha256 file next to each package; the release workflow uploads only the
+# packages and computes its own SHA256SUMS.txt.
 set(CPACK_PACKAGE_CHECKSUM SHA256)
 set(CPACK_PACKAGE_DIRECTORY "${PROJECT_BINARY_DIR}/packages")
+# Adds the -portable suffix to the ZIP, which would otherwise share the installer's base name.
 set(CPACK_PROJECT_CONFIG_FILE "${PROJECT_SOURCE_DIR}/packaging/cpack_project_config.cmake")
+# No source packages: GitHub provides the source archives of every tag.
 set(CPACK_SOURCE_GENERATOR "")
 
 if(WIN32)
@@ -66,6 +82,7 @@ if(WIN32)
     set(CPACK_PACKAGE_FILE_NAME "NMEASimulatorX-${NMEASIM_PACKAGE_VERSION}-win64")
     set(CPACK_NSIS_PACKAGE_NAME "NMEA Simulator X")
     set(CPACK_NSIS_DISPLAY_NAME "NMEA Simulator X")
+    # NSIS variable, expanded by the installer: C:\Program Files rather than the 32-bit folder.
     set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
     set(CPACK_NSIS_EXECUTABLES_DIRECTORY ".")
     set(CPACK_NSIS_INSTALLED_ICON_NAME "NMEASimulatorX.exe")
@@ -87,14 +104,19 @@ elseif(APPLE)
     set(CPACK_PACKAGE_FILE_NAME
         "NMEASimulatorX-${NMEASIM_PACKAGE_VERSION}-macos-${CMAKE_SYSTEM_PROCESSOR}")
     set(CPACK_DMG_VOLUME_NAME "NMEA Simulator X")
+    # Compressed read-only image.
     set(CPACK_DMG_FORMAT UDZO)
 else()
+    # The External generator only stages the install tree and hands it to the script below.
+    # The prefix /usr is the layout linuxdeploy expects inside an AppDir.
     set(CPACK_GENERATOR External)
     set(CPACK_PACKAGE_FILE_NAME
         "NMEASimulatorX-${NMEASIM_PACKAGE_VERSION}-${CMAKE_SYSTEM_PROCESSOR}")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     set(CPACK_EXTERNAL_ENABLE_STAGING ON)
     set(CPACK_EXTERNAL_PACKAGE_SCRIPT "${PROJECT_SOURCE_DIR}/packaging/linux/appimage.cmake")
+    # CPack passes CPACK_* variables on to the package script, which has no access to the
+    # project's other variables.
     set(CPACK_NMEASIM_APP_ID "${NMEASIM_APP_ID}")
     set(CPACK_NMEASIM_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
     set(CPACK_NMEASIM_PACKAGE_VERSION "${NMEASIM_PACKAGE_VERSION}")

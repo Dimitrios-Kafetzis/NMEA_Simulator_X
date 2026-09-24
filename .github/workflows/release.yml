@@ -1,5 +1,4 @@
-name: Release
-
+# SPDX-License-Identifier: GPL-3.0-only
 # Builds the packages of every platform with cpack, checks each one, and attaches them with a
 # SHA256SUMS.txt file to the GitHub release of a tag. ADR 0015 explains the layout.
 #
@@ -12,6 +11,14 @@ name: Release
 #   workflow_dispatch  Rebuilds and re-uploads the packages of an existing tag.
 #   push to a branch   Dry run when packaging files change: packages are built with a fake
 #                      version and kept as a workflow artifact; nothing is published.
+#
+# Permissions: read access to the contents for every job, and contents: write for the publish
+# job, which creates the release or uploads to it with the GitHub CLI and GITHUB_TOKEN. A
+# calling workflow has to grant contents: write. No other secrets, no repository variables.
+#
+# None of its jobs is a required check.
+
+name: Release
 
 on:
   workflow_call:
@@ -26,6 +33,9 @@ on:
         description: Existing tag to build and publish, e.g. v1.0.0
         required: true
         type: string
+  # A tag push always runs, because path filters do not apply to tags. A branch push runs only
+  # when it changes one of the paths below. main is left out because its releases come through
+  # Release Please, and so are the branches of Release Please's pull requests.
   push:
     tags: ["v*"]
     branches-ignore: [main, "release-please--**"]
@@ -41,17 +51,24 @@ on:
 permissions:
   contents: read
 
+# One run per tag or branch at a time. A newer push to a branch cancels its older dry run;
+# another run for the same tag waits for the one in progress.
 concurrency:
   group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
 
 env:
+  # The tools that go into the packages are pinned to exact releases (ADR 0015). QT_VERSION
+  # matches ci.yml; the linuxdeploy values are release tags of linuxdeploy and of its Qt plugin.
   QT_VERSION: 6.10.3
   LINUXDEPLOY_VERSION: 1-alpha-20251107-1
   LINUXDEPLOY_QT_VERSION: 1-alpha-20250213-1
+  # NMEASIM_APP_ID of CMakeLists.txt; it names the Flatpak manifest and application.
   APP_ID: io.github.dimitrios_kafetzis.NMEASimulatorX
 
 jobs:
+  # Works out from the trigger which commit to build, the package version and whether to
+  # publish, and fails for a final tag that does not match the version in CMakeLists.txt.
   prepare:
     name: Prepare
     runs-on: ubuntu-24.04
@@ -86,6 +103,8 @@ jobs:
             if [[ ! "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$ ]]; then
               echo "::error::Tag $tag is not of the form vX.Y.Z or vX.Y.Z-pre"; exit 1
             fi
+            # A final tag must carry the version that Release Please wrote into CMakeLists.txt;
+            # a pre-release tag such as v1.0.0-rc.1 may be put on any commit.
             core="${BASH_REMATCH[1]}"
             pre="${BASH_REMATCH[2]}"
             if [[ -z "$pre" && "$core" != "$project_version" ]]; then
@@ -98,6 +117,7 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
             echo "prerelease=$([[ -n "$pre" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           else
+            # Dry run: the pushed commit, with a version no release can have.
             echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
             echo "tag=" >> "$GITHUB_OUTPUT"
             echo "version=${project_version}-dryrun.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -114,6 +134,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
+      # The full history, so that git describe names the tag in the version description.
       - name: Check out sources
         uses: actions/checkout@v7
         with:
@@ -148,6 +169,8 @@ jobs:
           key: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-
 
+      # The release-windows preset links the vcpkg dependencies statically (x64-windows-static-md),
+      # so that only Qt and the C++ runtime ship as DLLs.
       - name: Build
         shell: bash
         run: |
@@ -170,6 +193,7 @@ jobs:
           test -f "$portable/NMEASimulatorX.exe"
           test -f "$portable/plugins/platforms/qwindows.dll"
 
+      # /S installs silently; /D, which NSIS requires as the last argument, sets the folder.
       - name: Check the installer
         shell: pwsh
         run: |
@@ -204,8 +228,11 @@ jobs:
       VERSION: ${{ needs.prepare.outputs.version }}
       # The oldest macOS the packages run on; libc++ needs 13.3 for std::format.
       MACOSX_DEPLOYMENT_TARGET: "13.3"
+      # Hands the deployment target to vcpkg's builds of the dependencies as well, so that they
+      # run on the same macOS versions as the application.
       VCPKG_KEEP_ENV_VARS: MACOSX_DEPLOYMENT_TARGET
     steps:
+      # The full history, so that git describe names the tag in the version description.
       - name: Check out sources
         uses: actions/checkout@v7
         with:
@@ -227,6 +254,8 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=${{ github.workspace }}/vcpkg-binary-cache" >> "$GITHUB_ENV"
           mkdir -p "${{ github.workspace }}/vcpkg-binary-cache"
 
+      # The deployment target is part of the key, since dependencies built for another target
+      # differ.
       - name: Restore vcpkg binary cache
         uses: actions/cache@v6
         with:
@@ -252,6 +281,8 @@ jobs:
           done
           exit 1
 
+      # Mounts the image and checks the Applications link, the ad-hoc signature, the
+      # architecture, the minimum macOS version (minos) and the bundled command-line tool.
       - name: Check the disk image
         run: |
           dmg="build/release/packages/NMEASimulatorX-$VERSION-macos-${{ matrix.arch }}.dmg"
@@ -292,14 +323,19 @@ jobs:
             qt_arch: linux_gcc_arm64
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      # Lets linuxdeploy's AppImages and the AppImage under test run without mounting through
+      # FUSE.
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
+      # The full history, so that git describe names the tag in the version description.
       - name: Check out sources
         uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           fetch-depth: 0
 
+      # Ninja, the tools vcpkg needs, and the OpenGL, X11 and Wayland libraries that Qt's CMake
+      # packages and platform plugins need; linuxdeploy must find them to deploy the plugins.
       - name: Install build and AppImage dependencies
         run: |
           sudo apt-get update -q
@@ -318,6 +354,9 @@ jobs:
           modules: qtserialport qtwebsockets
           cache: true
 
+      # Uses the runner's vcpkg where the image has one and otherwise clones and bootstraps it.
+      # On aarch64 it is told to use the system's tools (VCPKG_FORCE_SYSTEM_BINARIES) instead of
+      # downloading its own.
       - name: Prepare vcpkg
         run: |
           if [[ -n "${VCPKG_INSTALLATION_ROOT:-}" && -x "$VCPKG_INSTALLATION_ROOT/vcpkg" ]]; then
@@ -340,6 +379,7 @@ jobs:
           key: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json') }}
           restore-keys: vcpkg-release-${{ runner.os }}-${{ runner.arch }}-
 
+      # The pinned linuxdeploy and Qt plugin, put in PATH for packaging/linux/appimage.cmake.
       - name: Install linuxdeploy
         run: |
           mkdir -p "$RUNNER_TEMP/linuxdeploy"
@@ -354,6 +394,7 @@ jobs:
           cmake --preset release -DNMEASIM_PACKAGE_VERSION="$VERSION"
           cmake --build --preset release
 
+      # appimage.cmake asks this qmake where the Qt libraries are.
       - name: Package
         run: QMAKE="$QT_ROOT_DIR/bin/qmake" cpack --preset release
 
@@ -361,10 +402,12 @@ jobs:
         run: |
           appimage="$PWD/build/release/packages/NMEASimulatorX-$VERSION-${{ matrix.arch }}.AppImage"
           cd "$RUNNER_TEMP"
+          # LD_LIBRARY_PATH points at the Qt installation; without it only the bundled Qt is used.
           env -u LD_LIBRARY_PATH "$appimage" nmeasim --version
           env -u LD_LIBRARY_PATH "$appimage" nmeasim run --stdout --quiet --duration 1 | head -3
           ln -sf "$appimage" nmeasim
           env -u LD_LIBRARY_PATH ./nmeasim --version
+          # The desktop application must still be running when timeout ends it (status 124).
           status=0
           QT_QPA_PLATFORM=offscreen timeout 5 env -u LD_LIBRARY_PATH "$appimage" || status=$?
           test "$status" -eq 124
@@ -385,6 +428,8 @@ jobs:
     name: Flatpak x86_64
     needs: prepare
     runs-on: ubuntu-24.04
+    # Flathub's builder image for the KDE 6.10 runtime; flatpak-builder needs the privileges to
+    # create its build sandboxes.
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
       options: --privileged
@@ -397,6 +442,8 @@ jobs:
           ref: ${{ needs.prepare.outputs.ref }}
           fetch-depth: 0
 
+      # The manifest builds the checked-out tree. --runtime-repo records Flathub in the bundle,
+      # so that installing it fetches the KDE runtime from there.
       - name: Build the Flatpak from the manifest
         run: |
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
@@ -420,6 +467,9 @@ jobs:
           path: NMEASimulatorX-*.flatpak
           if-no-files-found: error
 
+  # Collects the packages of every platform, writes SHA256SUMS.txt and the package-manager
+  # manifests, and attaches the packages and the checksum file to the release; a dry run keeps
+  # them as a workflow artifact instead.
   publish:
     name: Publish
     needs: [prepare, windows, macos, linux, flatpak]
@@ -432,6 +482,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      # Only the manifest templates and their script are needed from the sources.
       - name: Check out sources
         uses: actions/checkout@v7
         with:
@@ -465,9 +516,11 @@ jobs:
         env:
           COMMIT: ${{ needs.prepare.outputs.commit }}
         run: |
+          # A dry run has no tag; the manifests then name one made from the dry-run version.
           tag="${TAG:-v$VERSION}"
           python3 source/packaging/manifests/update_manifests.py --tag "$tag" \
             --checksums dist/SHA256SUMS.txt --commit "$COMMIT" --output manifests
+          # The generated files must at least parse as JSON, YAML and Ruby.
           pip install --quiet pyyaml
           python3 - <<'PY'
           import glob, json, yaml
@@ -491,6 +544,9 @@ jobs:
           name: dry-run-${{ env.VERSION }}
           path: dist/
 
+      # Uploads to the existing release (made by Release Please, or rebuilt through a dispatch),
+      # replacing files of the same name. For a tag pushed by hand it creates the release, as a
+      # pre-release for a tag such as v1.0.0-rc.1.
       - name: Attach the packages to the release
         if: needs.prepare.outputs.publish == 'true'
         env:

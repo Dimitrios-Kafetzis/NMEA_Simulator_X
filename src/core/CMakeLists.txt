@@ -1,9 +1,16 @@
+# SPDX-License-Identifier: GPL-3.0-only
 # nmeasim::core - the simulation engine. Pure C++20 with no Qt dependency so that it
 # can be unit-tested in isolation and reused by the CLI, the desktop app and future hosts.
+#
+# Builds the static library nmeasim_core (alias nmeasim::core) from the sources below, with
+# GeographicLib as a public and pugixml as a private dependency. It generates version.hpp from
+# the project version at configure time and version.cpp with the git description on every
+# build (cmake/GitDescribe.cmake).
 
 find_package(GeographicLib CONFIG REQUIRED)
 find_package(pugixml CONFIG REQUIRED)
 
+# The generated header goes to the build tree, whose include directory is public below.
 configure_file(
     include/nmeasim/core/version.hpp.in
     "${CMAKE_CURRENT_BINARY_DIR}/include/nmeasim/core/version.hpp"
@@ -55,6 +62,7 @@ add_library(nmeasim_core STATIC
     src/viewsync/viewsync.cpp
 )
 add_library(nmeasim::core ALIAS nmeasim_core)
+# The generated source is a byproduct of the custom target, so the library has to wait for it.
 add_dependencies(nmeasim_core nmeasim_version_description)
 
 target_include_directories(nmeasim_core
@@ -67,6 +75,5 @@ target_compile_features(nmeasim_core PUBLIC cxx_std_20)
 
 target_link_libraries(nmeasim_core
     PUBLIC GeographicLib::GeographicLib
-    PRIVATE pugixml::pugixml nmeasim::warnings nmeasim::documentation_warnings
-            nmeasim::sanitizers
+    PRIVATE pugixml::pugixml nmeasim::warnings nmeasim::sanitizers
 )

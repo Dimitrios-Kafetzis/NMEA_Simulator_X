@@ -8,8 +8,10 @@ build as generated files, so MkDocs renders, themes, links and indexes them like
 hand-written ones. After the build, the hook writes a redirect at every page the former
 Doxygen HTML reference published under `api/`.
 
-Doxygen warnings from the directories in `ENFORCED` fail the build, and so does a C++ file
-in them without the licence line or a file comment. Warnings elsewhere are counted only.
+Doxygen treats every warning as an error (`WARN_AS_ERROR = FAIL_ON_WARNINGS`): an undocumented
+entity, parameter, return value or enumerator, or a malformed comment, fails the build, and the
+hook lists every warning with its file and line. So does a C++ file under `src/` or `tests/`
+without the licence line or a file comment.
 
 Without Doxygen the reference is replaced by placeholder pages, unless
 `NMEASIM_REQUIRE_DOXYGEN=1`, which CI sets. Set `DOXYGEN` to use a Doxygen binary that is not
@@ -40,10 +42,8 @@ OUTPUT = ROOT / "build" / "doxygen"
 WARNINGS = OUTPUT / "warnings.log"
 LEGACY_PAGES = Path(__file__).resolve().parent / "legacy-api-pages.txt"
 
-#: Directories whose documentation is complete. Every Doxygen warning and every missing file
-#: header in them fails the build. A directory is added in the pull request that completes
-#: its comments.
-ENFORCED: tuple[str, ...] = ("src/core", "src/io", "src/app", "src/cli", "tests")
+#: Directories whose C++ files must start with the licence line and a file comment.
+SOURCE_DIRECTORIES = ("src", "tests")
 
 #: First line of every C++ file.
 LICENCE_LINE = "// SPDX-License-Identifier: GPL-3.0-only"
@@ -75,20 +75,22 @@ def git_ref() -> str:
     return result.stdout.strip() if result.returncode == 0 else "main"
 
 
-def run_doxygen(doxygen: str, overrides: str = "") -> None:
-    """Run Doxygen with the reference configuration and optional overrides.
+def run_doxygen(doxygen: str) -> None:
+    """Run Doxygen with the reference configuration.
 
     Args:
         doxygen: Path of the Doxygen executable.
-        overrides: Configuration lines that replace settings of the Doxyfile.
 
     Raises:
-        PluginError: Doxygen exited with an error.
+        PluginError: Doxygen reported warnings, which are errors, or failed otherwise. The
+            message lists every warning with its file and line.
     """
-    config = f"@INCLUDE = tools/doxygen/Doxyfile\n{overrides}"
     environment = dict(os.environ, NMEASIM_VERSION=project_version())
-    result = subprocess.run([doxygen, "-"], cwd=ROOT, env=environment, input=config,
+    result = subprocess.run([doxygen, "tools/doxygen/Doxyfile"], cwd=ROOT, env=environment,
                             capture_output=True, text=True, check=False)
+    warnings = [text for _, text in read_warnings(WARNINGS)]
+    if warnings:
+        raise PluginError("Documentation errors reported by Doxygen:\n" + "\n".join(warnings))
     if result.returncode != 0:
         raise PluginError("Doxygen failed:\n" + (result.stderr or result.stdout).strip())
 
@@ -118,20 +120,15 @@ def read_warnings(path: Path) -> list[tuple[str, str]]:
     return warnings
 
 
-def enforced(path: str) -> bool:
-    """Return whether a repository path lies in a directory whose documentation is complete."""
-    return any(path == d or path.startswith(d.rstrip("/") + "/") for d in ENFORCED)
-
-
 def check_file_headers(reference_files: list[str]) -> list[str]:
-    """Return the enforced C++ files that lack the licence line or a file comment.
+    """Return the C++ files under `src/` and `tests/` that lack the licence line or a file comment.
 
     Args:
         reference_files: Repository paths of the files Doxygen documented with a comment.
     """
     problems = []
     documented = set(reference_files)
-    for directory in ENFORCED:
+    for directory in SOURCE_DIRECTORIES:
         for path in sorted((ROOT / directory).rglob("*")):
             relative = path.relative_to(ROOT).as_posix()
             if not relative.endswith((".hpp", ".cpp", ".hpp.in", ".cpp.in")):
@@ -151,8 +148,8 @@ def generate(config) -> cppreference.Reference | None:
         The generated reference, or None when Doxygen is not available and not required.
 
     Raises:
-        PluginError: Doxygen is required but missing, failed, or reported warnings in an
-            enforced directory.
+        PluginError: Doxygen is required but missing, failed or reported warnings, or a C++
+            file lacks its licence line or file comment.
     """
     doxygen = shutil.which(os.environ.get("DOXYGEN", "doxygen"))
     if doxygen is None:
@@ -163,27 +160,20 @@ def generate(config) -> cppreference.Reference | None:
     shutil.rmtree(OUTPUT, ignore_errors=True)
     OUTPUT.mkdir(parents=True)
 
-    errors = []
-
     run_doxygen(doxygen)
-    warnings = read_warnings(WARNINGS)
-    errors += [text for file, text in warnings if enforced(file)]
     reference = cppreference.build_reference(OUTPUT / "xml", ROOT,
                                              config["repo_url"].rstrip("/"), git_ref())
-    errors += check_file_headers(reference.documented_files)
+    errors = check_file_headers(reference.documented_files)
     if errors:
         raise PluginError("Documentation errors:\n" + "\n".join(errors))
-    pending = len(warnings) - sum(1 for file, _ in warnings if enforced(file))
-    if pending:
-        log.info("%d Doxygen warnings in directories not yet enforced", pending)
     return reference
 
 
 def placeholder() -> cppreference.Reference:
     """Return a reference made of placeholder pages, for builds without Doxygen."""
     pages = {part.page: PLACEHOLDER.format(title=part.title) for part in cppreference.PARTS}
-    nav = [{"Overview": cppreference.OVERVIEW_PAGE}] + [{part.title: part.page}
-                                          for part in cppreference.PARTS]
+    nav = [{"Overview": cppreference.OVERVIEW_PAGE}]
+    nav += [{part.title: part.page} for part in cppreference.PARTS]
     return cppreference.Reference(pages, nav, {}, [], {})
 
 

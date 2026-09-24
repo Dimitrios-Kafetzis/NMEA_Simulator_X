@@ -1,14 +1,32 @@
 #!/usr/bin/env python3
-"""Validate the AIS sentences of an NMEA 0183 stream with an independent decoder.
+# SPDX-License-Identifier: GPL-3.0-only
+r"""Validate the AIS sentences of an NMEA 0183 stream with an independent decoder.
 
-Reads sentences from standard input, decodes every `!..VDO` and `!..VDM` sentence with
-pyais (multi-sentence messages are reassembled by their sequential id), and checks that at
-least one position report (message type 1, 2 or 3) and one static data report (type 5) were
-decoded. Optional expectations compare the decoded MMSI, name and call sign.
+Reads lines from standard input and decodes every `!xxVDO` and `!xxVDM` sentence with
+pyais, a decoder developed independently of this project, against the message layouts of
+ITU-R M.1371. The fragments of a multi-sentence message are collected by talker, formatter
+and sequential message id and decoded together once the last fragment arrives. Every other
+line is ignored, so the simulator's full output can be piped in. pyais is called with its
+default of not verifying checksums; `check_nmea_stream.py` checks the checksums of the same
+sentences.
+
+The stream passes when every message decodes and at least one position report (message 1, 2
+or 3) and, unless `--no-static` is given, one static and voyage related data report
+(message 5) were decoded. `--mmsi` is compared with every decoded message, `--name` and
+`--callsign` with every message 5. The script prints a count of the decoded messages, one
+line per problem and the first position report to standard output, and writes no files.
 
 Usage:
-    nmeasim run --stdout --quiet --duration 3 | python3 tools/check_ais_stream.py \
-        --mmsi 239000001 --name "NMEA SIMULATOR X" --callsign SIMX
+    nmeasim run --stdout --quiet --duration 2 --enable VDM-POS --enable VDM-STATIC \
+        | python3 tools/check_ais_stream.py --mmsi 239000001 --name "NMEA SIMULATOR X" \
+        --callsign SIMX
+    python3 tools/check_ais_stream.py --mmsi 239000001 < tests/fixtures/ais/own_vessel.nmea
+
+Exit status:
+    0 when the stream passes, 1 when a message fails to decode, a required message type is
+    missing or an expectation is not met, and 2 for invalid arguments. A sentence with too
+    few fields, and a pyais error other than a malformed sentence or a missing fragment, end
+    the script with a traceback and status 1.
 """
 import argparse
 import sys
@@ -18,6 +36,11 @@ from pyais.exceptions import InvalidNMEAMessageException, MissingMultipartMessag
 
 
 def main() -> int:
+    """Decode the AIS sentences read from standard input and check the expectations.
+
+    Returns:
+        The exit status: 0 when the stream passes, 1 when it fails.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mmsi", type=int, help="expected MMSI of every message")
     parser.add_argument("--name", help="expected vessel name in the static data report")
@@ -34,10 +57,13 @@ def main() -> int:
         if not line.startswith("!") or line[3:6] not in ("VDO", "VDM"):
             continue
         fields = line.split(",")
+        # A fragment's sequential id is only unique per talker and formatter, so a VDO and a
+        # VDM message in flight with the same id are kept apart.
         total, number, sequence = int(fields[1]), int(fields[2]), fields[3]
         key = f"{line[1:6]}:{sequence}"
         fragments.setdefault(key, []).append(line)
         if number < total:
+            # pyais decodes a multi-sentence message only from all of its fragments at once.
             continue
         parts = fragments.pop(key)
         try:

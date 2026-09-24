@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Ruff configuration of the repository's Python tools. The Documentation job of CI runs
+# `ruff check` with it: every module, class and function needs a docstring in the Google
+# layout of PEP 257, with every argument documented (see docs/development/coding-standards.md).
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["D"]
+
+[lint.pydocstyle]
+convention = "google"
