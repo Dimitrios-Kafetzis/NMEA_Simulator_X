@@ -2,7 +2,8 @@
 
 Everything a contributor needs beyond the [contributing guide](https://github.com/Dimitrios-Kafetzis/NMEA_Simulator_X/blob/main/CONTRIBUTING.md).
 
-- [Coding standards](coding-standards.md): naming, layout, ownership and Qt usage rules.
+- [Coding standards](coding-standards.md): naming, layout, ownership and Qt usage rules, and
+  what every documentation comment must state.
 - [Release process](release-process.md): how a change becomes a downloadable package.
 - [Roadmap](roadmap.md): milestones from scaffold to 1.0 and beyond.
 
