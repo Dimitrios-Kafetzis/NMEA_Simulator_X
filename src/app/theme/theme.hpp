@@ -134,12 +134,12 @@ struct Colors {
     double map_dimming{0.0};
 };
 
-/// Returns the colour table of a concrete look.
+/// Returns the colour table of a look.
 ///
-/// @param resolved `Mode::Night` or `Mode::Day`. `Mode::System` must be resolved first with
-///   `Theme::resolve`; passed as it is, it gives the night colours.
+/// @param mode `Mode::Night` or `Mode::Day`, or `Mode::System`, which is resolved from the
+///   desktop's colour scheme with `Theme::resolve`.
 /// @return The table of that look, valid for the lifetime of the program.
-[[nodiscard]] const Colors& colors_for(Mode resolved);
+[[nodiscard]] const Colors& colors_for(Mode mode);
 
 /// Generates the application style sheet of a look from its colours.
 ///
@@ -184,14 +184,17 @@ public:
 
     /// Applies a look to the running application: Fusion style, palette and style sheet.
     ///
-    /// Resolves `Mode::System` with `resolve`, installs a new Fusion style, sets the
-    /// application palette from the colours of the resolved look (disabled text in
-    /// `Colors::inactive`) and, when the application is a `QApplication`, its style sheet
-    /// from `style_sheet`. Setting the application style sheet re-polishes every widget, so
-    /// this is meant for start-up and for the operator's choice, not for frequent calls. Does
-    /// not store the choice in the preferences; the caller does.
+    /// Resolves `Mode::System` with `resolve`. On the first call it installs the Fusion
+    /// style. When the resolved look differs from the one in use, or on the first call, it
+    /// sets the application palette from the colours of the resolved look
+    /// (disabled text in `Colors::inactive`) and, when the application is a `QApplication`,
+    /// its style sheet from `style_sheet`, and emits `changed`. Setting the application style
+    /// sheet re-polishes every widget, which is why the look in use is not installed again.
+    /// Does not store the choice in the preferences; the caller does.
     ///
-    /// Emits `changed` synchronously before returning, also when the mode did not change.
+    /// Emits `changed` synchronously before returning, and only when the look changed:
+    /// choosing `Mode::System` while the desktop is dark and the night look is in use
+    /// changes the mode but not the look.
     ///
     /// @param mode Mode to apply.
     /// @post `mode()` returns `mode` and `resolved()` the look now in use.
@@ -235,9 +238,10 @@ public:
     [[nodiscard]] static Mode resolve(Mode mode);
 
 signals:
-    /// Emitted when the colours may have changed: after every `apply`, because the operator
-    /// chose a look (also the same one again), and when the desktop switched between light
-    /// and dark while the mode is `Mode::System`.
+    /// Emitted when the look in use changed: from `apply` when the operator chose a look that
+    /// resolves to other colours, on the first `apply`, and when the desktop switched between
+    /// light and dark while the mode is `Mode::System`. Not emitted when the look stays the
+    /// same.
     ///
     /// Emitted synchronously from `apply`, after the palette and style sheet are installed,
     /// so receivers read the new `colors`. Connected widgets repaint or regenerate their
@@ -253,6 +257,9 @@ private:
     Mode mode_{Mode::Night};
     /// Look in use: `Mode::Night` or `Mode::Day`, never `Mode::System`.
     Mode resolved_{Mode::Night};
+    /// Whether `apply` has installed a look; until then the application has neither the
+    /// palette nor the style sheet of `resolved_`.
+    bool applied_{false};
 };
 
 }  // namespace nmeasim::app::theme
