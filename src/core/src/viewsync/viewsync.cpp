@@ -6,8 +6,20 @@
 
 #include <chrono>
 #include <format>
+#include <string>
+#include <string_view>
 
 namespace nmeasim::core::viewsync {
+
+std::string sanitize_planet(std::string_view planet) {
+    std::string result;
+    for (const char c : planet) {
+        if (c >= ' ' && c <= '~' && c != ',') {
+            result += c;
+        }
+    }
+    return result;
+}
 
 std::string encode_packet(const model::VesselState& state, const ViewSyncOptions& options,
                           std::uint32_t counter) {
@@ -20,7 +32,7 @@ std::string encode_packet(const model::VesselState& state, const ViewSyncOptions
                        navigation.position.latitude_deg, navigation.position.longitude_deg,
                        navigation.altitude_m + options.camera_altitude_m,
                        navigation.heading_true_deg, options.tilt_deg, options.roll_deg, time, time,
-                       options.planet);
+                       sanitize_planet(options.planet));
 }
 
 }  // namespace nmeasim::core::viewsync

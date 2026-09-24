@@ -119,11 +119,11 @@ const SentenceDescriptor* SentenceRegistry::find(std::string_view id) const noex
 std::vector<std::string> encode_within_limit(const SentenceDescriptor& descriptor,
                                              const model::VesselState& state,
                                              std::string_view talker, EncoderOptions options) {
-    // Two decimals of a minute still resolve about 18 m; the profile never goes below this.
+    // Two decimals of a minute still resolve about 18 m; fewer are raised to this.
     constexpr int kMinimumPositionDecimals = 2;
     std::vector<std::string> sentences;
-    for (int decimals = options.position_decimals; decimals >= kMinimumPositionDecimals;
-         --decimals) {
+    for (int decimals = std::max(options.position_decimals, kMinimumPositionDecimals);
+         decimals >= kMinimumPositionDecimals; --decimals) {
         options.position_decimals = decimals;
         // An empty result (nothing to report) also satisfies all_of and ends the loop.
         sentences = descriptor.encoder(EncoderContext{state, talker, options});

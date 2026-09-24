@@ -24,8 +24,9 @@ enum class EndBehaviour {
     /// Stay at the end and report `Source::finished()`; a track holds its last point with
     /// zero speed.
     Stop,
-    /// Start again from the beginning, carrying the time that ran past the end into the next
-    /// pass.
+    /// Start again from the beginning, carrying all the time that ran past the end into the
+    /// next pass; a step that spans several passes plays them all. A track without duration
+    /// stays at its point instead.
     Loop,
 };
 
@@ -82,9 +83,11 @@ public:
     /// Moves the vessel `dt` further along the track.
     ///
     /// At the end, a stopping track holds the last point with zero speed and becomes
-    /// finished; a looping one wraps the surplus time into the next pass. A track whose total
-    /// duration is zero, such as a single point, becomes finished on the first advance even
-    /// when it loops. Once finished, `advance` changes nothing.
+    /// finished; a looping one carries all the time that ran past the end into the next
+    /// lap, over as many laps as `dt` spans. A stopping track whose total duration is zero,
+    /// such as a single point, becomes finished on the first advance; a looping one stays
+    /// at its point, never finishes, and its clock keeps running. Once finished, `advance`
+    /// changes nothing.
     ///
     /// @param dt Simulated time to advance by.
     /// @return The new state.

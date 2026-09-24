@@ -12,6 +12,7 @@
 #include <nmeasim/core/ais/sixbit.hpp>
 #include <nmeasim/core/model/vessel_state.hpp>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -38,8 +39,8 @@ namespace nmeasim::core::ais {
 ///   "not available", without a fix;
 /// - course over ground in tenths of a degree, rounded and clamped to [0, 3599]; 3600, "not
 ///   available", without a fix;
-/// - true heading in whole degrees, rounded and clamped to [0, 359], so 511 ("not
-///   available") is never sent;
+/// - true heading: `heading_code` of the true heading, in [0, 359], or 511 ("not
+///   available") when the heading is not a finite number;
 /// - time stamp: the UTC second of `state.time_utc`, in [0, 59];
 /// - manoeuvre indicator 0 (not available), spare 0, RAIM flag 0, radio status 0.
 ///
@@ -51,7 +52,8 @@ namespace nmeasim::core::ais {
 /// Packs a static and voyage data report (message type 5) from the state.
 ///
 /// The fields and the values sent are:
-/// - repeat indicator 0, MMSI `state.ais.mmsi`, AIS version indicator 0;
+/// - repeat indicator 0, MMSI `state.ais.mmsi`, AIS version indicator `kAisVersionIndicator`
+///   (2, ITU-R M.1371-5, the edition whose layout is implemented);
 /// - IMO number, call sign (7 characters) and name (20 characters) from `state.ais`, text
 ///   upper-cased, padded with `@` and truncated;
 /// - type of ship and cargo: `state.ais.ship_type` clamped to [0, 255];
@@ -90,15 +92,43 @@ namespace nmeasim::core::ais {
                                                      std::string_view formatter,
                                                      const Payload& payload, int sequence);
 
+/// AIS version indicator sent in message 5: 2, a station compliant with ITU-R M.1371-5, the
+/// edition whose message layouts this module implements.
+///
+/// @see ITU-R M.1371-5, Annex 8, message 5, field "AIS version indicator".
+inline constexpr std::uint32_t kAisVersionIndicator{2};
+
+/// Rate-of-turn code meaning "no turn information available", -128 (0x80).
+///
+/// @see ITU-R M.1371-5, Annex 8, message 1, field "rate of turn".
+inline constexpr int kRateOfTurnNotAvailable{-128};
+
+/// True heading code meaning "not available", 511.
+///
+/// @see ITU-R M.1371-5, Annex 8, message 1, field "true heading".
+inline constexpr std::uint32_t kHeadingNotAvailable{511};
+
 /// Returns the AIS rate-of-turn code for a rate of turn.
 ///
 /// The code is 4.733 times the square root of the absolute rate, rounded, with the rate's
-/// sign, and clamped to [-126, 126]. The special values -128 (not available) and plus or
-/// minus 127 (turning without a turn indicator) are never produced.
+/// sign: 0 to plus or minus 126, where 126 means 708 degrees per minute or more, as the
+/// standard codes the output of a turn indicator. The simulated rate of turn is such an
+/// output, so plus or minus 127 (turning faster than 5 degrees per 30 seconds, no turn
+/// indicator available) is never produced.
 ///
 /// @param rate_deg_per_min Rate of turn in degrees per minute, positive to starboard.
-/// @return The code in [-126, 126], positive to starboard.
+/// @return The code in [-126, 126], positive to starboard; or kRateOfTurnNotAvailable
+///     (-128) when the rate is not a finite number.
 /// @see ITU-R M.1371-5, Annex 8, message 1, field "rate of turn".
 [[nodiscard]] int rate_of_turn_code(double rate_deg_per_min) noexcept;
+
+/// Returns the AIS true heading code for a heading.
+///
+/// @param heading_true_deg Heading in degrees true, of any value; it is normalised to
+///     [0, 360) and rounded to whole degrees, so -10 gives 350 and 359.6 gives 0.
+/// @return The heading in [0, 359]; or kHeadingNotAvailable (511) when the heading is not a
+///     finite number.
+/// @see ITU-R M.1371-5, Annex 8, message 1, field "true heading".
+[[nodiscard]] std::uint32_t heading_code(double heading_true_deg) noexcept;
 
 }  // namespace nmeasim::core::ais

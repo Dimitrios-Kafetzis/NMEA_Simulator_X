@@ -20,7 +20,7 @@ The default talker is `AI`.
 
 ```text
 !AIVDO,1,1,,A,13SsIh@vA11dWJ`Eg0R1nAKh0000,0*34
-!AIVDO,2,1,6,A,53SsIh@00001<TmP000plD61<TmDh5@u:1P0000U1P43340Ht4PAAjCP@000,0*7A
+!AIVDO,2,1,6,A,53SsIhH00001<TmP000plD61<TmDh5@u:1P0000U1P43340Ht4PAAjCP@000,0*72
 !AIVDO,2,2,6,A,00000000000,2*20
 ```
 
@@ -49,13 +49,13 @@ become `?`, and fields are padded with `@`.
 | 2 | Repeat indicator | 0 |
 | 30 | MMSI | `mmsi` |
 | 4 | Navigational status | `navigation_status`: 0 under way using engine, 8 under way sailing, ... |
-| 8 | Rate of turn | 4.733 × √(rate in °/min) with the rate's sign, clamped to ±126 |
+| 8 | Rate of turn | 4.733 × √(rate in °/min) with the rate's sign, rounded; ±126 for 708 °/min and faster. The simulated rate counts as a turn indicator, so ±127 (no turn indicator) is never sent; −128 (not available) when the rate is not a number |
 | 10 | Speed over ground | tenths of a knot; 1022 for 102.2 kn and above; 1023 (not available) without a fix |
 | 1 | Position accuracy | 1 with a differential fix, 0 otherwise |
 | 28 | Longitude | 1/10000 minutes, east positive; 181° (not available) without a fix |
 | 27 | Latitude | 1/10000 minutes, north positive; 91° (not available) without a fix |
 | 12 | Course over ground | tenths of a degree; 3600 (not available) without a fix |
-| 9 | True heading | whole degrees |
+| 9 | True heading | whole degrees, normalised to 0 to 359 (−10° is sent as 350); 511 (not available) when the heading is not a number |
 | 6 | Time stamp | UTC second of the simulated clock |
 | 2 | Manoeuvre indicator | 0 (not available) |
 | 3 | Spare | 0 |
@@ -69,7 +69,7 @@ become `?`, and fields are padded with `@`.
 | 6 | Message type | 5 |
 | 2 | Repeat indicator | 0 |
 | 30 | MMSI | `mmsi` |
-| 2 | AIS version | 0 |
+| 2 | AIS version | 2 (ITU-R M.1371-5, the edition whose layouts are implemented) |
 | 30 | IMO number | `imo_number`, 0 for none |
 | 42 | Call sign | `call_sign`, 7 characters |
 | 120 | Vessel name | `name`, 20 characters |
