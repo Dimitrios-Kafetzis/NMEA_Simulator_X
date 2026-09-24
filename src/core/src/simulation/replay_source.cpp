@@ -12,7 +12,7 @@
 namespace nmeasim::core::simulation {
 
 ReplaySource::ReplaySource(ReplayConfig config)
-    : config_(std::move(config)), state_(config_.seed) {}
+    : config_(std::move(config)), state_(config_.seed), finished_(config_.log.entries.empty()) {}
 
 void ReplaySource::emit_entry(std::size_t index) {
     const auto& entry = config_.log.entries[index];
@@ -35,7 +35,6 @@ const model::VesselState& ReplaySource::advance(std::chrono::milliseconds dt) {
         return state_;
     }
     clock_ += dt;
-    bool wrapped = false;
     while (true) {
         while (cursor_ < entries.size() && entries[cursor_].offset <= clock_) {
             emit_entry(cursor_);
@@ -44,11 +43,11 @@ const model::VesselState& ReplaySource::advance(std::chrono::milliseconds dt) {
         if (cursor_ < entries.size()) {
             break;
         }
-        if (config_.end == EndBehaviour::Loop && !wrapped && config_.log.duration().count() > 0) {
-            // Keep the time that ran past the last entry, so a loop has no hiccup.
+        if (config_.end == EndBehaviour::Loop && config_.log.duration().count() > 0) {
+            // Keep all the time that ran past the last entry, so a loop has no hiccup; each
+            // pass takes a whole duration off the clock, so this ends.
             clock_ -= config_.log.duration();
             rewind();
-            wrapped = true;
             continue;
         }
         if (config_.end == EndBehaviour::Loop) {
@@ -91,7 +90,7 @@ std::vector<EmittedSentence> ReplaySource::take_sentences() {
 
 void ReplaySource::reset() {
     clock_ = std::chrono::milliseconds{0};
-    finished_ = false;
+    finished_ = config_.log.entries.empty();
     pending_.clear();
     rewind();
 }
@@ -117,7 +116,7 @@ void ReplaySource::seek(std::chrono::milliseconds position) {
         }
         ++cursor_;
     }
-    finished_ = cursor_ >= entries.size() && config_.end == EndBehaviour::Stop;
+    finished_ = entries.empty() || (cursor_ >= entries.size() && config_.end == EndBehaviour::Stop);
 }
 
 }  // namespace nmeasim::core::simulation

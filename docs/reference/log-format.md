@@ -56,7 +56,10 @@ checksum is accepted. Trailing `<CR>`, `<LF>` and spaces are ignored.
 3. **Fixed interval.** Otherwise the entries are spaced by a fixed interval, 100 ms by
    default, configurable per profile.
 
-The duration of a log is the offset of its last entry.
+The duration of a log is the offset of its last entry. A looping replay starts the next
+pass one duration after the previous one, so the first entry of a pass is sent together
+with the last entry of the previous pass, and the time a tick runs past the end carries into
+the next pass.
 
 ## Replay behaviour
 
