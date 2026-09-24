@@ -15,9 +15,10 @@ Usage:
     python3 tools/coverage_summary.py coverage.json | tee -a "$GITHUB_STEP_SUMMARY"
 
 Exit status:
-    0 when the line coverage of `core` meets the target, 1 when it is below, and 2 for
-    invalid arguments. A missing or malformed summary file ends the script with a traceback
-    and status 1.
+    0 when the line coverage of `core` meets the target, 1 when it is below or the summary
+    has no instrumented line under `src/core` (for example a summary of another build or of
+    the wrong root), and 2 for invalid arguments. A missing or malformed summary file ends
+    the script with a traceback and status 1.
 """
 
 import argparse
@@ -64,7 +65,8 @@ def main() -> int:
     """Print the coverage report and compare the line coverage of `core` with the target.
 
     Returns:
-        The exit status: 0 when the target is met, 1 when it is not.
+        The exit status: 0 when the target is met, 1 when it is not or when no instrumented
+        line of `core` is in the summary.
 
     Raises:
         OSError: The summary file cannot be read.
@@ -95,7 +97,10 @@ def main() -> int:
 
     core = totals["core"]
     core_percent = percent(core["line_covered"], core["line_total"])
-    passed = core_percent >= args.core_target
+    # percent() reads an empty library as fully covered; a summary without core lines
+    # measured nothing, so it cannot meet the target.
+    measured = core["line_total"] > 0
+    passed = measured and core_percent >= args.core_target
 
     print("## Coverage\n")
     print("| Library | Lines | Line coverage | Functions | Function coverage |")
@@ -109,6 +114,10 @@ def main() -> int:
               f"| {t['function_covered']} / {t['function_total']} "
               f"| {percent(t['function_covered'], t['function_total']):.1f} % |")
     print()
+    if not measured:
+        print("The summary has no instrumented line under `src/core`, so the "
+              f"{args.core_target:.0f} % target of ADR 0008 is not met.")
+        return 1
     verdict = "meets" if passed else "is below"
     print(f"`core` line coverage {core_percent:.1f} % {verdict} the {args.core_target:.0f} % "
           "target of ADR 0008.")

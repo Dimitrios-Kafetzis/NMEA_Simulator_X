@@ -43,7 +43,7 @@ kelvin, hertz. Relative angles are in the range -π to π, positive to starboard
 | `navigation.courseOverGroundMagnetic` | rad | with a fix |
 | `navigation.speedOverGround` | m/s | with a fix |
 | `navigation.headingTrue` | rad | always |
-| `navigation.headingMagnetic` | rad | always |
+| `navigation.headingMagnetic` | rad, true heading minus variation (deviation not applied) | always |
 | `navigation.magneticVariation` | rad, east positive | always |
 | `navigation.magneticDeviation` | rad, east positive | always |
 | `navigation.speedThroughWater` | m/s | always |

@@ -217,6 +217,12 @@ TEST_CASE("autopilot and propulsion sentences update the destination and the eng
                                state));
     CHECK(state.destination->name == "WPT");
     CHECK(state.destination->origin.latitude_deg == Approx(37.9));
+    // An empty name is the same destination as the WPT it stands for: the leg is kept.
+    state.navigation.position = {37.8, 23.5};
+    CHECK(nmea::apply_sentence("$GPRMB,A,0.10,L,,,3744.7960,N,02325.6500,E,20.1,225.2,6.5,V,A",
+                               state));
+    CHECK(state.destination->name == "WPT");
+    CHECK(state.destination->origin.latitude_deg == Approx(37.9));
     // An invalid RMB or one without a position changes nothing.
     CHECK(nmea::apply_sentence("$GPRMB,V,,,,,,,,,,,,V,N", state));
     CHECK(state.destination->name == "WPT");
@@ -266,9 +272,14 @@ TEST_CASE("a receiver without a fix decodes as such", "[nmea0183][decoder]") {
 TEST_CASE("individual sentences update only what they carry", "[nmea0183][decoder]") {
     nmeasim::core::model::VesselState state;
     state.navigation.magnetic_variation_deg = 4.0;
-    // The true heading adds variation and deviation to the magnetic one: 41.0 + 4.0 = 45.0,
-    // then 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
+    state.navigation.magnetic_deviation_deg = 2.0;
+    // HDM carries the magnetic heading, to which only the variation applies: 41.0 + 4.0 =
+    // 45.0, whatever the deviation. HDG carries the compass heading, to which the deviation
+    // applies too: 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
     CHECK(nmea::apply_sentence("$HCHDM,41.0,M", state));
+    CHECK(state.navigation.heading_true_deg == Approx(45.0));
+    // VHW takes its true heading field; the magnetic one does not change it.
+    CHECK(nmea::apply_sentence("$VWVHW,45.0,T,39.0,M,6.2,N,11.5,K", state));
     CHECK(state.navigation.heading_true_deg == Approx(45.0));
     CHECK(nmea::apply_sentence("$HCHDG,40.0,1.0,W,5.0,E", state));
     CHECK(state.navigation.heading_true_deg == Approx(44.0));

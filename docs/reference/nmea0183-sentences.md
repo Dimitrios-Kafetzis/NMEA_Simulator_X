@@ -177,7 +177,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 
 | # | Field |
 | --- | --- |
-| 1 | Magnetic sensor heading |
+| 1 | Magnetic sensor (compass) heading: true heading minus variation and deviation |
 | 2 | Deviation, degrees |
 | 3 | `E`/`W` |
 | 4 | Variation, degrees |
@@ -191,7 +191,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 
 | # | Field |
 | --- | --- |
-| 1 | Heading, degrees magnetic |
+| 1 | Heading, degrees magnetic: true heading minus variation, without deviation |
 | 2 | `M` |
 
 ### HDT: True heading
@@ -228,7 +228,7 @@ mode `N`; GSV reports zero satellites in view. Sentences that do not depend on t
 | --- | --- |
 | 1 | Heading, degrees true |
 | 2 | `T` |
-| 3 | Heading, degrees magnetic |
+| 3 | Heading, degrees magnetic: true heading minus variation, without deviation |
 | 4 | `M` |
 | 5 | Speed through water, knots |
 | 6 | `N` |
