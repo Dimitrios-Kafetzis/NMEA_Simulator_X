@@ -14,7 +14,7 @@ sentences, without TAG block.
 | Transport | Direction | Settings | Notes |
 | --- | --- | --- | --- |
 | TCP server | listens | bind address, port | Any number of clients; each receives every line. Port `0` picks a free port. Clients that disconnect or error are removed immediately. Data received from clients is discarded. |
-| TCP client | connects | host, port, reconnect interval | Reconnects automatically after the peer drops the connection; lines are dropped while disconnected. |
+| TCP client | connects | host, port, reconnect interval | A refused or failed connection attempt moves the output to `failed` with the reason as its last error; the client keeps trying every reconnect interval and becomes `open` once the server accepts. Reconnects automatically after the peer drops the connection; lines are dropped while disconnected. |
 | UDP | sends | mode (unicast, broadcast, multicast), address, port, interface, multicast TTL | One datagram per line. In broadcast mode an empty address resolves to the subnet broadcast of the chosen interface, or `255.255.255.255` when no interface is chosen; an explicit address such as `255.255.255.255` can always be given. The interface, when set, is the source of the datagrams and the multicast egress. |
 | WebSocket server | listens | bind address, port | Each line is one text frame. With the `signalk` encoding every client receives the Signal K [hello message](signalk.md#hello-message) right after it connects. |
 | Serial port | writes | port, baud rate, data bits, parity, stop bits, flow control | Any positive baud rate is accepted. The port is opened write-only; an unplugged device moves the transport to `failed`. |

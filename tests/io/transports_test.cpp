@@ -127,6 +127,34 @@ TEST_CASE("TCP client connects, sends and reconnects", "[io][transport][integrat
     CHECK(client.client_count() == 0);
 }
 
+TEST_CASE("TCP client reports a refused connection and keeps trying",
+          "[io][transport][integration]") {
+    quint16 port = 0;
+    {
+        // Port 0 lets the operating system pick a free port; closing the server leaves a port
+        // on which connections are refused.
+        QTcpServer closed;
+        REQUIRE(closed.listen(QHostAddress::LocalHost, 0));
+        port = closed.serverPort();
+    }
+    // A reconnect interval of 100 ms keeps the retries well inside the waits.
+    nmeasim::io::TcpClientTransport client(QStringLiteral("127.0.0.1"), port, 100);
+    QSignalSpy errors(&client, &Transport::error_occurred);
+    REQUIRE(client.open());
+    // Windows retries a refused connection for about two seconds before reporting it, so the
+    // waits are generous.
+    REQUIRE(wait_until([&] { return client.state() == Transport::State::Failed; }, 15000));
+    CHECK_FALSE(client.last_error().isEmpty());
+    CHECK(errors.count() >= 1);
+    // The client keeps retrying while failed, and connects once a server listens.
+    REQUIRE(wait_until([&] { return errors.count() >= 2; }, 15000));
+    QTcpServer peer;
+    REQUIRE(peer.listen(QHostAddress::LocalHost, port));
+    REQUIRE(wait_until([&] { return client.is_open(); }, 15000));
+    client.close();
+    CHECK(client.state() == Transport::State::Closed);
+}
+
 TEST_CASE("UDP unicast sends one datagram per line", "[io][transport][integration]") {
     QUdpSocket receiver;
     // Port 0 lets the operating system pick a free port for the receiver.

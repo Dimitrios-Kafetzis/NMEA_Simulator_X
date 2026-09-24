@@ -15,19 +15,34 @@ TcpClientTransport::TcpClientTransport(QString host, quint16 port, int reconnect
     connect(&reconnect_timer_, &QTimer::timeout, this, &TcpClientTransport::connect_now);
     connect(&socket_, &QTcpSocket::connected, this, [this] { set_state(State::Open); });
     connect(&socket_, &QTcpSocket::disconnected, this, [this] {
-        if (wanted_open_) {
+        // A drop reported with an error has already been handled; a clean close by the peer
+        // arrives here only.
+        if (wanted_open_ && is_open()) {
             set_state(State::Opening);
-            schedule_reconnect();
         }
+        schedule_reconnect();
     });
-    // Errors never move the transport to Failed: a refused connection or a dropped peer is
-    // retried after the interval, until close() is called.
-    connect(&socket_, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        emit error_occurred(socket_.errorString());
-        if (wanted_open_) {
-            set_state(State::Opening);
-            schedule_reconnect();
+    // A connection that fails to be made (refused, host not found, timed out) moves the
+    // transport to Failed, a dropped connection back to Opening; either way the client tries
+    // again after the interval, until close() is called.
+    connect(&socket_, &QTcpSocket::errorOccurred, this, [this](QAbstractSocket::SocketError error) {
+        if (!wanted_open_) {
+            return;
         }
+        // The error code tells a drop apart whatever the order in which the platform reports
+        // the error and the disconnection.
+        if (is_open() || error == QAbstractSocket::RemoteHostClosedError) {
+            emit error_occurred(socket_.errorString());
+            if (is_open()) {
+                set_state(State::Opening);
+            }
+        } else {
+            fail(QStringLiteral("Cannot connect to %1:%2: %3")
+                     .arg(host_)
+                     .arg(port_)
+                     .arg(socket_.errorString()));
+        }
+        schedule_reconnect();
     });
     // Discard anything the server sends; the simulator only talks, and unread data would
     // accumulate in the socket's read buffer.
