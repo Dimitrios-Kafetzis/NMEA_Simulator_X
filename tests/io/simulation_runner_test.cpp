@@ -201,9 +201,19 @@ TEST_CASE("pausing stops emission and resuming continues it", "[io][runner][inte
     // One emission for the pause and one for the resumption.
     CHECK(paused.count() == 2);
 
+    // Stopping a paused run clears the flag and says so.
+    runner.pause();
+    REQUIRE(paused.count() == 3);
     QSignalSpy stopped(&runner, &SimulationRunner::stopped);
     runner.stop();
     CHECK(stopped.count() == 1);
+    CHECK_FALSE(runner.is_paused());
+    REQUIRE(paused.count() == 4);
+    CHECK_FALSE(paused.last().at(0).toBool());
+    // Stopping a run that is not paused emits nothing.
+    runner.start();
+    runner.stop();
+    CHECK(paused.count() == 4);
     CHECK(runner.outputs().front().transport->state() == nmeasim::io::Transport::State::Closed);
 }
 
@@ -439,6 +449,36 @@ TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored",
     CHECK_FALSE(runner.is_paused());
 }
 
+TEST_CASE("seeking makes the Signal K and ViewSync messages due at the next step", "[io][runner]") {
+    Profile profile = fast_profile();
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    OutputConfig signalk;
+    signalk.type = OutputConfig::Type::File;
+    signalk.path = directory.filePath(QStringLiteral("signalk.jsonl"));
+    signalk.encoding = OutputConfig::Encoding::SignalK;
+    // A period far longer than the steps below, so that only a seek makes a message due.
+    signalk.period_ms = 60'000;
+    profile.outputs.append(signalk);
+    OutputConfig viewsync = signalk;
+    viewsync.path = directory.filePath(QStringLiteral("viewsync.txt"));
+    viewsync.encoding = OutputConfig::Encoding::ViewSync;
+    profile.outputs.append(viewsync);
+
+    SimulationRunner runner;
+    QString error;
+    REQUIRE(runner.apply_profile(profile, &error));
+    runner.step();
+    runner.step();
+    CHECK(read_sentences(signalk.path).size() == 1);
+    CHECK(read_sentences(viewsync.path).size() == 1);
+    runner.seek(0ms);
+    runner.step();
+    CHECK(read_sentences(signalk.path).size() == 2);
+    CHECK(read_sentences(viewsync.path).size() == 2);
+    runner.stop();
+}
+
 TEST_CASE("recording writes every emitted sentence to a log next to the outputs",
           "[io][runner][integration]") {
     Profile profile = fast_profile();
@@ -490,11 +530,22 @@ TEST_CASE("recording writes every emitted sentence to a log next to the outputs"
     CHECK(recording.count() == 2);
     CHECK(recording.last().at(0).toString().isEmpty());
 
-    // An unwritable path is reported, and the run still works.
+    // An unwritable path is reported, sets no recording and leaves a running recording alone;
+    // the run still works.
     QSignalSpy errors(&runner, &SimulationRunner::output_error);
     runner.start();
     CHECK_FALSE(runner.set_recording(directory.filePath(QStringLiteral("no/such/dir/x.log"))));
     CHECK(errors.count() == 1);
+    CHECK_FALSE(runner.is_recording());
+    CHECK(recording.count() == 2);
+    const QString second = directory.filePath(QStringLiteral("second.log"));
+    REQUIRE(runner.set_recording(second));
+    CHECK(recording.count() == 3);
+    CHECK_FALSE(runner.set_recording(directory.filePath(QStringLiteral("no/such/dir/x.log"))));
+    CHECK(errors.count() == 2);
+    CHECK(runner.recording_path() == second);
+    CHECK(runner.recorder()->is_open());
+    CHECK(recording.count() == 3);
     CHECK(runner.is_running());
     runner.stop();
 }
@@ -536,6 +587,9 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     CHECK(server->greeting().contains(
         QStringLiteral("\"self\":\"aircraft.urn:mrn:signalk:uuid:test\"")));
 
+    // The hello is built when the client connects, not when the run started.
+    wait_until([] { return false; }, 300);
+    const auto connecting = QDateTime::currentDateTimeUtc();
     QWebSocket client;
     QStringList received;
     QObject::connect(&client, &QWebSocket::textMessageReceived, &client,
@@ -544,7 +598,14 @@ TEST_CASE("Signal K outputs greet with hello and send deltas on their own period
     // The greeting followed by at least three deltas.
     REQUIRE(wait_until([&] { return received.size() >= 4; }, 5000));
     runner.stop();
-    CHECK(received.first() == server->greeting());
+    const auto hello = QJsonDocument::fromJson(received.first().toUtf8()).object();
+    CHECK(hello.value(QStringLiteral("name")).toString() == QStringLiteral("NMEASimulatorX"));
+    CHECK(hello.value(QStringLiteral("self")).toString() ==
+          QStringLiteral("aircraft.urn:mrn:signalk:uuid:test"));
+    const auto hello_time = QDateTime::fromString(
+        hello.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
+    REQUIRE(hello_time.isValid());
+    CHECK(hello_time >= connecting);
     const auto delta = QJsonDocument::fromJson(received.at(1).toUtf8());
     REQUIRE(delta.isObject());
     CHECK(delta.object().value(QStringLiteral("context")).toString() ==
