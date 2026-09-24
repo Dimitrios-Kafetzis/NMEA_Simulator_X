@@ -31,26 +31,26 @@ namespace nmeasim::core::track {
 ///   whitespace. The points have no time.
 ///
 /// The third value, when present, is the elevation in metres; one that is not a number is
-/// treated as absent, and values after the third are ignored. The result is a
-/// `TrackKind::KmlTrack` when the file has at least one `<gx:Track>`, otherwise a
+/// treated as absent, without an error, and values after the third are ignored. The result
+/// is a `TrackKind::KmlTrack` when at least one `<gx:Track>` provides points, otherwise a
 /// `TrackKind::KmlLineString`. The track name is set at the first geometry: the `<name>` of
-/// the most recent named `<Placemark>` met so far, else the first non-empty `<name>` of a
-/// `<Document>` or `<Folder>` met so far; while both are empty, the next geometry tries
-/// again.
+/// the `<Placemark>` that holds it, else the first non-empty `<name>` of a `<Document>` or
+/// `<Folder>` met so far; while both are empty, the next geometry tries again.
 ///
 /// The file is rejected, with `error` set to a one-line reason, when:
 /// - it is not well-formed XML: `Invalid XML at offset N: <pugixml description>`, where `N`
 ///   is the byte offset of the error;
 /// - the root element is not `<kml>`: `Not a KML document: the root element is not <kml>`;
 /// - a `<when>` cannot be parsed, including an empty one:
-///   `<when> N: 'TEXT' is not an ISO 8601 time`;
-/// - a coordinate has fewer than two values: `coordinate N: expected longitude and latitude`;
-/// - its longitude or latitude is not a number: `coordinate N: 'LON,LAT' is not numeric`;
-/// - it is out of range: `coordinate N: LAT, LON is out of range`, latitude first;
+///   `point N: 'TEXT' is not an ISO 8601 time`, where `N` is the point the `<when>` belongs
+///   to;
+/// - a coordinate has fewer than two values: `point N: expected longitude and latitude`;
+/// - its longitude or latitude is not a number: `point N: 'LON,LAT' is not numeric`;
+/// - it is out of range: `point N: coordinates LAT, LON are out of range`, latitude first;
 /// - no geometry yields a point: `No <gx:Track> or <LineString> geometry found`.
 ///
-/// `N` is the 1-based number of the `<when>` or coordinate within its own `<gx:Track>` or
-/// `<LineString>`, not within the file.
+/// `N` is the 1-based number of the point in the whole file, counted across geometries, as
+/// `parse_gpx` counts its points.
 ///
 /// @param xml The complete file content, in any encoding pugixml detects. It is copied and
 ///        need not outlive the call.

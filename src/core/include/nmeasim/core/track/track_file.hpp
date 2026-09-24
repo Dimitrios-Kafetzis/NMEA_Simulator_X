@@ -15,14 +15,17 @@ namespace nmeasim::core::track {
 
 /// Parses track file content with the reader that matches the file name's extension.
 ///
-/// The extension is everything after the last `.` of `file_name`, compared
-/// case-insensitively: `gpx` selects `parse_gpx` and `kml` selects `parse_kml`. The content
-/// is not inspected to guess the format.
+/// The extension is everything after the last `.` of the file name, the last component of
+/// `file_name` after any `/` or backslash, compared case-insensitively: `gpx` selects
+/// `parse_gpx` and `kml` selects `parse_kml`. A dot in a directory name is not an
+/// extension. The content is not inspected to guess the format.
 ///
-/// @param file_name The file name or path; only its extension is used.
+/// @param file_name The file name or path; only the extension of its file name is used.
 /// @param content The complete file content.
-/// @param error Receives the reason on failure; left unchanged on success. May be null. For
-///        any other extension, including none, the reason is
+/// @param error Receives the reason on failure; left unchanged on success. May be null.
+///        When the file name has no `.`, the reason is
+///        `The track file 'NAME' has no extension; expected .gpx or .kml` with the file name
+///        without directory; for any other extension it is
 ///        `Unsupported track file type '.EXT'; expected .gpx or .kml` with the extension in
 ///        lower case; otherwise it is the reader's reason.
 /// @return The track, or `std::nullopt` when the extension is not supported or the reader

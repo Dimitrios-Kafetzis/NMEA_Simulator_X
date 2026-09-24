@@ -29,8 +29,12 @@ const auto kAutostart = QStringLiteral("simulation/autostart");
 const auto kMapOnline = QStringLiteral("map/online");
 /// Key of the tile server URL template; see `AppSettings::map_tile_url`.
 const auto kMapTileUrl = QStringLiteral("map/tile_url");
+/// Key of the attribution drawn for the tile server; see `AppSettings::map_tile_attribution`.
+const auto kMapTileAttribution = QStringLiteral("map/tile_attribution");
 /// Key of the last map zoom level; see `AppSettings::map_zoom`.
 const auto kMapZoom = QStringLiteral("map/zoom");
+/// Key of the directory that holds the tile cache; see `AppSettings::map_cache_directory`.
+const auto kMapCacheDirectory = QStringLiteral("map/cache_directory");
 /// Key of the look chosen under *View → Theme*; see `AppSettings::theme`.
 const auto kTheme = QStringLiteral("appearance/theme");
 
@@ -81,12 +85,35 @@ void AppSettings::set_map_tile_url(const QString& url) {
     settings_.setValue(kMapTileUrl, url);
 }
 
+std::optional<QString> AppSettings::map_tile_attribution() const {
+    if (!settings_.contains(kMapTileAttribution)) {
+        return std::nullopt;
+    }
+    return settings_.value(kMapTileAttribution).toString();
+}
+
+void AppSettings::set_map_tile_attribution(const std::optional<QString>& attribution) {
+    if (attribution) {
+        settings_.setValue(kMapTileAttribution, *attribution);
+    } else {
+        settings_.remove(kMapTileAttribution);
+    }
+}
+
 int AppSettings::map_zoom() const {
     return settings_.value(kMapZoom, 12).toInt();
 }
 
 void AppSettings::set_map_zoom(int zoom) {
     settings_.setValue(kMapZoom, zoom);
+}
+
+QString AppSettings::map_cache_directory() const {
+    return settings_.value(kMapCacheDirectory).toString();
+}
+
+void AppSettings::set_map_cache_directory(const QString& directory) {
+    settings_.setValue(kMapCacheDirectory, directory);
 }
 
 QString AppSettings::theme() const {
@@ -98,7 +125,10 @@ void AppSettings::set_theme(const QString& theme) {
 }
 
 QString AppSettings::tile_cache_directory() {
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    QString base = AppSettings().map_cache_directory();
+    if (base.isEmpty()) {
+        base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+    }
     const QString directory = QDir(base).filePath(QStringLiteral("tiles"));
     QDir().mkpath(directory);
     return directory;
