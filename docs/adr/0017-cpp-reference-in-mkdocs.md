@@ -130,6 +130,10 @@ redirects do not depend on the old generator.
   Doxygen is tested against it before the pin moves.
 - The reference adds several hundred pages to the navigation; they sit in collapsed
   sections under *Reference › C++ API*.
+- The hook uses the plugin API of MkDocs 1.x. MkDocs 2.0, in development, removes plugins
+  and hooks; the site stays on the pinned 1.6 release until the project chooses its
+  successor. The generator's output is plain Markdown and its input is Doxygen XML, so only
+  the thin hook would need rewriting for another site generator.
 - The *API reference* part of ADR 0006 is replaced by this decision; its other decisions
   stand.
 
