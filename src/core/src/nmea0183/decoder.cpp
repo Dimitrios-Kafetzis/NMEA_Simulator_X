@@ -318,10 +318,10 @@ bool decode_hdt(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDG: deviation, variation and the heading.
+/// Applies HDG: deviation, variation and the compass heading.
 ///
 /// Deviation and variation are applied first, positive east; the true heading is then the
-/// sensor heading plus variation plus deviation, normalised to [0, 360), using the values
+/// sensor (compass) heading plus variation plus deviation, normalised to [0, 360), using the values
 /// just read or the previous ones where those fields are empty.
 ///
 /// @param s The parsed sentence; the talker is ignored.
@@ -339,11 +339,11 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
     return true;
 }
 
-/// Applies HDM: the heading, converted to true with the variation and deviation already in
-/// the state.
+/// Applies HDM: the magnetic heading, converted to true with the variation already in the
+/// state.
 ///
-/// The true heading is the sent heading plus variation plus deviation, normalised to
-/// [0, 360), the inverse of what encode_hdm() sends.
+/// The true heading is the sent heading plus variation, normalised to [0, 360), the inverse
+/// of what encode_hdm() sends. The deviation does not apply to a magnetic heading.
 ///
 /// @param s The parsed sentence; the talker is ignored.
 /// @param[in,out] state The state to update.
@@ -352,8 +352,7 @@ bool decode_hdg(const ParsedSentence& s, model::VesselState& state) {
 bool decode_hdm(const ParsedSentence& s, model::VesselState& state) {
     if (const auto magnetic = parse_number_field(s.field(0))) {
         state.navigation.heading_true_deg =
-            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg +
-                                   state.navigation.magnetic_deviation_deg);
+            geo::normalize_bearing(*magnetic + state.navigation.magnetic_variation_deg);
     }
     return true;
 }

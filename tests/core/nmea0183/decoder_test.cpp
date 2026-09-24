@@ -272,9 +272,14 @@ TEST_CASE("a receiver without a fix decodes as such", "[nmea0183][decoder]") {
 TEST_CASE("individual sentences update only what they carry", "[nmea0183][decoder]") {
     nmeasim::core::model::VesselState state;
     state.navigation.magnetic_variation_deg = 4.0;
-    // The true heading adds variation and deviation to the magnetic one: 41.0 + 4.0 = 45.0,
-    // then 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
+    state.navigation.magnetic_deviation_deg = 2.0;
+    // HDM carries the magnetic heading, to which only the variation applies: 41.0 + 4.0 =
+    // 45.0, whatever the deviation. HDG carries the compass heading, to which the deviation
+    // applies too: 40.0 - 1.0 (west) + 5.0 (east) = 44.0.
     CHECK(nmea::apply_sentence("$HCHDM,41.0,M", state));
+    CHECK(state.navigation.heading_true_deg == Approx(45.0));
+    // VHW takes its true heading field; the magnetic one does not change it.
+    CHECK(nmea::apply_sentence("$VWVHW,45.0,T,39.0,M,6.2,N,11.5,K", state));
     CHECK(state.navigation.heading_true_deg == Approx(45.0));
     CHECK(nmea::apply_sentence("$HCHDG,40.0,1.0,W,5.0,E", state));
     CHECK(state.navigation.heading_true_deg == Approx(44.0));
