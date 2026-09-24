@@ -152,8 +152,10 @@ public:
     /// fields of its sentences. The count of emitted sentences is reset to zero; a recording
     /// is kept and takes the new profile name.
     ///
-    /// Transports that later fail to open are not a profile error: they are reported through
-    /// `output_error` when the run starts.
+    /// Every transport is built once, here. A Signal K WebSocket output gets a greeting
+    /// function that builds the Signal K hello from the current state and wall clock each
+    /// time a client connects. Transports that later fail to open are not a profile error:
+    /// they are reported through `output_error` when the run starts.
     ///
     /// @param profile The profile to run; copied, so it need not outlive the call.
     /// @param[out] error Receives the reason when the profile cannot be applied: a track or
@@ -167,8 +169,7 @@ public:
     ///
     /// Does nothing before a profile has been applied or while running. Outputs that fail to
     /// open are reported through `output_error`, synchronously from this call, and skipped;
-    /// the run proceeds with the rest. Signal K WebSocket outputs get a new hello greeting
-    /// built from the current state. ViewSync counters restart at zero and every state
+    /// the run proceeds with the rest. ViewSync counters restart at zero and every state
     /// message is due at the first tick. The simulation itself continues from where it was:
     /// starting again after `stop` does not rewind it.
     ///
@@ -186,9 +187,9 @@ public:
     void resume();
     /// Stops ticking and closes every output and the recording.
     ///
-    /// Safe to call in any state. Clears the paused flag without emitting `paused_changed`.
-    /// The simulation keeps its state and the channels keep their counters. Emits `stopped`
-    /// only when the run was going.
+    /// Safe to call in any state. Clears the paused flag, emitting `paused_changed` with
+    /// `false` when the run was paused. The simulation keeps its state and the channels keep
+    /// their counters. Emits `stopped` only when the run was going, after `paused_changed`.
     void stop();
 
     /// Takes the smallest step while paused: one recorded sentence during a replay, one tick
@@ -203,8 +204,9 @@ public:
     /// Moves a finite source to a position; the state changes at once.
     ///
     /// Endless sources (the delta simulation) keep their position, but in either case every
-    /// NMEA 0183 sentence becomes due again at the next tick; the schedule of Signal K and
-    /// ViewSync messages is not changed. Nothing is sent by the seek itself. Works whether
+    /// NMEA 0183 sentence and every Signal K and ViewSync message becomes due again at the
+    /// next tick, so that receivers see the new position at once. Nothing is sent by the seek
+    /// itself. Works whether
     /// running, paused or stopped. The wall-clock reference restarts, so the time since the
     /// previous tick is not handed to the simulation. Does nothing before a profile has been
     /// applied. Emits `ticked`.
@@ -226,18 +228,20 @@ public:
     /// Records every emitted sentence to a log file, in addition to the profile outputs.
     ///
     /// The recording uses the log format of ADR 0012 and holds the plain sentences, before any
-    /// filter and without TAG block; Signal K and ViewSync messages are not recorded. Any
-    /// previous recording is closed first. The file is truncated when the recording first
-    /// opens and continued across stop and start until the recording is cleared or replaced.
-    /// While running the file opens at once; otherwise it opens at the next `start`, and only
-    /// then is a failure reported.
+    /// filter and without TAG block; Signal K and ViewSync messages are not recorded. The file
+    /// is truncated when the recording first opens and continued across stop and start until
+    /// the recording is cleared or replaced. While running the file opens at once, and the
+    /// previous recording, if any, is closed and replaced only once it has; otherwise the
+    /// recording is set at once and the file opens at the next `start`, where a failure is
+    /// reported through `output_error` and leaves the recording set.
     ///
-    /// Emits `recording_changed` with `path`, also when opening failed, and `output_error`
-    /// synchronously when the file cannot be opened.
+    /// Emits `recording_changed` with `path` when the recording was set or cleared. When the
+    /// file cannot be opened at once, emits `output_error` synchronously instead and changes
+    /// nothing.
     ///
     /// @param path Log file to record to; an empty path stops recording.
-    /// @return False when the file was opened at once and that failed; the recording then
-    ///   stays set (`is_recording` is true) in the failed state. True otherwise.
+    /// @return False when the file was opened at once and that failed; the previous recording,
+    ///   or none, then stays. True otherwise.
     /// @see docs/reference/log-format.md
     bool set_recording(const QString& path);
     /// Returns the path of the current recording.
@@ -246,8 +250,8 @@ public:
     [[nodiscard]] QString recording_path() const;
     /// Returns whether a recording is set, whether or not the run is going.
     ///
-    /// @return True from a `set_recording` call with a non-empty path until one with an empty
-    ///   path, even when the file could not be opened.
+    /// @return True from a successful `set_recording` call with a non-empty path until one
+    ///   with an empty path, also when the file failed to open at a later `start`.
     [[nodiscard]] bool is_recording() const noexcept { return recorder_ != nullptr; }
     /// Returns the log transport of the recording, for its state and counters.
     ///
@@ -300,11 +304,12 @@ signals:
     /// Emitted when the outputs have been opened and ticking began, from `start` or from
     /// `step` on a runner that was not running.
     void started();
-    /// Emitted when the run is paused or resumed, from `pause`, `resume` or `step`.
+    /// Emitted when the run is paused or resumed, from `pause`, `resume` or `step`, and with
+    /// `false` when `stop` ends a paused run.
     ///
-    /// Not emitted when the flag does not change, nor when `stop` clears it.
+    /// Not emitted when the flag does not change.
     ///
-    /// @param paused True when the run was paused, false when it was resumed.
+    /// @param paused True when the run was paused, false when it was resumed or stopped.
     void paused_changed(bool paused);
     /// Emitted when a running simulation stopped and its outputs were closed, from `stop`,
     /// `apply_profile`, the destructor, or after `finished` at the end of a finite source.
@@ -336,7 +341,8 @@ signals:
     /// Emitted when the track or log reached its end and does not loop, from a tick or from
     /// `step`; `stopped` follows immediately.
     void finished();
-    /// Emitted when `set_recording` is called, whether or not the file could be opened.
+    /// Emitted when `set_recording` sets or clears the recording; not when it fails to open
+    /// the file at once.
     ///
     /// @param path The new recording path, or empty when the recording was cleared.
     void recording_changed(const QString& path);
@@ -350,8 +356,9 @@ private:
     void tick();
     /// Writes sentences to the admitting NMEA 0183 channels and to the recording.
     ///
-    /// The TAG block, where enabled, carries the simulated UTC time of the current state as
-    /// its `c:` parameter. Emits `sentence_emitted` for every sentence.
+    /// The TAG block, where enabled, is put in front of the sentence by
+    /// `core::nmea0183::prepend_tag_block` and carries the simulated UTC time of the current
+    /// state as its `c:` parameter. Emits `sentence_emitted` for every sentence.
     ///
     /// @param sentences The sentences the simulation produced, in order, without line
     ///   terminator.
@@ -367,11 +374,6 @@ private:
     /// Emits `finished` and stops the run (emitting `stopped`) when the source has reached
     /// its end.
     void finish_if_done();
-    /// Sets the Signal K hello message, built from the current state and the current wall
-    /// clock, as the greeting of every Signal K WebSocket output.
-    ///
-    /// @see https://signalk.org/specification/1.7.0/doc/streaming_api.html
-    void refresh_greetings();
     /// Restarts the wall-clock reference of the tick, so that the time before this call is
     /// never handed to the simulation.
     void restart_wall_clock();
