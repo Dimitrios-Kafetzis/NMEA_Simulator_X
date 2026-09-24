@@ -27,8 +27,10 @@ One delta is sent per output period (see the [profile reference](profile.md#outp
 one update whose `timestamp` is the simulated clock. The `context` is configurable per
 output: the default `vessels.urn:mrn:imo:mmsi:<MMSI>` uses the AIS MMSI, and any other
 Signal K context such as `aircraft.urn:mrn:signalk:uuid:...` can be given. The output's
-sentence filter applies to paths: a filter entry admits every path that starts with it, so
-`navigation, environment.wind` sends only those groups.
+sentence filter applies to paths: a filter entry admits the path it names and every path
+below it, so `navigation, environment.wind` sends only those groups. Entries name whole path
+segments, so `navigation.speed` does not admit `navigation.speedThroughWater`, and case is
+ignored.
 
 ## Paths
 

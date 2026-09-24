@@ -102,9 +102,10 @@ struct OutputConfig {
     Encoding encoding{Encoding::Nmea0183};
     /// The `filter` key: what this output sends; empty sends everything.
     ///
-    /// For an NMEA 0183 output the entries are registry ids and custom sentence ids, matched
-    /// exactly. For a Signal K output they are path prefixes such as `navigation` or
-    /// `environment.wind`, matched without regard to case. A ViewSync output ignores it.
+    /// For an NMEA 0183 output the entries are registry ids and custom sentence ids. For a
+    /// Signal K output they are paths or leading path segments such as `navigation` or
+    /// `environment.wind`, each admitting the paths below it. Both are matched without regard
+    /// to case. A ViewSync output ignores it.
     QStringList filter;
     /// Period of the messages of a Signal K or ViewSync output in milliseconds, the
     /// `period_ms` key; [50, 3600000].

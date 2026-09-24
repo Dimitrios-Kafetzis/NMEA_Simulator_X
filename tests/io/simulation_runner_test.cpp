@@ -429,6 +429,32 @@ TEST_CASE("a replay profile re-sends the log, steps one sentence at a time and s
     CHECK(error.contains(QStringLiteral("No valid NMEA sentence")));
 }
 
+TEST_CASE("output filters match whole Signal K path segments and ignore case",
+          "[io][runner][signalk]") {
+    nmeasim::io::OutputChannel channel;
+    CHECK(channel.admits(QStringLiteral("RMC")));
+    CHECK(channel.admits_path(QStringLiteral("navigation.speedOverGround")));
+
+    channel.filter = {QStringLiteral("navigation.speed"), QStringLiteral("Environment.Wind."),
+                      QStringLiteral("rmc"), QStringLiteral("BARO")};
+    // A path entry names whole segments: it admits itself and the paths below it, not a path
+    // that merely starts with the same letters.
+    CHECK(channel.admits_path(QStringLiteral("navigation.speed")));
+    CHECK(channel.admits_path(QStringLiteral("navigation.speed.overGround")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation.speedThroughWater")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation.speedOverGround")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("navigation")));
+    // Case is ignored, and a trailing dot is allowed.
+    CHECK(channel.admits_path(QStringLiteral("environment.wind.speedApparent")));
+    CHECK_FALSE(channel.admits_path(QStringLiteral("environment.windy")));
+    // Sentence ids are matched without regard to case too.
+    CHECK(channel.admits(QStringLiteral("RMC")));
+    CHECK(channel.admits(QStringLiteral("BARO")));
+    CHECK(channel.admits(QStringLiteral("baro")));
+    CHECK_FALSE(channel.admits(QStringLiteral("GGA")));
+    CHECK_FALSE(channel.admits(QStringLiteral("RMCX")));
+}
+
 TEST_CASE("stepping the delta simulation takes one tick and seeking is ignored", "[io][runner]") {
     Profile profile = fast_profile();
     SimulationRunner runner;
