@@ -235,6 +235,49 @@ TEST_CASE("a time of day that wraps past midnight advances the date", "[nmea0183
     CHECK(state.time_utc == sys_days{year{2027} / 1 / 1} + 12h);
 }
 
+TEST_CASE("GNS, GST, GBS and GRS set the time they carry", "[nmea0183][decoder]") {
+    using std::chrono::sys_days;
+    using std::chrono::year;
+    nmeasim::core::model::VesselState state;
+    state.time_utc = sys_days{year{2026} / 9 / 23} + 8h;
+    // Every formatter that sentence_time() reads is also applied, with the same time.
+    for (const auto* line :
+         {"$GNGNS,101500.00,,,,,NN,00,,,,,,V", "$GPGST,101501.00,1.5,0.9,0.6,45.0,0.8,0.7,2.1",
+          "$GPGBS,101502.00,1.0,1.1,2.2,,,,", "$GPGRS,101503.00,1,0.1,-0.2"}) {
+        INFO(line);
+        const auto parsed = nmea::parse_sentence(line);
+        REQUIRE(parsed.has_value());
+        const auto time = nmea::sentence_time(*parsed);
+        REQUIRE(time.has_value());
+        CHECK(nmea::apply_sentence(*parsed, state));
+        CHECK(state.time_utc == sys_days{year{2026} / 9 / 23} + time->since_midnight);
+    }
+    CHECK(state.time_utc == sys_days{year{2026} / 9 / 23} + 10h + 15min + 3s);
+
+    // GNS also carries the fix like GGA does; the mode has one letter per constellation.
+    CHECK_FALSE(state.gnss.has_fix);
+    CHECK(nmea::apply_sentence("$GNGNS,101504.00,3759.0280,N,02343.6500,E,DA,11,0.8,12.3,34.5,,,V",
+                               state));
+    CHECK(state.time_utc == sys_days{year{2026} / 9 / 23} + 10h + 15min + 4s);
+    CHECK(state.gnss.has_fix);
+    CHECK(state.gnss.quality == nmeasim::core::model::FixQuality::Differential);
+    CHECK(state.navigation.position.latitude_deg == Approx(37.9838).epsilon(1e-6));
+    CHECK(state.navigation.position.longitude_deg == Approx(23.7275).epsilon(1e-6));
+    CHECK(state.gnss.satellites_in_use == 11);
+    CHECK(state.gnss.satellites_in_view >= 11);
+    CHECK(state.gnss.hdop == Approx(0.8));
+    CHECK(state.navigation.altitude_m == Approx(12.3));
+    CHECK(state.gnss.geoid_separation_m == Approx(34.5));
+    CHECK(nmea::apply_sentence("$GPGNS,101505.00,3759.0280,N,02343.6500,E,A,08,0.9,,,,", state));
+    CHECK(state.gnss.quality == nmeasim::core::model::FixQuality::Gps);
+    CHECK(state.navigation.altitude_m == Approx(12.3));
+    CHECK(nmea::apply_sentence("$GPGNS,101506.00,,,,,N,00,,,,,", state));
+    CHECK_FALSE(state.gnss.has_fix);
+    CHECK(state.gnss.quality == nmeasim::core::model::FixQuality::Invalid);
+    // The position is kept without a fix.
+    CHECK(state.navigation.position.latitude_deg == Approx(37.9838).epsilon(1e-6));
+}
+
 TEST_CASE("every encoded sentence decodes back to the state it came from", "[nmea0183][decoder]") {
     const auto original = nmeasim::test::fixture_state();
     nmeasim::core::model::VesselState decoded;

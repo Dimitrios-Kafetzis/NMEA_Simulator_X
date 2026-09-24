@@ -57,7 +57,8 @@ skipped and counted as well. Trailing `<CR>`, `<LF>` and spaces are ignored.
    the offset of the last one that had it. A jump back of more than 12 hours is taken as
    crossing midnight into the next day. A shorter jump back holds the replay: the offset
    stays where it is until the times pass the latest time seen before the jump, and only
-   the time beyond it is added, so no time is counted twice.
+   the time beyond it is added, so no time is counted twice. The same sentences set the
+   simulated time during replay (see [Replay behaviour](#replay-behaviour)).
 3. **Fixed interval.** Otherwise the entries are spaced by a fixed interval, 100 ms by
    default, configurable per profile. A negative interval is rejected.
 
@@ -82,6 +83,8 @@ the state as it is.
 | RMC | Time and date, fix status, position, speed and course over ground, magnetic variation |
 | GGA | Time, position, fix quality, satellites in use, HDOP, altitude, geoid separation |
 | GLL | Position, time, fix status |
+| GNS | Time, position, fix status and quality from the mode letters, satellites in use, HDOP, altitude, geoid separation |
+| GST, GBS, GRS | Time only |
 | GSA | Fix status, satellites in use, PDOP, HDOP, VDOP |
 | GSV | Satellites in view |
 | VTG | Course and speed over ground |
