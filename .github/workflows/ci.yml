@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Continuous integration. Builds the project with the ci-* presets on Linux, Windows and macOS,
 # runs the unit tests, smoke-tests and installs the command-line tool, cross-checks its output
-# with independent parsers and, on Linux, reports the test coverage. Two further jobs check the
+# with independent parsers, tests those checkers and, on Linux, reports the test coverage. Two further jobs check the
 # C++ formatting and build the documentation site with the C++ reference.
 #
 # Triggers: pushes to main, every pull request and manual dispatch. A newer run for the same
@@ -179,6 +179,13 @@ jobs:
           "$NMEASIM" run --stdout --quiet --duration 2 --encoding signalk --destination 37.7466,23.4275,AEGINA | python3 tools/check_signalk_stream.py --context vessels.urn:mrn:imo:mmsi:239000001 --require-path navigation.position --require-path navigation.courseRhumbline.crossTrackError --require-path propulsion.port.revolutions
           python3 tools/check_signalk_stream.py --min-deltas 1 < tests/fixtures/signalk/delta.jsonl
           "$NMEASIM" run --stdout --quiet --duration 2 --encoding viewsync | python3 tools/check_viewsync_stream.py
+
+      # The unit tests of the Python tools (tools/tests): a malformed stream or coverage
+      # summary must fail its check, not pass it or end in a traceback. They use the pynmea2
+      # and pyais that the previous step installed.
+      - name: Test the Python tools
+        shell: bash
+        run: python3 -m unittest discover -s tools/tests -v
 
       # The ci-linux preset instruments the build for gcov; the report runs last so that the
       # smoke tests above count towards the coverage of the command-line tool.
