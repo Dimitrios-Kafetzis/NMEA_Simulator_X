@@ -35,7 +35,7 @@ struct UdpConfig {
     Mode mode{Mode::Unicast};
     /// Destination address as an IPv4 literal such as `192.168.1.255` or `239.192.0.1`.
     ///
-    /// Host names are not resolved: an address that does not parse makes
+    /// Host names are not resolved: an address that does not parse, or an IPv6 address, makes
     /// `UdpTransport::open` fail. In broadcast mode an empty address resolves to the subnet
     /// broadcast address of `interface_name`, or to the limited broadcast address
     /// `255.255.255.255` when no interface is chosen or the interface has no broadcast
@@ -46,9 +46,9 @@ struct UdpConfig {
     /// Network interface to send from, by system name (`eth0`, `en0`) or descriptive name;
     /// empty lets the operating system choose.
     ///
-    /// When set, the datagrams leave from the first IPv4 address of that interface, and in
-    /// multicast mode the interface is also the multicast egress, looked up by system name
-    /// only.
+    /// When set, the interface must be up and running and have an IPv4 address. It is looked
+    /// up once, with `find_ipv4_interface`; the datagrams leave from its first IPv4 address,
+    /// and in multicast mode it is also the multicast egress.
     QString interface_name;
     /// Time to live of multicast datagrams, in router hops; ignored in the other modes.
     ///
@@ -85,9 +85,10 @@ public:
     ///
     /// Returns true at once when already open. The socket is bound to an ephemeral port on
     /// the first IPv4 address of `UdpConfig::interface_name`, or on every IPv4 address when no
-    /// interface is set. Fails when the destination address does not parse, when the
-    /// interface is unknown, not up and running, or has no IPv4 address, and when the socket
-    /// cannot be bound; `last_error` names the address or interface concerned.
+    /// interface is set. Fails when the destination address does not parse or is not an IPv4
+    /// address, when the interface is unknown, not up and running, or has no IPv4 address,
+    /// and when the socket cannot be bound; `last_error` names the address or interface
+    /// concerned.
     ///
     /// @return True when the transport is open, false when any step failed.
     bool open() override;
@@ -102,7 +103,7 @@ public:
     ///
     /// @return The address resolved by the last `open`, with the broadcast default applied;
     ///   a null address before the first `open` or when the last one found the address
-    ///   invalid.
+    ///   invalid or not IPv4.
     [[nodiscard]] QHostAddress destination() const { return destination_; }
     /// Returns the settings the transport was created with.
     ///
@@ -113,7 +114,7 @@ private:
     /// Sets `destination_` from `config_`, applying the broadcast default for an empty
     /// address.
     ///
-    /// Calls `fail` when the address does not parse.
+    /// Calls `fail` when the address does not parse or is not an IPv4 address.
     ///
     /// @return True when a destination was set, false after a failure.
     bool resolve_destination();

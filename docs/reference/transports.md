@@ -40,6 +40,11 @@ The simulator lists every IPv4 address of every interface that is up and running
 loopback, with the subnet broadcast address. The list is used to choose the UDP source interface and to
 show the addresses clients can connect to.
 
+The interface of a UDP output is given by its system name (`eth0`, `en0`) or its descriptive
+name (`Ethernet`); it must be up and running and have an IPv4 address, otherwise the output
+fails. It is both the source of the datagrams and, in multicast mode, the multicast egress.
+UDP destinations are IPv4 addresses: an IPv6 address or a host name makes the output fail.
+
 ## Ports used by convention
 
 | Port | Use |

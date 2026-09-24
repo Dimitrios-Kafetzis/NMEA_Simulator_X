@@ -23,8 +23,6 @@ SerialTransport::SerialTransport(SerialConfig config, QObject* parent)
         }
         emit error_occurred(port_.errorString());
     });
-    // Discard anything received; the simulator only talks.
-    connect(&port_, &QSerialPort::readyRead, &port_, [this] { port_.readAll(); });
 }
 
 SerialTransport::~SerialTransport() {
