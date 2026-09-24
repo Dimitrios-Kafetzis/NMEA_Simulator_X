@@ -1,3 +1,20 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the `nmeasim::io` transports and of network interface enumeration.
+///
+/// Covers `nmeasim::io::TcpServerTransport`, `nmeasim::io::TcpClientTransport`,
+/// `nmeasim::io::UdpTransport`, `nmeasim::io::WebSocketServerTransport`,
+/// `nmeasim::io::FileTransport`, `nmeasim::io::SerialTransport` and
+/// `nmeasim::io::LogTransport`: opening and closing, state changes and errors, the bytes each
+/// one delivers, client counts, reconnection, and the `nmeasim::io::to_string` names of
+/// transport states and UDP modes. It also checks `nmeasim::io::ipv4_interfaces` and
+/// `nmeasim::io::find_ipv4_interface`.
+///
+/// The network tests (tagged `[integration]`) talk to Qt sockets over the loopback interface
+/// and bind to port 0, so that the operating system picks a free port and parallel test runs
+/// do not collide. Files are written to temporary directories; the serial test uses a device
+/// name that does not exist. The file reads no fixture.
+
 #include "io/event_loop.hpp"
 
 #include <nmeasim/core/log/log_file.hpp>
@@ -25,12 +42,17 @@ using nmeasim::test::wait_until;
 
 namespace {
 
+/// The line the transport tests write: a valid GLL sentence with its `CR LF` terminator.
+///
+/// It reports 49 degrees 16.45 minutes north, 123 degrees 11.12 minutes west at 22:54:44 UTC.
+/// Its checksum `1D` is the XOR of the characters between `$` and `*`.
 const QByteArray kLine{"$GPGLL,4916.45,N,12311.12,W,225444,A,*1D\r\n"};
 
 }  // namespace
 
 TEST_CASE("TCP server delivers lines to every client and tracks disconnects",
           "[io][transport][integration]") {
+    // Port 0 lets the operating system pick a free port; `port()` reports it after `open()`.
     nmeasim::io::TcpServerTransport server(0, QHostAddress::LocalHost);
     QSignalSpy clients_changed(&server, &Transport::client_count_changed);
     REQUIRE(server.open());
@@ -52,6 +74,7 @@ TEST_CASE("TCP server delivers lines to every client and tracks disconnects",
 
     first.disconnectFromHost();
     REQUIRE(wait_until([&] { return server.client_count() == 1; }));
+    // One emission for each of the two connections and one for the disconnection.
     CHECK(clients_changed.count() >= 3);
 
     server.close();
@@ -61,6 +84,8 @@ TEST_CASE("TCP server delivers lines to every client and tracks disconnects",
 }
 
 TEST_CASE("TCP server reports a port that is already in use", "[io][transport][integration]") {
+    // The first server takes a free port chosen by the operating system (port 0); the second
+    // asks for that same port.
     nmeasim::io::TcpServerTransport first(0, QHostAddress::LocalHost);
     REQUIRE(first.open());
     nmeasim::io::TcpServerTransport second(first.port(), QHostAddress::LocalHost);
@@ -73,8 +98,10 @@ TEST_CASE("TCP server reports a port that is already in use", "[io][transport][i
 
 TEST_CASE("TCP client connects, sends and reconnects", "[io][transport][integration]") {
     QTcpServer peer;
+    // Port 0 lets the operating system pick a free port for the peer.
     REQUIRE(peer.listen(QHostAddress::LocalHost, 0));
 
+    // A reconnect interval of 100 ms keeps the reconnection below well inside the wait.
     nmeasim::io::TcpClientTransport client(QStringLiteral("127.0.0.1"), peer.serverPort(), 100);
     REQUIRE(client.open());
     REQUIRE(wait_until([&] { return peer.hasPendingConnections(); }));
@@ -102,6 +129,7 @@ TEST_CASE("TCP client connects, sends and reconnects", "[io][transport][integrat
 
 TEST_CASE("UDP unicast sends one datagram per line", "[io][transport][integration]") {
     QUdpSocket receiver;
+    // Port 0 lets the operating system pick a free port for the receiver.
     REQUIRE(receiver.bind(QHostAddress::LocalHost, 0));
 
     nmeasim::io::UdpConfig config;
@@ -121,6 +149,7 @@ TEST_CASE("UDP unicast sends one datagram per line", "[io][transport][integratio
         const auto datagram = receiver.receiveDatagram().data();
         CHECK(datagram == kLine);
         ++datagrams;
+        // The second datagram may not have arrived when the first is read.
         if (datagrams < 2) {
             wait_until([&] { return receiver.hasPendingDatagrams(); }, 500);
         }
@@ -154,6 +183,7 @@ TEST_CASE("UDP rejects an invalid destination", "[io][transport]") {
 
 TEST_CASE("WebSocket server greets new clients and sends lines as text frames",
           "[io][transport][integration]") {
+    // Port 0 lets the operating system pick a free port; `port()` reports it after `open()`.
     nmeasim::io::WebSocketServerTransport server(0, QHostAddress::LocalHost);
     server.set_greeting(QStringLiteral("{\"name\":\"hello\"}"));
     REQUIRE(server.open());
@@ -202,6 +232,8 @@ TEST_CASE("file transport appends lines and flushes immediately", "[io][transpor
         REQUIRE(file.open());
         file.write(kLine);
     }
+    // The second argument is `append`: the second transport adds a third line, then the third
+    // transport truncates the file, so only its own line remains.
     QFile reader(path);
     REQUIRE(reader.open(QIODevice::ReadOnly));
     CHECK(reader.readAll().count("$GPGLL") == 1);
@@ -258,6 +290,7 @@ TEST_CASE("log transport writes a header once and timestamps every line", "[io][
         log.write(kLine);
         log.write(kLine);
         CHECK(log.lines_written() == 2);
+        // The byte count includes the header and the timestamp in front of every line.
         CHECK(log.bytes_written() > 2 * kLine.size());
         log.close();
         // Reopening within the same recording continues the file without a second header.
@@ -281,7 +314,8 @@ TEST_CASE("log transport writes a header once and timestamps every line", "[io][
     CHECK(text.find("# NMEA Simulator X log 1") == 0);
     CHECK(text.find("# NMEA Simulator X log 1", 1) == std::string::npos);
 
-    // Truncating starts a fresh file with a new header; appending to a file keeps it.
+    // Truncating starts a fresh file with a new header, without a profile line because no
+    // profile name is set; appending to a file keeps it.
     {
         nmeasim::io::LogTransport fresh(path, false);
         REQUIRE(fresh.open());

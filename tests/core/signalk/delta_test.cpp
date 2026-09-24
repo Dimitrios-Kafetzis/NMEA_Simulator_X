@@ -1,3 +1,15 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the Signal K encoders in `nmeasim::core::signalk`: `path_values`, `encode_delta`,
+/// `encode_hello` and their JSON and engine-identifier helpers.
+///
+/// The cases check the JSON escaping and number format, the engine identifiers, every path
+/// published for `nmeasim::test::fixture_state` with its value in SI units, the paths that
+/// disappear without a fix, a destination or engines, and the exact layout of the delta and
+/// hello messages. No fixture file is read.
+///
+/// @see https://signalk.org/specification/1.7.0/doc/data_model.html
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/signalk/delta.hpp>
@@ -17,6 +29,13 @@ namespace signalk = nmeasim::core::signalk;
 
 namespace {
 
+/// Returns the published paths of a state keyed by path.
+///
+/// Fails the running test case when a path appears twice, which `signalk::path_values`
+/// promises never happens.
+///
+/// @param state Vessel state to publish.
+/// @return Each path mapped to its value as a JSON literal.
 std::map<std::string, std::string> as_map(const nmeasim::core::model::VesselState& state) {
     std::map<std::string, std::string> result;
     for (const auto& value : signalk::path_values(state)) {
@@ -25,6 +44,14 @@ std::map<std::string, std::string> as_map(const nmeasim::core::model::VesselStat
     return result;
 }
 
+/// Returns the numeric value of one path.
+///
+/// Fails the running test case when the path is missing.
+///
+/// @param values Paths and JSON values, as returned by `as_map`.
+/// @param path Dotted Signal K path, such as `navigation.speedOverGround`.
+/// @return The JSON number literal of `path` converted to a `double`.
+/// @throws std::invalid_argument When the value is not a number, such as `null`.
 double number(const std::map<std::string, std::string>& values, const std::string& path) {
     REQUIRE(values.contains(path));
     return std::stod(values.at(path));
@@ -58,6 +85,9 @@ TEST_CASE("the delta carries the standard paths in SI units", "[signalk]") {
     const auto state = nmeasim::test::fixture_state();
     const auto values = as_map(state);
     constexpr double pi = std::numbers::pi;
+    // The expected values convert the fixture's units: degrees to radians, knots to metres per
+    // second (1852 m per nautical mile), degrees Celsius to kelvin (+273.15) and revolutions
+    // per minute to hertz. Magnetic values subtract the 4.6 degrees east variation.
     CHECK(values.at("navigation.datetime") == "\"2026-09-22T12:34:56.780Z\"");
     CHECK(values.at("navigation.position") ==
           "{\"longitude\":23.7275,\"latitude\":37.9838,\"altitude\":12.3}");
@@ -75,12 +105,16 @@ TEST_CASE("the delta carries the standard paths in SI units", "[signalk]") {
     CHECK(number(values, "navigation.gnss.antennaAltitude") == Approx(12.3));
     CHECK(values.at("navigation.courseRhumbline.nextPoint.position") ==
           "{\"longitude\":23.4275,\"latitude\":37.7466}");
+    // Bearing, distance and cross-track error of the fixture leg are the values
+    // tests/core/geo/route_test.cpp checks `geo::solve_leg` against, which were computed
+    // independently with GeographicLib.
     CHECK(number(values, "navigation.courseRhumbline.nextPoint.bearingTrue") ==
           Approx(225.168 * pi / 180.0).epsilon(1e-4));
     CHECK(number(values, "navigation.courseRhumbline.nextPoint.distance") ==
           Approx(37282.7).margin(0.1));
     CHECK(number(values, "navigation.courseRhumbline.crossTrackError") ==
           Approx(-3004.5).margin(0.5));
+    // The course over ground is 047.3 while the waypoint bears 225: the vessel moves away.
     CHECK(number(values, "navigation.courseRhumbline.nextPoint.velocityMadeGood") < 0.0);
     CHECK(values.at("navigation.courseRhumbline.previousPoint.position") ==
           "{\"longitude\":23.7,\"latitude\":38}");
@@ -91,6 +125,8 @@ TEST_CASE("the delta carries the standard paths in SI units", "[signalk]") {
     CHECK(number(values, "environment.water.temperature") == Approx(294.65));
     CHECK(number(values, "environment.wind.speedTrue") == Approx(12.0 * 1852.0 / 3600.0));
     CHECK(number(values, "environment.wind.directionTrue") == Approx(270.0 * pi / 180.0));
+    // Relative angles are in (-180, 180]: true wind from 270 on heading 045 is 225, that is
+    // -135; the apparent angle 300 is -60.
     CHECK(number(values, "environment.wind.angleTrueWater") == Approx(-135.0 * pi / 180.0));
     CHECK(number(values, "environment.wind.angleApparent") == Approx(-60.0 * pi / 180.0));
     CHECK(number(values, "environment.wind.speedApparent") == Approx(14.2 * 1852.0 / 3600.0));
@@ -106,6 +142,7 @@ TEST_CASE("paths that need a fix or a destination disappear without them", "[sig
     auto state = nmeasim::test::fixture_state_without_fix();
     state.destination.reset();
     state.engines.clear();
+    // A negative offset is the distance down to the keel, which switches the depth paths.
     state.water.transducer_offset_m = -1.5;
     const auto values = as_map(state);
     CHECK_FALSE(values.contains("navigation.position"));

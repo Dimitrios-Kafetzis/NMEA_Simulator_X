@@ -1,3 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Golden tests of the NMEA 0183 sentence encoders of `nmeasim/core/nmea0183/encoders.hpp`.
+///
+/// Encodes the fixture states of `tests/core/fixtures.hpp` with each encoder (GNSS, heading
+/// and speed, depth, wind, steering, autopilot and propulsion sentences) and compares the
+/// sentence bodies with golden values; `docs/reference/nmea0183-sentences.md` shows the same
+/// values for the full fixture as its examples. Also covers
+/// nmeasim::core::nmea0183::mode_indicator() and nmeasim::core::nmea0183::sanitize_waypoint_name().
+/// The AIS encoders are tested in `tests/core/ais/ais_test.cpp`. No fixture file is read.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/checksum.hpp>
@@ -14,7 +25,16 @@ using nmeasim::test::body_of;
 
 namespace {
 
-/// Encodes with the fixture and checks framing, then returns the single sentence body.
+/// Runs an encoder that must produce exactly one sentence and returns that sentence's body.
+///
+/// Fails the running test case (`REQUIRE`) unless the encoder returns exactly one sentence,
+/// and checks (`CHECK`) its checksum and the NMEA 0183 length limit.
+///
+/// @param encoder The encoder under test, such as `&nmea::encode_rmc`.
+/// @param state The vessel state to encode, usually one of the fixture states.
+/// @param talker The two-character talker identifier to encode with.
+/// @return The sentence without its start delimiter and `*hh` checksum, as
+///         nmeasim::test::body_of() returns it.
 std::string single_body(nmea::Encoder encoder, const nmeasim::core::model::VesselState& state,
                         std::string_view talker) {
     const auto sentences = encoder(nmea::EncoderContext{state, talker});
@@ -78,6 +98,9 @@ TEST_CASE("differential fixes use the D mode indicator", "[nmea0183][encoders][g
 
 TEST_CASE("heading and speed sentences", "[nmea0183][encoders][heading]") {
     const auto state = nmeasim::test::fixture_state();
+    // Magnetic heading 40.4 = 45.0 true - 4.6 variation; 11.5 km/h = 6.2 kn * 1.852. VBW
+    // resolves the ground speed (6.5 kn on 47.3 degrees) onto the bow at 45.0 degrees:
+    // 6.5 cos 2.3 = 6.5 along and 6.5 sin 2.3 = 0.3 across.
     CHECK(single_body(&nmea::encode_hdg, state, "HC") == "HCHDG,40.4,0.0,E,4.6,E");
     CHECK(single_body(&nmea::encode_hdm, state, "HC") == "HCHDM,40.4,M");
     CHECK(single_body(&nmea::encode_hdt, state, "HE") == "HEHDT,45.0,T");
@@ -88,6 +111,7 @@ TEST_CASE("heading and speed sentences", "[nmea0183][encoders][heading]") {
 
 TEST_CASE("depth and water sentences", "[nmea0183][encoders][depth]") {
     const auto state = nmeasim::test::fixture_state();
+    // 12.4 m is 40.7 feet (0.3048 m) and 6.8 fathoms (1.8288 m).
     CHECK(single_body(&nmea::encode_dpt, state, "SD") == "SDDPT,12.4,0.5,");
     CHECK(single_body(&nmea::encode_dbt, state, "SD") == "SDDBT,40.7,f,12.4,M,6.8,F");
     CHECK(single_body(&nmea::encode_mtw, state, "YC") == "YCMTW,21.5,C");
@@ -95,6 +119,8 @@ TEST_CASE("depth and water sentences", "[nmea0183][encoders][depth]") {
 
 TEST_CASE("wind sentences", "[nmea0183][encoders][wind]") {
     const auto state = nmeasim::test::fixture_state();
+    // True MWV is relative to the bow: 270.0 - 45.0 = 225.0. MWD adds the magnetic direction
+    // 270.0 - 4.6 = 265.4 and the speed in metres per second, 12.0 kn = 6.2 m/s.
     CHECK(single_body(&nmea::encode_mwv_apparent, state, "WI") == "WIMWV,300.0,R,14.2,N,A");
     CHECK(single_body(&nmea::encode_mwv_true, state, "WI") == "WIMWV,225.0,T,12.0,N,A");
     CHECK(single_body(&nmea::encode_mwd, state, "WI") == "WIMWD,270.0,T,265.4,M,12.0,N,6.2,M");
@@ -108,6 +134,10 @@ TEST_CASE("rudder sentence", "[nmea0183][encoders][steering]") {
 TEST_CASE("autopilot sentences describe the leg to the destination",
           "[nmea0183][encoders][autopilot]") {
     const auto state = nmeasim::test::fixture_state();
+    // The leg geometry is the one route_test.cpp checks: the vessel is 3004.5 m (1.62 nm)
+    // left of the leg, so the direction to steer is R; the leg bears 220.5 and the
+    // destination 225.2 degrees at 37282.7 m (20.1 nm). Heading away from it on 47.3 degrees,
+    // the vessel closes at 6.5 cos(225.2 - 47.3) = -6.5 kn.
     CHECK(single_body(&nmea::encode_apb, state, "GP") ==
           "GPAPB,A,A,1.62,R,N,V,V,220.5,T,AEGINA,225.2,T,225.2,T,A");
     CHECK(single_body(&nmea::encode_rmb, state, "GP") ==

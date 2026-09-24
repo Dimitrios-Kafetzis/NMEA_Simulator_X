@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::simulation::Simulation` driving a
+/// `nmeasim::core::simulation::DeltaSource` and a sentence schedule on the simulated clock.
+///
+/// The cases cover stepping (elapsed time, state and the sentences due), reconfiguring the
+/// schedule and the source through the simulation, and reset. Replay and track sources in a
+/// simulation are tested in replay_source_test.cpp and track_source_test.cpp. No fixture
+/// file is read; the seed is `nmeasim::test::fixture_state`.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/checksum.hpp>
@@ -17,6 +27,13 @@ namespace sim = nmeasim::core::simulation;
 
 namespace {
 
+/// Returns a simulation of a delta source seeded with `nmeasim::test::fixture_state`, with
+/// every sentence sent once a second.
+///
+/// Heading and speed do not drift, so the vessel moves steadily north-east at 6.5 knots on
+/// 045; the other values drift with the `sim::DeltaConfig` defaults.
+///
+/// @return The simulation at elapsed time zero.
 sim::Simulation make_simulation() {
     sim::DeltaConfig config;
     config.seed = nmeasim::test::fixture_state();
@@ -51,6 +68,7 @@ TEST_CASE("stepping advances time, state and emits due sentences", "[simulation]
     CHECK(simulation.step(100ms).empty());
 
     const auto& state = simulation.state();
+    // Eleven steps of 100 ms.
     CHECK(state.time_utc - nmeasim::test::fixture_state().time_utc == 1100ms);
     CHECK(state.navigation.position.latitude_deg > 37.9838);
 }

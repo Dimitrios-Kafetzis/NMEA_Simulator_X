@@ -1,3 +1,15 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::app::theme::Theme` and the themed parts of the desktop application.
+///
+/// Covers the console colouring by `nmeasim::app::sentence_spans`, theme names, applying a
+/// theme to the application palette and style sheet, the bundled readout font, the toolbar
+/// icons, `nmeasim::app::StatusLed`, the override mark of `nmeasim::app::InstrumentTile`, the
+/// colours of output states, and the status lights and theme menu of
+/// `nmeasim::app::MainWindow`. The theme is a process-wide singleton, so a test that depends on
+/// one theme applies it first. The last test stores the theme choice through `QSettings`,
+/// which `main.cpp` redirects to a temporary directory. The file reads no fixtures.
+
 #include "theme/theme.hpp"
 
 #include "io/event_loop.hpp"
@@ -27,6 +39,10 @@ using nmeasim::app::SentenceSpan;
 
 namespace {
 
+/// Splits a console line into coloured runs.
+///
+/// @param line The line as Latin-1 text, without a line terminator.
+/// @return The runs `nmeasim::app::sentence_spans` finds, in order of their start.
 std::vector<SentenceSpan> spans(const char* line) {
     return nmeasim::app::sentence_spans(QString::fromLatin1(line));
 }
@@ -34,6 +50,8 @@ std::vector<SentenceSpan> spans(const char* line) {
 }  // namespace
 
 TEST_CASE("console lines are split into coloured runs", "[app][theme]") {
+    // Starts and lengths are character indices into the literal: the talker includes the `$`
+    // or `!`, and the checksum includes the `*`.
     CHECK(spans("$GPRMC,100000.10,A,3759.0281,N*0D") ==
           std::vector<SentenceSpan>{{0, 3, SentenceRole::Talker},
                                     {3, 3, SentenceRole::Formatter},
@@ -52,6 +70,8 @@ TEST_CASE("console lines are split into coloured runs", "[app][theme]") {
                                     {13, 1, SentenceRole::Separator},
                                     {42, 1, SentenceRole::Separator},
                                     {44, 3, SentenceRole::Checksum}});
+    // The whole TAG block, both backslashes included, is one run of 27 characters; the commas
+    // inside it are not separators.
     CHECK(spans("\\s:SIM0001,c:1790000000*5B\\$GPGGA,1,2*59") ==
           std::vector<SentenceSpan>{{0, 27, SentenceRole::Tag},
                                     {27, 3, SentenceRole::Talker},
@@ -195,6 +215,7 @@ TEST_CASE("the main window shows its state in lights and switches themes",
     window.stop();
     CHECK(window.run_led()->text() == QStringLiteral("STOPPED"));
 
+    // The theme menu lists the modes in the order system, night, day.
     const auto actions = window.theme_actions();
     REQUIRE(actions.size() == 3);
     CHECK(actions.at(1)->isChecked());

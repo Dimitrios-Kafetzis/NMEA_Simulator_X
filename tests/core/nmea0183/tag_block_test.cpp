@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the IEC 61162-450 TAG blocks of `nmeasim/core/nmea0183/tag_block.hpp`.
+///
+/// Covers nmeasim::core::nmea0183::format_tag_block() with and without the time parameter in
+/// seconds and milliseconds, nmeasim::core::nmea0183::prepend_tag_block() and
+/// nmeasim::core::nmea0183::sanitize_tag_source(). No fixture file is read; the time comes
+/// from the fixture state of `tests/core/fixtures.hpp`.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/checksum.hpp>
@@ -27,6 +36,7 @@ TEST_CASE("a TAG block names the source and the time with its own checksum", "[n
 
 TEST_CASE("TAG block sources are sanitised", "[nmea0183][tag]") {
     CHECK(nmea::sanitize_tag_source("GP0001") == "GP0001");
+    // Spaces and reserved characters are dropped and at most 15 characters are kept.
     CHECK(nmea::sanitize_tag_source("my source, with*stars\\and$") == "mysourcewithsta");
     CHECK(nmea::sanitize_tag_source("") == "SIM");
     CHECK(nmea::sanitize_tag_source(",,*") == "SIM");

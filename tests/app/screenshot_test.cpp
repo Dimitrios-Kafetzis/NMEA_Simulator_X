@@ -1,9 +1,27 @@
-// Captures the screenshots used by the documentation and the AppStream metadata: the main
-// window in the night theme (main-window.png) and in the daylight theme
-// (main-window-day.png). The test is hidden, so ctest never runs it; generate the images with
-//
-//   export NMEASIM_SCREENSHOT_DIR=docs/assets/screenshots
-//   build/<preset>/tests/nmeasim_app_tests "[.screenshot]"
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Hidden test that captures `nmeasim::app::MainWindow` for the documentation screenshots.
+///
+/// The test runs the default profile with a destination set (Aegina, so that the map and the
+/// dashboard show a leg), waits six seconds for the dashboard, the console and the map tiles
+/// to fill in, and saves the window at 1440 by 1000 pixels twice: in the night bridge theme as
+/// `main-window.png` and in the daylight theme as `main-window-day.png`. The documentation site
+/// and the AppStream metadata show both images from `docs/assets/screenshots/`.
+///
+/// The tag `[.screenshot]` starts with a dot, which hides the test: Catch2 runs it only when
+/// the tag is named on the command line, so `ctest` never runs it. Without the environment
+/// variable `NMEASIM_SCREENSHOT_DIR` the test skips itself. To regenerate the images from the
+/// repository root, with the build directory of a CMake preset such as `dev`:
+///
+/// ```sh
+/// export NMEASIM_SCREENSHOT_DIR=docs/assets/screenshots
+/// build/dev/tests/nmeasim_app_tests "[.screenshot]"
+/// ```
+///
+/// The window is rendered by the offscreen platform set up in `main.cpp`, and the map tiles
+/// are downloaded from the tile server when they are not cached yet, so the chart only appears
+/// with network access.
+
 #include "io/event_loop.hpp"
 #include "main_window.hpp"
 #include "theme/theme.hpp"
@@ -41,7 +59,8 @@ TEST_CASE("capture the main window for the documentation", "[.screenshot]") {
         window.resize(1440, 1000);
         window.show();
         window.start();
-        // Let the dashboard, the console and the map tiles fill in.
+        // The condition never holds: this only pumps the event loop for six seconds so that the
+        // dashboard, the console and the map tile downloads fill in.
         nmeasim::test::wait_until([] { return false; }, 6000);
 
         const QString path =

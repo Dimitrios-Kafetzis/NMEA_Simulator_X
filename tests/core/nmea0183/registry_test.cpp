@@ -1,3 +1,13 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the sentence catalogue of `nmeasim/core/nmea0183/registry.hpp`.
+///
+/// Covers nmeasim::core::nmea0183::SentenceRegistry::standard() and its lookup by id,
+/// nmeasim::core::nmea0183::encode_within_limit() and the display names of
+/// nmeasim::core::nmea0183::SentenceGroup. Every registered encoder is run on the three
+/// fixture states of `tests/core/fixtures.hpp` and each sentence is checked for its
+/// checksum, the length limit and its address. No fixture file is read.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/nmea0183/checksum.hpp>

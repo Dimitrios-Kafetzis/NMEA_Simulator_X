@@ -1,3 +1,18 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# The unit tests, added by the top-level CMakeLists.txt when NMEASIM_BUILD_TESTS is ON. Catch2
+# comes from vcpkg through the `tests` manifest feature, which the development and CI presets
+# enable.
+#
+# Builds up to three Catch2 executables and registers every test case with CTest:
+#   nmeasim_core_tests  nmeasim::core, always; Catch2's own main.
+#   nmeasim_io_tests    nmeasim::io, when the command-line tool or the application is built;
+#                       its main (io/main.cpp) creates the QCoreApplication that sockets
+#                       and timers need.
+#   nmeasim_app_tests   the desktop application's widgets, when NMEASIM_BUILD_APP is ON; its
+#                       main (app/main.cpp) creates an offscreen QApplication.
+# The compile definitions NMEASIM_FIXTURES_DIR and NMEASIM_SAMPLES_DIR give the tests the
+# absolute paths of tests/fixtures and samples, so that they run from any directory.
+
 find_package(Catch2 3 CONFIG REQUIRED)
 include(Catch)
 
@@ -35,7 +50,8 @@ target_compile_definitions(nmeasim_core_tests PRIVATE
     NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
 
 target_link_libraries(nmeasim_core_tests
-    PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings nmeasim::sanitizers
+    PRIVATE nmeasim::core Catch2::Catch2WithMain nmeasim::warnings
+            nmeasim::documentation_warnings nmeasim::sanitizers
 )
 
 # PRE_TEST discovery runs the test binary at ctest time rather than at build time, which keeps
@@ -56,7 +72,7 @@ if(NMEASIM_BUILD_CLI OR NMEASIM_BUILD_APP)
         NMEASIM_SAMPLES_DIR="${PROJECT_SOURCE_DIR}/samples")
     target_link_libraries(nmeasim_io_tests
         PRIVATE nmeasim::io Catch2::Catch2 Qt6::Core Qt6::Network Qt6::Test Qt6::WebSockets
-                nmeasim::warnings nmeasim::sanitizers
+                nmeasim::warnings nmeasim::documentation_warnings nmeasim::sanitizers
     )
     catch_discover_tests(nmeasim_io_tests DISCOVERY_MODE PRE_TEST)
 endif()
@@ -76,7 +92,8 @@ if(NMEASIM_BUILD_APP)
     target_compile_definitions(nmeasim_app_tests PRIVATE
         NMEASIM_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
     target_link_libraries(nmeasim_app_tests
-        PRIVATE nmeasim::app_lib Catch2::Catch2 Qt6::Widgets Qt6::Test nmeasim::warnings nmeasim::sanitizers
+        PRIVATE nmeasim::app_lib Catch2::Catch2 Qt6::Widgets Qt6::Test nmeasim::warnings
+                nmeasim::documentation_warnings nmeasim::sanitizers
     )
     catch_discover_tests(nmeasim_app_tests DISCOVERY_MODE PRE_TEST
         PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

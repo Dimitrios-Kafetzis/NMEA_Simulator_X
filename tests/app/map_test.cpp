@@ -1,3 +1,16 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the map: `nmeasim::app::map::MapWidget`, `nmeasim::app::map::TileCache` and the
+/// tile arithmetic of `map/tile_math.hpp`.
+///
+/// Covers slippy-map tile coordinates and ground resolution, the disk and memory tile cache,
+/// coordinate conversion, panning, zooming and following in the widget, the sailed track, the
+/// loaded route, the destination, the scale bar, painting in both themes, and how
+/// `nmeasim::app::MainWindow` reacts to positions and destinations picked on the map. Every
+/// tile cache is switched offline, and the tiles a test needs are written into a temporary
+/// directory. The widgets are painted on the offscreen platform (see `main.cpp`). The file
+/// reads no fixtures.
+
 #include "io/event_loop.hpp"
 #include "main_window.hpp"
 #include "map/map_widget.hpp"
@@ -30,6 +43,14 @@ namespace map = nmeasim::app::map;
 
 namespace {
 
+/// Writes a tile of one colour into a tile cache directory.
+///
+/// The file is a `kTileSize` square PNG at `directory/zoom/x/y.png`, the layout
+/// `nmeasim::app::map::TileCache` reads. The test fails if the file cannot be written.
+///
+/// @param directory Root directory of the cache; the subdirectories are created as needed.
+/// @param key The tile to write.
+/// @param color Colour that fills the whole tile.
 void write_tile(const QString& directory, map::TileKey key, QColor color) {
     QImage image(map::kTileSize, map::kTileSize, QImage::Format_RGB32);
     image.fill(color);
@@ -41,7 +62,8 @@ void write_tile(const QString& directory, map::TileKey key, QColor color) {
 }  // namespace
 
 TEST_CASE("tile arithmetic matches the slippy map convention", "[app][map]") {
-    // Known reference values for the OSM scheme.
+    // Known reference values for the OSM scheme: Athens lies in tile 2317, 1580 at zoom 12,
+    // the integer parts of 4096 * (lon + 180) / 360 and 4096 * (1 - asinh(tan(lat)) / pi) / 2.
     const auto athens = map::tile_coordinates({37.9838, 23.7275}, 12);
     CHECK(static_cast<int>(athens.x()) == 2317);
     CHECK(static_cast<int>(athens.y()) == 1580);
@@ -58,6 +80,8 @@ TEST_CASE("tile arithmetic matches the slippy map convention", "[app][map]") {
         }
     }
     CHECK(map::parent_of({12, 2317, 1583}) == map::TileKey{11, 1158, 791});
+    // The equatorial circumference, 40075016.686 m, over the 256 pixels of zoom 0; at 60 degrees
+    // and zoom 10 it is multiplied by cos 60 = 0.5 and divided by 2^10 = 1024.
     CHECK(map::metres_per_pixel(0.0, 0) == Approx(156543.03).epsilon(1e-4));
     CHECK(map::metres_per_pixel(60.0, 10) == Approx(76.437).epsilon(1e-3));
 }
@@ -103,6 +127,7 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
     widget.set_vessel({37.9838, 23.7275}, 45.0, 47.0);
     CHECK(widget.center().latitude_deg == Approx(37.9838));
     CHECK(widget.center().longitude_deg == Approx(23.7275));
+    // Following the vessel puts it at the centre of the 512 by 384 widget.
     const QPointF vessel_px = widget.point_of({37.9838, 23.7275});
     CHECK(vessel_px.x() == Approx(256.0));
     CHECK(vessel_px.y() == Approx(192.0));
@@ -167,7 +192,8 @@ TEST_CASE("the map widget follows the vessel, converts coordinates and picks pos
                       Qt::NoModifier, Qt::NoScrollPhase, false);
     QApplication::sendEvent(&widget, &wheel);
     CHECK(widget.zoom() == 11);
-    // Touchpads and high-resolution wheels send small deltas that zoom by fractions of a level.
+    // Touchpads and high-resolution wheels send small deltas that zoom by fractions of a level:
+    // 30 of the 120 units of a wheel notch is a quarter of a level.
     for (int i = 1; i <= 4; ++i) {
         QWheelEvent small(QPointF(256, 192), QPointF(256, 192), QPoint(0, 3), QPoint(0, 30),
                           Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
@@ -214,7 +240,7 @@ TEST_CASE("the map widget paints cached tiles and placeholders", "[app][map]") {
     const QColor south_west = image.pixelColor(100, 200);
     CHECK(south_west.green() > 200);
     CHECK(south_west.red() < 60);
-    // (3, 4, 3) has neither, so it shows the placeholder.
+    // (3, 4, 3) has neither, so it shows the placeholder, light grey in the daylight theme.
     const QColor north_east = image.pixelColor(200, 100);
     CHECK(north_east.red() == north_east.green());
     CHECK(north_east.red() > 150);
@@ -281,7 +307,8 @@ TEST_CASE("the map widget draws a loaded route under the sailed track", "[app][m
 
     QImage image(widget.size(), QImage::Format_ARGB32);
     widget.render(&image);
-    // The route passes through the centre; a green pixel is found on it.
+    // The route passes through the centre; a green pixel is found on it. The route colour is
+    // green in both themes, so the test does not depend on the theme left by another test.
     bool green_found = false;
     for (int y = 140; y < 160 && !green_found; ++y) {
         for (int x = 140; x < 160 && !green_found; ++x) {
@@ -323,7 +350,8 @@ TEST_CASE("the map widget picks a destination with Shift+click and draws it", "[
     REQUIRE(widget.destination().has_value());
     QImage image(widget.size(), QImage::Format_ARGB32);
     widget.render(&image);
-    // The magenta diamond sits at the centre.
+    // The magenta diamond sits at the centre; the thresholds fit the daylight destination
+    // colour applied above.
     const QColor centre = image.pixelColor(150, 150);
     CHECK(centre.red() > 150);
     CHECK(centre.blue() > 120);
@@ -339,6 +367,8 @@ TEST_CASE("the main window steers for a destination picked on the map", "[app][m
     CHECK_FALSE(window.clear_destination_action()->isEnabled());
     emit window.map_view()->destination_picked(Position{37.7466, 23.4275});
     REQUIRE(window.profile().delta.seed.destination.has_value());
+    // A destination picked on the map has no name, so it is called WPT, and its leg starts at
+    // the vessel's position in the default profile.
     CHECK(window.profile().delta.seed.destination->name == "WPT");
     CHECK(window.profile().delta.seed.destination->origin.latitude_deg == Approx(37.9838));
     const auto& state = window.runner().simulation()->state();
@@ -346,6 +376,7 @@ TEST_CASE("the main window steers for a destination picked on the map", "[app][m
     CHECK(state.destination->position.longitude_deg == Approx(23.4275));
     REQUIRE(window.map_view()->destination().has_value());
     CHECK(window.clear_destination_action()->isEnabled());
+    // Aegina lies about 225 degrees true from Athens.
     CHECK(window.dashboard()->destination_text().startsWith(QStringLiteral("WPT: bearing 225.")));
 
     // The autopilot sentences appear in the stream once running.
@@ -377,6 +408,7 @@ TEST_CASE("the scale bar picks round nautical distances", "[app][map]") {
     bar = map::scale_bar(0.5, 160.0);
     CHECK(bar.label == QStringLiteral("50 m"));
     CHECK(bar.length_px == Approx(100.0));
+    // 20 km per pixel: 1000 nm is 92.6 px and 2000 nm would be 185.2 px.
     bar = map::scale_bar(20000.0, 160.0);
     CHECK(bar.label == QStringLiteral("1000 nm"));
     CHECK(map::scale_bar(0.0, 160.0).label.isEmpty());
@@ -392,6 +424,7 @@ TEST_CASE("the map buttons zoom and follow, and the pointer position is tracked"
     widget.set_vessel({37.9838, 23.7275}, 45.0, 45.0, 6.0);
 
     REQUIRE(widget.zoom_in_button() != nullptr);
+    // The buttons sit at the right edge of the 400-pixel-wide widget.
     CHECK(widget.zoom_in_button()->x() > 300);
     widget.zoom_in_button()->click();
     CHECK(widget.zoom() == 11);
@@ -424,6 +457,7 @@ TEST_CASE("the map buttons zoom and follow, and the pointer position is tracked"
                      Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(&widget, &move);
     REQUIRE(widget.pointer_position().has_value());
+    // The pointer is at the centre, where the followed vessel is.
     CHECK(widget.pointer_position()->latitude_deg == Approx(37.9838).margin(1e-6));
     QEvent leave(QEvent::Leave);
     QApplication::sendEvent(&widget, &leave);

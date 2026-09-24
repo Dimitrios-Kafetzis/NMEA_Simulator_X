@@ -1,3 +1,15 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::simulation::SentenceScheduler` and
+/// `nmeasim::core::simulation::next_due_after`, which decide which NMEA 0183 sentences are
+/// due at a simulated time.
+///
+/// The cases cover the registry defaults, emission at time zero and after each period,
+/// per-sentence periods, enable flags and talkers, group switches, the fallback for a
+/// non-positive period, reset, and the rule that keeps a sentence on its cadence without
+/// bursts after a stall or drift from steps that do not divide the period. No fixture file
+/// is read; the sentences are encoded from `nmeasim::test::fixture_state`.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/simulation/sentence_scheduler.hpp>
@@ -17,6 +29,15 @@ namespace nmea = nmeasim::core::nmea0183;
 
 namespace {
 
+/// Counts the sentences of one formatter.
+///
+/// The formatter is read at characters 3 to 5 of the text, which assumes a delimiter and a
+/// two-letter talker, as every registry sentence has.
+///
+/// @param sentences Sentences returned by the scheduler.
+/// @param formatter Three-letter sentence formatter, such as `RMC`.
+/// @return The number of sentences whose formatter is `formatter`; a sentence split into
+///   several lines, such as GSV, counts once per line.
 int count_formatter(const std::vector<sim::EmittedSentence>& sentences,
                     std::string_view formatter) {
     return static_cast<int>(std::count_if(
@@ -43,6 +64,7 @@ TEST_CASE("everything enabled is due at time zero, then again after its period",
     const auto first = scheduler.due(0ms, state);
     CHECK(count_formatter(first, "RMC") == 1);
     CHECK(first.front().id == "RMC");
+    // The fixture has ten satellites in view, four per GSV sentence.
     CHECK(count_formatter(first, "GSV") == 3);
     CHECK(count_formatter(first, "MWV") == 1);  // only the apparent variant is on by default
 
@@ -71,6 +93,7 @@ TEST_CASE("per-sentence periods and enable flags are honoured", "[simulation][sc
         gsv += count_formatter(sentences, "GSV");
         wind += count_formatter(sentences, "MWV") + count_formatter(sentences, "MWD");
     }
+    // Over the steps from 0 to 1900 ms, HDT is due every 200 ms and RMC at 0 and 1000 ms.
     CHECK(hdt == 10);
     CHECK(rmc == 2);
     CHECK(gsv == 0);
@@ -90,8 +113,8 @@ TEST_CASE("talker overrides apply per sentence", "[simulation][scheduler]") {
     sim::SentenceScheduler scheduler;
     const auto state = nmeasim::test::fixture_state();
     scheduler.configure("RMC", {.enabled = true, .talker = "GN", .period = 1000ms});
-    scheduler.configure("HDT",
-                        {.enabled = true, .talker = "X", .period = 1000ms});  // invalid, ignored
+    // A one-letter talker is invalid and ignored, so HDT keeps its default talker HE.
+    scheduler.configure("HDT", {.enabled = true, .talker = "X", .period = 1000ms});
 
     const auto sentences = scheduler.encode_all(state);
     CHECK(std::any_of(sentences.begin(), sentences.end(), [](const sim::EmittedSentence& s) {

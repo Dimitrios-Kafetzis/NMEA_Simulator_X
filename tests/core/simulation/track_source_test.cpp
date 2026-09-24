@@ -1,3 +1,21 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::simulation::TrackSource`, which sails a GPX or KML track leg by
+/// leg, and of the `nmeasim::core::simulation::Source` interface it shares with the delta
+/// source.
+///
+/// The cases cover a track followed on its timestamps, an untimed track sailed at the
+/// configured speed, recorded point speeds and courses, ignoring timestamps, looping,
+/// seeking and jumping to a point, a destination that survives both, degenerate tracks, a
+/// track driving a `nmeasim::core::simulation::Simulation` to its end, and the endless
+/// delta source seen through `Source`.
+///
+/// Fixture files, all under tests/fixtures/tracks: timestamped.gpx (five points in two
+/// segments from 37.90 N 23.60 E, north then east, with legs of about 3 minutes from
+/// 10:00:00 to 10:12:00.5 and elevations on the first segment), untimestamped.gpx (three
+/// points, north then east), extensions_speed.gpx (speeds and a course in GPX 1.1 extensions) and
+/// gpx10_course_speed.gpx (GPX 1.0 course and speed elements on a timed track).
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/geo/geodesic.hpp>
@@ -27,6 +45,13 @@ namespace units = nmeasim::core::units;
 
 namespace {
 
+/// Loads a track from a file under tests/fixtures.
+///
+/// Fails the running test case when the file does not load.
+///
+/// @param name Path of the track file relative to tests/fixtures, such as
+///   `tracks/timestamped.gpx`.
+/// @return The loaded track.
 track::Track fixture_track(const char* name) {
     std::string error;
     auto loaded = track::load_track(nmeasim::test::fixture_path(name), &error);
@@ -34,6 +59,17 @@ track::Track fixture_track(const char* name) {
     return *loaded;
 }
 
+/// Returns a track configuration for a file under tests/fixtures, seeded with
+/// `nmeasim::test::fixture_state`.
+///
+/// Fails the running test case when the file does not load.
+///
+/// @param name Path of the track file relative to tests/fixtures.
+/// @param end What the source does at the end of the track.
+/// @param speed_kn Speed for legs without a recorded speed when the track is not followed
+///   on its timestamps.
+/// @param use_timestamps Whether to follow the track's timestamps when it has them.
+/// @return The configuration.
 sim::TrackConfig config_for(const char* name, sim::EndBehaviour end = sim::EndBehaviour::Stop,
                             double speed_kn = 6.0, bool use_timestamps = true) {
     sim::TrackConfig config;
@@ -45,6 +81,11 @@ sim::TrackConfig config_for(const char* name, sim::EndBehaviour end = sim::EndBe
     return config;
 }
 
+/// Returns the geodesic distance between two positions.
+///
+/// @param a First position.
+/// @param b Second position.
+/// @return The distance on the WGS 84 ellipsoid, in metres.
 double distance_between(Position a, Position b) {
     return geo::inverse(a, b).distance_m;
 }
@@ -55,6 +96,7 @@ TEST_CASE("a timed track is followed on its own timestamps", "[simulation][track
     sim::TrackSource source(config_for("tracks/timestamped.gpx"));
     const auto& points = source.config().track.points;
     CHECK(source.timed());
+    // From 10:00:00 to 10:12:00.5.
     CHECK(source.duration() == 12min + 500ms);
     CHECK(source.position() == 0ms);
     CHECK_FALSE(source.finished());
@@ -76,6 +118,7 @@ TEST_CASE("a timed track is followed on its own timestamps", "[simulation][track
     CHECK(distance_between(points[0].position, half.navigation.position) ==
           Approx(leg0_m / 2.0).margin(0.5));
     CHECK(half.time_utc == parse_iso8601("2026-09-23T10:01:30Z"));
+    // Half way between the elevations of 1 and 3 metres.
     CHECK(half.navigation.altitude_m == Approx(2.0));
     CHECK(source.position() == 90000ms);
     CHECK(source.point_index() == 0);
@@ -153,6 +196,7 @@ TEST_CASE("recorded point speeds and courses are used when the track has no time
 TEST_CASE("timestamps can be ignored to sail a timed track at a set speed", "[simulation][track]") {
     sim::TrackSource timed(config_for("tracks/gpx10_course_speed.gpx"));
     CHECK(timed.timed());
+    // The first point records 5.144444 m/s, 10 knots, and a course of 012.5.
     CHECK(timed.current().navigation.speed_over_ground_kn == Approx(10.0).epsilon(1e-4));
     CHECK(timed.current().navigation.course_over_ground_deg == Approx(12.5));
     CHECK(timed.duration() == 6min);
@@ -202,6 +246,7 @@ TEST_CASE("seeking and jumping move the vessel immediately", "[simulation][track
     source.jump_to_point(3);
     CHECK(source.point_index() == 3);
     CHECK(source.current().navigation.position.longitude_deg == Approx(23.61).margin(1e-9));
+    // The time recorded at the fourth point.
     CHECK(source.current().time_utc == parse_iso8601("2026-09-23T10:09:00.5Z"));
     source.jump_to_point(99);
     CHECK(source.finished());
@@ -279,6 +324,7 @@ TEST_CASE("a track source drives a simulation to completion", "[simulation][trac
         ++rounds;
     }
     CHECK(simulation.finished());
+    // The track lasts 720.5 seconds, so the 721st one-second step reaches its end.
     CHECK(rounds == 721);
     CHECK(simulation.state().gnss.satellites_in_use == 7);
     simulation.source().seek(1min);

@@ -1,3 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of the NMEA 0183 checksum functions of `nmeasim/core/nmea0183/checksum.hpp`.
+///
+/// Covers nmeasim::core::nmea0183::compute_checksum(),
+/// nmeasim::core::nmea0183::format_checksum(), nmeasim::core::nmea0183::append_checksum() and
+/// nmeasim::core::nmea0183::verify_checksum(), including the framing errors that
+/// verify_checksum() must reject. No fixture file is read.
+
 #include <nmeasim/core/nmea0183/checksum.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -43,6 +52,9 @@ TEST_CASE("verify_checksum accepts valid sentences", "[nmea0183][checksum]") {
 }
 
 TEST_CASE("verify_checksum rejects malformed or corrupted sentences", "[nmea0183][checksum]") {
+    // In order: nothing, an empty body, no start delimiter, no checksum, one checksum digit,
+    // text after the checksum, non-hexadecimal digits, a wrong checksum, and a changed field
+    // (A to V) under the checksum of the original sentence.
     CHECK_FALSE(nmea::verify_checksum(""));
     CHECK_FALSE(nmea::verify_checksum("$*00"));
     CHECK_FALSE(nmea::verify_checksum("GPGLL,4916.45,N,12311.12,W,225444,A,*1D"));

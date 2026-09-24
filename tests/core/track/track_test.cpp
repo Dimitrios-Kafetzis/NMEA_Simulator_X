@@ -1,3 +1,17 @@
+// SPDX-License-Identifier: GPL-3.0-only
+/// @file
+/// Tests of `nmeasim::core::track::Track`, `nmeasim::core::track::to_string` and the file
+/// loaders `nmeasim::core::track::parse_track` and `nmeasim::core::track::load_track`.
+///
+/// The cases cover when a track counts as timed, its duration and length, the names of the
+/// track kinds, the choice of reader by file extension, the file name as fallback track
+/// name, load errors, and the sample tracks shipped with the application.
+///
+/// Fixture files: tests/fixtures/tracks/route.gpx, linestring.kml, untimestamped.gpx,
+/// multi_geometry.kml, prefixed.gpx and malformed.gpx (and the absent missing.gpx); the
+/// samples samples/saronic-gulf.gpx, samples/saronic-route.gpx and samples/saronic-gulf.kml,
+/// found through the `NMEASIM_SAMPLES_DIR` compile definition.
+
 #include "core/fixtures.hpp"
 
 #include <nmeasim/core/geo/geodesic.hpp>
@@ -27,6 +41,7 @@ TEST_CASE("a track knows whether it is timed, its duration and its length", "[tr
     CHECK(timed.has_timestamps());
     CHECK(timed.duration() == 180000ms);
     const double leg = nmeasim::core::geo::inverse({37.90, 23.60}, {37.91, 23.60}).distance_m;
+    // 0.01 degrees of latitude is 1109.9 m here according to GeographicLib.
     CHECK(leg > 1100.0);
     CHECK(timed.length_m() == Approx(leg));
 
@@ -79,6 +94,7 @@ TEST_CASE("tracks are loaded from disk with the file name as fallback name", "[t
     const auto prefixed =
         track::load_track(nmeasim::test::fixture_path("tracks/prefixed.gpx"), &error);
     REQUIRE(prefixed.has_value());
+    // prefixed.gpx names neither its metadata nor its track.
     CHECK(prefixed->name == "prefixed.gpx");
 
     CHECK_FALSE(
@@ -109,6 +125,7 @@ TEST_CASE("the shipped sample tracks load", "[track]") {
     const auto kml = track::load_track(samples + "/saronic-gulf.kml", &error);
     REQUIRE(kml.has_value());
     CHECK(kml->kind == track::TrackKind::KmlTrack);
+    // The KML sample holds the same passage as the GPX track.
     CHECK(kml->points.size() == gpx->points.size());
     CHECK(kml->duration() == gpx->duration());
 }
