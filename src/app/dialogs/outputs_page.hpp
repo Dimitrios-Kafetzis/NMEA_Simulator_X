@@ -21,6 +21,7 @@
 #include <QListWidget>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QString>
 #include <QWidget>
 
 namespace nmeasim::app {
@@ -316,6 +317,10 @@ private:
     /// True while `load` refills `list`, so that the row changes it causes do not show or
     /// commit an output.
     bool loading_{false};
+    /// Directory of the loaded profile's file, `io::Profile::base_directory`, against which
+    /// the file dialog of the *Browse...* button resolves a relative output path; empty for a
+    /// profile without a file.
+    QString profile_directory_;
 };
 
 }  // namespace nmeasim::app

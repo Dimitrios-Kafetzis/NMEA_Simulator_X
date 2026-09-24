@@ -262,13 +262,15 @@ private:
     void update_mode_widgets();
     /// Asks the operator for a track file and puts the chosen path into `track_path_edit`.
     ///
-    /// The file dialog starts in the directory of the current path, or in the documents
+    /// The file dialog starts in the directory of the current path, a relative path taken
+    /// from the profile's directory (`AppSettings::dialog_directory`), or in the documents
     /// folder when the field is empty, and offers `*.gpx` and `*.kml` files. Cancelling leaves
     /// the field unchanged. Connected to `QPushButton::clicked` of `track_browse_button`.
     void browse_track();
     /// Asks the operator for a log file and puts the chosen path into `replay_path_edit`.
     ///
-    /// The file dialog starts in the directory of the current path, or in the documents
+    /// The file dialog starts in the directory of the current path, a relative path taken
+    /// from the profile's directory (`AppSettings::dialog_directory`), or in the documents
     /// folder when the field is empty, and offers `*.log`, `*.nmea` and `*.txt` files.
     /// Cancelling leaves the field unchanged. Connected to `QPushButton::clicked` of
     /// `replay_browse_button`.
@@ -281,6 +283,10 @@ private:
     /// The *Drift around the initial values* group, enabled only in delta mode; owned by the
     /// page.
     QGroupBox* drift_box_;
+    /// Directory of the loaded profile's file, `io::Profile::base_directory`, against which
+    /// the file dialogs resolve a relative track or log path; empty for a profile without a
+    /// file.
+    QString profile_directory_;
 };
 
 }  // namespace nmeasim::app

@@ -388,11 +388,13 @@ private:
     void open_profile();
     /// Asks for a GPX or KML file and calls `load_track`; slot of *Open track...*.
     ///
-    /// The dialog starts in the folder of the current track, or in the documents folder.
+    /// The dialog starts in the folder of the current track, a relative path taken from the
+    /// profile's directory (`AppSettings::dialog_directory`), or in the documents folder.
     void open_track();
     /// Asks for a log file and calls `load_log`; slot of *Open log for replay...*.
     ///
-    /// The dialog starts in the folder of the current log, or in the documents folder.
+    /// The dialog starts in the folder of the current log, a relative path taken from the
+    /// profile's directory (`AppSettings::dialog_directory`), or in the documents folder.
     void open_log();
     /// Opens the settings dialog on a copy of the current profile; slot of *Settings...*.
     ///

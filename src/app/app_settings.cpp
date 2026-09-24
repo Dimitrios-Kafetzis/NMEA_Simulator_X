@@ -11,6 +11,7 @@
 #include "app_settings.hpp"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
 
 namespace nmeasim::app {
@@ -139,6 +140,22 @@ QString AppSettings::profiles_directory() {
     const QString directory = QDir(base).filePath(QStringLiteral("profiles"));
     QDir().mkpath(directory);
     return directory;
+}
+
+QString AppSettings::resolve_profile_path(const QString& profile_directory, const QString& path) {
+    if (path.isEmpty()) {
+        return {};
+    }
+    const QDir base = profile_directory.isEmpty() ? QDir::current() : QDir(profile_directory);
+    return QDir::cleanPath(base.absoluteFilePath(path));
+}
+
+QString AppSettings::dialog_directory(const QString& profile_directory, const QString& path) {
+    const QString resolved = resolve_profile_path(profile_directory, path);
+    if (resolved.isEmpty()) {
+        return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    return QFileInfo(resolved).absolutePath();
 }
 
 }  // namespace nmeasim::app

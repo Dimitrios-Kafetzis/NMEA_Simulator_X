@@ -179,6 +179,28 @@ public:
     ///   of a chosen directory. A failure to create it is ignored; the path is returned
     ///   anyway.
     [[nodiscard]] static QString tile_cache_directory();
+    /// Returns the absolute path that a file path of a profile names.
+    ///
+    /// The file dialogs use it, so that they find a file named relative to the profile file
+    /// where `SimulationRunner` finds it.
+    ///
+    /// @param profile_directory The directory that the relative paths of the profile are
+    ///   relative to, `io::Profile::base_directory`; empty for a profile without a file, whose
+    ///   relative paths are relative to the working directory.
+    /// @param path A track, log or output file path as written in the profile; may be empty.
+    /// @return `path` made absolute against `profile_directory` and cleaned; empty when `path`
+    ///   is empty.
+    [[nodiscard]] static QString resolve_profile_path(const QString& profile_directory,
+                                                      const QString& path);
+    /// Returns the folder that a file dialog for a file path of a profile starts in.
+    ///
+    /// @param profile_directory As for `resolve_profile_path`.
+    /// @param path As for `resolve_profile_path`.
+    /// @return The folder that contains the path resolved by `resolve_profile_path`, whether
+    ///   or not it exists; the documents folder (`QStandardPaths::DocumentsLocation`) when
+    ///   `path` is empty.
+    [[nodiscard]] static QString dialog_directory(const QString& profile_directory,
+                                                  const QString& path);
 
 private:
     /// The native settings store of the application, opened by the default `QSettings`
