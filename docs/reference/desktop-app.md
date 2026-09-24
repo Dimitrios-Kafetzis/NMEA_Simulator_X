@@ -10,8 +10,10 @@
 NMEASimulatorX [profile.json]
 ```
 
-When a profile path is given and the file exists it is loaded at start-up. Otherwise the last
-profile used is reopened, and if there is none the built-in default profile is used.
+When a profile path is given it is loaded at start-up. A profile that cannot be opened, for
+example because the path does not exist or its track file is missing, is reported in a
+message box, and the last profile used is reopened instead. Without a path the last profile
+used is reopened, and if there is none the built-in default profile is used.
 
 ## Window layout
 
@@ -20,8 +22,8 @@ profile used is reopened, and if there is none the built-in default profile is u
 | Dashboard (central) | Compass rose and wind dial, then instrument tiles with override controls; scrolls when the window is small | No |
 | Map (dock, left) | Vessel, heading, course line and track on a slippy map | Yes, *View* menu |
 | Console (dock, bottom) | Sentences as sent, with pause, filter and clear | Yes, *View* menu |
-| Outputs (dock, right) | One row per configured output: description, state, clients, sentences, bytes, last error | Yes, *View* menu |
-| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the sentence counter. Errors appear here for ten seconds | No |
+| Outputs (dock, right) | One row per configured output: description, state, clients, lines sent (sentences, or Signal K or ViewSync messages), bytes, last error | Yes, *View* menu |
+| Status bar | Indicator lights for the run state (green *RUNNING*, amber *PAUSED*, unlit *STOPPED*) and recording (a blinking red *REC*), then the profile name and mode; on the right the outputs light (*n/m OUTPUTS*: green when all are open, amber while some are opening, red when one failed) and the counter of NMEA 0183 sentences produced. Errors appear here for ten seconds | No |
 
 Docks can be moved to any edge, stacked, floated or closed. Geometry and dock layout are
 saved on exit and restored at the next start; the first start gives the map about 400 pixels,
@@ -34,7 +36,7 @@ the outputs about 260 and the console about 170.
 | File | New profile | ++ctrl+n++ | Replaces the current profile with the default one |
 | File | Open profile... | ++ctrl+o++ | Loads a JSON profile; the simulation restarts if it was running |
 | File | Save profile | ++ctrl+s++ | Writes the current profile to its file, asking for a name the first time |
-| File | Save profile as... | ++ctrl+shift+s++ | Writes the current profile to a new file |
+| File | Save profile as... | ++ctrl+shift+s++ | Writes the current profile to a new file, which becomes the profile's file once written |
 | File | Open track... | ++ctrl+t++ | Switches the current profile to track mode with a GPX or KML file; the simulation restarts if it was running |
 | File | Open log for replay... | ++ctrl+l++ | Switches the current profile to replay mode with a recorded or plain NMEA log |
 | File | Record log... | ++ctrl+r++ | Starts recording every sentence to a log file, or stops the recording when unticked |
@@ -43,7 +45,7 @@ the outputs about 260 and the console about 170.
 | Simulation | Start / Stop | ++f5++ | Opens every enabled output and starts ticking, or closes everything |
 | Simulation | Pause | ++f6++ | Freezes the simulated clock and the vessel; outputs stay open |
 | Simulation | Step | ++f7++ | Pauses and advances by one tick, or by one recorded sentence during a replay; starts the run paused when it is stopped |
-| Simulation | Steering mode | | Arrow keys move the rudder instead of the heading; available in delta mode only |
+| Simulation | Steering mode | | Arrow keys move the rudder instead of the heading; available in delta mode only, and unticked when a track or log is loaded |
 | Simulation | Clear destination | | Stops steering for the waypoint; APB, RMB and XTE are no longer sent |
 | Simulation | Start automatically on launch | | Starts the simulation as soon as the window opens |
 | View | Map, Console, Outputs | | Shows or hides the panel |
@@ -105,6 +107,8 @@ The main window must have focus; click on the dashboard if the arrow keys do not
 
 A nudge sets an override on the parameter, which pins it at the new value until the override
 is cleared from the tile.
+In track and replay mode the file drives the vessel, so the arrow keys nudge nothing and are
+left to the rest of the window.
 
 ## Dashboard instruments
 
@@ -281,15 +285,16 @@ every change. The profile on disk is not touched until you save it.
 | Mode | *Vessel driven by*: delta simulation, follow a track or replay a log |
 | Track | File (with *Browse...*), speed without timestamps, follow the track's own timestamps, start again at the end; enabled in track mode |
 | Log replay | File (with *Browse...*), interval without times, start again at the end; enabled in replay mode |
-| Profile and clock | Name, simulation step (10 to 10000 ms), fixed start time in UTC or the wall clock, random seed |
+| Profile and clock | Name, simulation step (10 to 10000 ms), fixed start time in UTC or the wall clock, random seed (0 to 4294967295) |
 | Initial vessel values | Latitude, longitude, altitude, heading, speed over ground, magnetic variation and deviation, depth, transducer offset, water temperature, true wind direction and speed |
 | GNSS receiver | Fix, fix quality, satellites in use and in view, HDOP, PDOP, VDOP, geoid separation |
 | Drift around the initial values | Amplitude and step per second for heading, speed, depth, water temperature, wind direction and wind speed; an amplitude of 0 freezes the value; enabled in delta mode |
-| Destination | *Steer for a waypoint*, its id, latitude, longitude and arrival circle radius; a new destination starts its leg at the initial position |
+| Destination | *Steer for a waypoint*, its id, latitude, longitude and arrival circle radius; a new destination starts its leg at the initial position, and one whose coordinates were not edited keeps its leg |
 | Steering | Turn rate per degree of rudder, maximum rudder angle |
 
 The fields map one to one onto the `simulation` object of the
-[profile file](profile.md#simulation).
+[profile file](profile.md#simulation). Latitudes and longitudes are shown with six decimals;
+a coordinate whose field is left unchanged keeps all the decimals it has in the profile.
 
 ### Vessel tab
 
@@ -301,17 +306,19 @@ The fields map one to one onto the `simulation` object of the
 ### Sentences tab
 
 One row per sentence in the registry with its enabled flag, id, description, group, talker
-and period in milliseconds. An empty talker uses the registry default shown as placeholder.
-*Enable all*, *Disable all* and *Reset to defaults* act on every row. *Position decimals*
-sets the fractional minute digits of latitude and longitude.
+and period in milliseconds. A talker is two letters; an empty talker uses the registry default
+shown as placeholder, and *OK* refuses a single letter. *Enable all*, *Disable all* and
+*Reset to defaults* act on every row, and leave *Position decimals* alone, which sets the
+fractional minute digits of latitude and longitude.
 
 Only rows that differ from the registry defaults are written to the profile, so a saved
 profile stays small and follows registry changes in later versions.
 
 Below the registry, the *Custom sentences* table holds the operator's own sentences
 ([reference](nmea0183-sentences.md#custom-sentences)): an enabled flag, an id (empty gives
-`CUSTOM-n`), the sentence without checksum and its period. *OK* refuses a body that cannot
-be framed or an id that belongs to a registry sentence, naming the row.
+`CUSTOM-n`, where `n` is the row number shown as placeholder), the sentence without checksum
+and its period. *OK* refuses a body that cannot be framed, an id that belongs to a registry
+sentence and an id used by two rows, naming the rows.
 
 ### Outputs tab
 
@@ -332,8 +339,9 @@ fields ([profile reference](profile.md#outputs)):
 | ViewSync packets | not used | *ViewSync camera*: height above the vessel, tilt, roll, planet; *Period* sets the packet rate |
 
 *OK* is refused, with the reason shown under the tabs, while the track or replay mode has no
-file, a serial output has no port, a file or log output has no path or a TCP client has no
-host.
+file, a serial output has no port or baud rate, a file or log output has no path or a TCP
+client has no host, a registry sentence has a one-letter talker, or two custom sentences
+share an id.
 
 ## Preferences
 
@@ -354,7 +362,7 @@ platform's native location:
 | `map/online` | Whether missing tiles are downloaded (default `true`) |
 | `map/tile_url` | Tile URL template; empty uses the OpenStreetMap server |
 | `map/tile_attribution` | Attribution drawn on the map; unset credits OpenStreetMap for its own servers only |
-| `map/zoom` | Last map zoom level |
+| `map/zoom` | Last map zoom level, fractional |
 | `map/cache_directory` | Directory whose `tiles` sub-directory holds the tile cache; empty uses the platform's cache directory above |
 | `appearance/theme` | `night` (default), `day` or `system` |
 

@@ -24,6 +24,7 @@
 
 #include <QDateTime>
 #include <QHostAddress>
+#include <QStringView>
 
 #include <algorithm>
 #include <chrono>
@@ -62,16 +63,33 @@ core::simulation::EndBehaviour end_behaviour(bool loop) {
 
 }  // namespace
 
+bool OutputChannel::admits(const QString& id) const {
+    if (filter.isEmpty()) {
+        return true;
+    }
+    return std::any_of(filter.begin(), filter.end(), [&id](const QString& entry) {
+        return entry.compare(id, Qt::CaseInsensitive) == 0;
+    });
+}
+
 bool OutputChannel::admits_path(const QString& path) const {
     if (filter.isEmpty()) {
         return true;
     }
-    for (const auto& prefix : filter) {
-        if (path.startsWith(prefix, Qt::CaseInsensitive)) {
+    return std::any_of(filter.begin(), filter.end(), [&path](const QString& entry) {
+        QStringView prefix{entry};
+        while (prefix.endsWith(QLatin1Char('.'))) {
+            prefix.chop(1);
+        }
+        // An empty entry keeps admitting every path, as the plain prefix match it replaces
+        // did. Otherwise the prefix must end at a segment boundary of the path: at its end or
+        // at a dot.
+        if (prefix.isEmpty()) {
             return true;
         }
-    }
-    return false;
+        return path.startsWith(prefix, Qt::CaseInsensitive) &&
+               (path.size() == prefix.size() || path.at(prefix.size()) == QLatin1Char('.'));
+    });
 }
 
 SimulationRunner::SimulationRunner(QObject* parent) : QObject(parent) {
@@ -99,11 +117,13 @@ std::unique_ptr<Transport> SimulationRunner::make_transport(const OutputConfig& 
         case OutputConfig::Type::Serial:
             return std::make_unique<SerialTransport>(config.serial);
         case OutputConfig::Type::File:
-            return std::make_unique<FileTransport>(config.path, config.append);
+            return std::make_unique<FileTransport>(profile_.resolve_path(config.path),
+                                                   config.append);
         case OutputConfig::Type::Stdout:
             return std::make_unique<StdoutTransport>();
         case OutputConfig::Type::Log: {
-            auto log = std::make_unique<LogTransport>(config.path, config.append);
+            auto log =
+                std::make_unique<LogTransport>(profile_.resolve_path(config.path), config.append);
             log->set_profile_name(profile_.name);
             return log;
         }
@@ -125,7 +145,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
         }
         case SimulationMode::Track: {
             std::string reason;
-            auto track = core::track::load_track(profile.track.path.toStdString(), &reason);
+            auto track = core::track::load_track(
+                profile.resolve_path(profile.track.path).toStdString(), &reason);
             if (!track) {
                 if (error) {
                     *error = QString::fromStdString(reason);
@@ -144,7 +165,8 @@ std::unique_ptr<core::simulation::Source> SimulationRunner::make_source(const Pr
             std::string reason;
             core::log::LogParseOptions options;
             options.fixed_interval = std::chrono::milliseconds{profile.replay.fixed_interval_ms};
-            auto log = core::log::load_log(profile.replay.path.toStdString(), options, &reason);
+            auto log = core::log::load_log(profile.resolve_path(profile.replay.path).toStdString(),
+                                           options, &reason);
             if (!log) {
                 if (error) {
                     *error = QString::fromStdString(reason);
@@ -216,6 +238,7 @@ bool SimulationRunner::apply_profile(const Profile& profile, QString* error) {
         recorder_->set_profile_name(profile_.name);
     }
     sentences_emitted_ = 0;
+    state_messages_sent_ = 0;
     return true;
 }
 
@@ -367,7 +390,7 @@ void SimulationRunner::emit_sentences(
             } else {
                 channel.transport->write(line);
             }
-            ++channel.sentences_sent;
+            ++channel.lines_sent;
         }
         if (recorder_ && recorder_->is_open()) {
             recorder_->write(line);
@@ -405,8 +428,8 @@ void SimulationRunner::emit_state_messages() {
             ++channel.counter;
         }
         channel.transport->write(QByteArray::fromStdString(message + "\r\n"));
-        ++channel.sentences_sent;
-        ++sentences_emitted_;
+        ++channel.lines_sent;
+        ++state_messages_sent_;
         emit sentence_emitted(id, QString::fromStdString(message));
     }
 }

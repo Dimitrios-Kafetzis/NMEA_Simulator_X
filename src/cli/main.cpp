@@ -28,6 +28,7 @@
 
 #include <QCoreApplication>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QTimer>
 
@@ -372,7 +373,9 @@ bool apply_output_overrides(const RunOptions& options, nmeasim::io::Profile& pro
     for (const auto& path : options.files) {
         OutputConfig output;
         output.type = OutputConfig::Type::File;
-        output.path = QString::fromStdString(path);
+        // Made absolute: a relative path in a loaded profile is relative to the profile file,
+        // but one given on the command line is relative to the working directory.
+        output.path = QFileInfo(QString::fromStdString(path)).absoluteFilePath();
         profile.outputs.append(output);
     }
     if (options.use_stdout) {
@@ -500,7 +503,8 @@ bool apply_sentence_overrides(const RunOptions& options, nmeasim::io::Profile& p
 /// `--record` then appends a log output that truncates its file. `run_simulation` calls this
 /// function after `apply_output_overrides`, so the log output joins whichever outputs the
 /// run has, the profile's or the command line's, and takes neither `--encoding` nor the TAG
-/// block.
+/// block. The paths are made absolute against the working directory, since a relative path
+/// held in a loaded profile is resolved against the profile file's directory.
 ///
 /// @param options The parsed `run` options.
 /// @param[in,out] profile The profile to change.
@@ -510,7 +514,8 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
     using nmeasim::io::SimulationMode;
     if (!options.track_path.empty()) {
         profile.mode = SimulationMode::Track;
-        profile.track.path = QString::fromStdString(options.track_path);
+        profile.track.path =
+            QFileInfo(QString::fromStdString(options.track_path)).absoluteFilePath();
         profile.track.loop = options.loop;
         profile.track.use_timestamps = !options.ignore_timestamps;
         if (options.track_speed_kn > 0.0) {
@@ -518,7 +523,8 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
         }
     } else if (!options.replay_path.empty()) {
         profile.mode = SimulationMode::Replay;
-        profile.replay.path = QString::fromStdString(options.replay_path);
+        profile.replay.path =
+            QFileInfo(QString::fromStdString(options.replay_path)).absoluteFilePath();
         profile.replay.loop = options.loop;
         if (options.replay_interval_ms > 0) {
             profile.replay.fixed_interval_ms = options.replay_interval_ms;
@@ -530,7 +536,7 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
     if (!options.record_path.empty()) {
         nmeasim::io::OutputConfig output;
         output.type = nmeasim::io::OutputConfig::Type::Log;
-        output.path = QString::fromStdString(options.record_path);
+        output.path = QFileInfo(QString::fromStdString(options.record_path)).absoluteFilePath();
         output.append = false;
         profile.outputs.append(output);
     }
@@ -552,8 +558,9 @@ void apply_mode_overrides(const RunOptions& options, nmeasim::io::Profile& profi
 ///
 /// Unless `--quiet` is given it prints to standard error each output that opened, a line
 /// naming the profile, the track or log, its length and the tick, `end of the track or log
-/// reached` when a finite source ends, and the count of
-/// `nmeasim::io::SimulationRunner::sentences_emitted` when it stops.
+/// reached` when a finite source ends, and when it stops the count of
+/// `nmeasim::io::SimulationRunner::sentences_emitted`, followed by that of
+/// `nmeasim::io::SimulationRunner::state_messages_sent` when there were any.
 /// A failure of one output while others work is printed as a warning and the run continues.
 ///
 /// @param options The parsed `run` options.
@@ -658,7 +665,12 @@ int run_simulation(const RunOptions& options) {
     }
     const int result = QCoreApplication::exec();
     if (!options.quiet) {
-        std::cerr << std::format("stopped after {} sentences\n", runner.sentences_emitted());
+        const auto messages = runner.state_messages_sent();
+        std::cerr << (messages > 0 ? std::format("stopped after {} sentences and {} Signal K or "
+                                                 "ViewSync messages\n",
+                                                 runner.sentences_emitted(), messages)
+                                   : std::format("stopped after {} sentences\n",
+                                                 runner.sentences_emitted()));
     }
     return result;
 }

@@ -37,6 +37,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+
 using nmeasim::io::Transport;
 using nmeasim::test::wait_until;
 
@@ -127,6 +129,34 @@ TEST_CASE("TCP client connects, sends and reconnects", "[io][transport][integrat
     CHECK(client.client_count() == 0);
 }
 
+TEST_CASE("TCP client reports a refused connection and keeps trying",
+          "[io][transport][integration]") {
+    quint16 port = 0;
+    {
+        // Port 0 lets the operating system pick a free port; closing the server leaves a port
+        // on which connections are refused.
+        QTcpServer closed;
+        REQUIRE(closed.listen(QHostAddress::LocalHost, 0));
+        port = closed.serverPort();
+    }
+    // A reconnect interval of 100 ms keeps the retries well inside the waits.
+    nmeasim::io::TcpClientTransport client(QStringLiteral("127.0.0.1"), port, 100);
+    QSignalSpy errors(&client, &Transport::error_occurred);
+    REQUIRE(client.open());
+    // Windows retries a refused connection for about two seconds before reporting it, so the
+    // waits are generous.
+    REQUIRE(wait_until([&] { return client.state() == Transport::State::Failed; }, 15000));
+    CHECK_FALSE(client.last_error().isEmpty());
+    CHECK(errors.count() >= 1);
+    // The client keeps retrying while failed, and connects once a server listens.
+    REQUIRE(wait_until([&] { return errors.count() >= 2; }, 15000));
+    QTcpServer peer;
+    REQUIRE(peer.listen(QHostAddress::LocalHost, port));
+    REQUIRE(wait_until([&] { return client.is_open(); }, 15000));
+    client.close();
+    CHECK(client.state() == Transport::State::Closed);
+}
+
 TEST_CASE("UDP unicast sends one datagram per line", "[io][transport][integration]") {
     QUdpSocket receiver;
     // Port 0 lets the operating system pick a free port for the receiver.
@@ -179,6 +209,37 @@ TEST_CASE("UDP rejects an invalid destination", "[io][transport]") {
     CHECK_FALSE(udp.open());
     CHECK(udp.state() == Transport::State::Failed);
     CHECK(udp.last_error().contains(QStringLiteral("Invalid UDP destination")));
+}
+
+TEST_CASE("UDP rejects an IPv6 destination", "[io][transport]") {
+    nmeasim::io::UdpConfig config;
+    config.address = QStringLiteral("::1");
+    nmeasim::io::UdpTransport udp(config);
+    QSignalSpy errors(&udp, &Transport::error_occurred);
+    CHECK_FALSE(udp.open());
+    CHECK(udp.state() == Transport::State::Failed);
+    CHECK(errors.count() == 1);
+    CHECK(udp.last_error().contains(QStringLiteral("IPv4")));
+}
+
+TEST_CASE("UDP multicast finds its interface by system or descriptive name",
+          "[io][transport][integration]") {
+    const auto interfaces = nmeasim::io::ipv4_interfaces();
+    const auto loopback = std::find_if(interfaces.begin(), interfaces.end(),
+                                       [](const auto& info) { return info.is_loopback; });
+    REQUIRE(loopback != interfaces.end());
+    for (const auto& name : {loopback->name, loopback->human_name}) {
+        INFO(name.toStdString());
+        nmeasim::io::UdpConfig config;
+        config.mode = nmeasim::io::UdpConfig::Mode::Multicast;
+        // 239.255.0.1 is in the administratively scoped multicast range of RFC 2365.
+        config.address = QStringLiteral("239.255.0.1");
+        config.interface_name = name;
+        nmeasim::io::UdpTransport udp(config);
+        QSignalSpy errors(&udp, &Transport::error_occurred);
+        CHECK(udp.open());
+        CHECK(errors.isEmpty());
+    }
 }
 
 TEST_CASE("WebSocket server greets new clients and sends lines as text frames",
@@ -241,6 +302,31 @@ TEST_CASE("file transport appends lines and flushes immediately", "[io][transpor
     nmeasim::io::FileTransport bad(directory.filePath(QStringLiteral("missing/dir/output.log")));
     CHECK_FALSE(bad.open());
     CHECK(bad.state() == Transport::State::Failed);
+}
+
+TEST_CASE("file transport writes the bytes as given and truncates only on its first open",
+          "[io][transport]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("output.nmea"));
+    {
+        QFile existing(path);
+        REQUIRE(existing.open(QIODevice::WriteOnly));
+        existing.write("old contents\n");
+    }
+    nmeasim::io::FileTransport file(path, false);
+    REQUIRE(file.open());
+    file.write(kLine);
+    // Stopping and starting a run closes and reopens the transport: the file is continued,
+    // not emptied again.
+    file.close();
+    REQUIRE(file.open());
+    file.write(kLine);
+    file.close();
+    QFile reader(path);
+    // Binary mode on both sides: CR LF must reach the file unchanged on every platform.
+    REQUIRE(reader.open(QIODevice::ReadOnly));
+    CHECK(reader.readAll() == kLine + kLine);
 }
 
 TEST_CASE("serial transport fails cleanly on a missing device", "[io][transport]") {

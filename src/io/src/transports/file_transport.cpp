@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 /// @file
 /// Implementation of `FileTransport`: opening the file in append or truncate mode and
-/// writing flushed lines.
+/// writing flushed lines unchanged.
 
 #include <nmeasim/io/transports/file_transport.hpp>
 
@@ -23,13 +23,18 @@ bool FileTransport::open() {
         return true;
     }
     set_state(State::Opening);
-    QIODevice::OpenMode mode = QIODevice::WriteOnly | QIODevice::Text;
+    // Binary mode: the lines already end in CR LF, which text mode would turn into CR CR LF
+    // on Windows.
+    QIODevice::OpenMode mode = QIODevice::WriteOnly;
     mode |= append_ ? QIODevice::Append : QIODevice::Truncate;
     if (!file_.open(mode)) {
         fail(QStringLiteral("Cannot open %1 for writing: %2")
                  .arg(file_.fileName(), file_.errorString()));
         return false;
     }
+    // Every later open continues the file, so that stopping and starting a run keeps what
+    // the first part of the run wrote.
+    append_ = true;
     set_state(State::Open);
     return true;
 }

@@ -3,12 +3,13 @@
 /// Tests of `nmeasim::app::theme::Theme` and the themed parts of the desktop application.
 ///
 /// Covers the console colouring by `nmeasim::app::sentence_spans`, theme names, applying a
-/// theme to the application palette and style sheet, the bundled readout font, the toolbar
-/// icons, `nmeasim::app::StatusLed`, the override mark of `nmeasim::app::InstrumentTile`, the
-/// colours of output states, and the status lights and theme menu of
-/// `nmeasim::app::MainWindow`. The theme is a process-wide singleton, so a test that depends on
-/// one theme applies it first. The last test stores the theme choice through `QSettings`,
-/// which `main.cpp` redirects to a temporary directory. The file reads no fixtures.
+/// theme to the application palette and style sheet only when the look changes, the system
+/// look following the desktop colour scheme where the platform lets the test choose it, the bundled
+/// readout font, the toolbar icons, `nmeasim::app::StatusLed`, the override mark of
+/// `nmeasim::app::InstrumentTile`, the colours of output states, and the status lights and theme
+/// menu of `nmeasim::app::MainWindow`. The theme is a process-wide singleton, so a test that
+/// depends on one theme applies it first. The last test stores the theme choice through
+/// `QSettings`, which `main.cpp` redirects to a temporary directory. The file reads no fixtures.
 
 #include "theme/theme.hpp"
 
@@ -23,11 +24,14 @@
 #include <QAction>
 #include <QApplication>
 #include <QFontInfo>
+#include <QGuiApplication>
 #include <QImage>
 #include <QPalette>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QStyle>
+#include <QStyleHints>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -93,6 +97,10 @@ TEST_CASE("console lines are split into coloured runs", "[app][theme]") {
     CHECK(spans("\\unterminated tag").empty());
     // A missing or malformed checksum is simply not coloured.
     CHECK(spans("$GPGLL,1*Z").back().role == SentenceRole::Separator);
+    // A checksum is two ASCII hexadecimal digits: ARABIC-INDIC DIGIT THREE (U+0663) is a
+    // decimal digit, but not one of an NMEA 0183 checksum.
+    CHECK(nmeasim::app::sentence_spans(QStringLiteral("$GPGLL,1*\u06634")).back().role ==
+          SentenceRole::Separator);
 }
 
 TEST_CASE("theme names round-trip and unknown names give the night theme", "[app][theme]") {
@@ -107,6 +115,8 @@ TEST_CASE("theme names round-trip and unknown names give the night theme", "[app
 
 TEST_CASE("applying a theme sets the palette and the style sheet", "[app][theme]") {
     auto& instance = theme::Theme::instance();
+    // Starts from the night look, which an earlier test may have left, so that Day changes it.
+    instance.apply(theme::Mode::Night);
     QSignalSpy changed(&instance, &theme::Theme::changed);
 
     instance.apply(theme::Mode::Day);
@@ -129,6 +139,58 @@ TEST_CASE("applying a theme sets the palette and the style sheet", "[app][theme]
         CHECK_FALSE(sheet.contains(QStringLiteral("{window}")));
         CHECK_FALSE(sheet.contains(QRegularExpression(QStringLiteral("\\{[a-z_]+\\}"))));
     }
+}
+
+TEST_CASE("applying the look in use again changes nothing", "[app][theme]") {
+    auto& instance = theme::Theme::instance();
+    instance.apply(theme::Mode::Night);
+    // The application owns its style; with a style sheet set, QApplication::style returns a
+    // style-sheet proxy, recreated by every style sheet, that owns the Fusion style in turn.
+    const auto fusion = [] {
+        for (const auto* style : qApp->findChildren<QStyle*>()) {
+            if (style->name().compare(QLatin1String("fusion"), Qt::CaseInsensitive) == 0) {
+                return style;
+            }
+        }
+        return static_cast<const QStyle*>(nullptr);
+    };
+    const QStyle* style = fusion();
+    REQUIRE(style != nullptr);
+    QSignalSpy changed(&instance, &theme::Theme::changed);
+
+    instance.apply(theme::Mode::Night);
+    CHECK(changed.count() == 0);
+    CHECK(fusion() == style);
+
+    // Another look is applied and announced, on the same Fusion style.
+    instance.apply(theme::Mode::Day);
+    CHECK(changed.count() == 1);
+    CHECK(fusion() == style);
+    CHECK(QApplication::palette().color(QPalette::Window) ==
+          theme::colors_for(theme::Mode::Day).window);
+    instance.apply(theme::Mode::Night);
+    CHECK(changed.count() == 2);
+}
+
+TEST_CASE("the system look follows the desktop colour scheme", "[app][theme]") {
+    auto* hints = QGuiApplication::styleHints();
+    REQUIRE(hints != nullptr);
+    const Qt::ColorScheme before = hints->colorScheme();
+    for (const auto scheme : {Qt::ColorScheme::Light, Qt::ColorScheme::Dark}) {
+        hints->setColorScheme(scheme);
+        if (hints->colorScheme() != scheme) {
+            // The platform does not let the application choose its scheme.
+            continue;
+        }
+        const bool light = scheme == Qt::ColorScheme::Light;
+        CHECK(theme::Theme::resolve(theme::Mode::System) ==
+              (light ? theme::Mode::Day : theme::Mode::Night));
+        CHECK(theme::colors_for(theme::Mode::System).dark == !light);
+    }
+    hints->setColorScheme(before);
+    // Whatever the platform, the system colours are those of the resolved look.
+    CHECK(&theme::colors_for(theme::Mode::System) ==
+          &theme::colors_for(theme::Theme::resolve(theme::Mode::System)));
 }
 
 TEST_CASE("the readout font is the bundled Share Tech Mono", "[app][theme]") {

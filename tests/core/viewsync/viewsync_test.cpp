@@ -3,10 +3,10 @@
 /// Tests of `nmeasim::core::viewsync::encode_packet`, the ViewSync camera packet for Google
 /// Earth.
 ///
-/// The case checks the field layout and number formats with the default camera settings and
-/// with custom altitude, tilt, roll and planet, the largest packet counter, and the epoch
-/// offset of ViewSync times. No fixture file is read; the packet is encoded from
-/// `nmeasim::test::fixture_state`.
+/// The cases check the field layout and number formats with the default camera settings and
+/// with custom altitude, tilt, roll and planet, the largest packet counter, the epoch offset
+/// of ViewSync times, and the removal of separators and control characters from the planet. No
+/// fixture file is read; the packet is encoded from `nmeasim::test::fixture_state`.
 ///
 /// @see https://github.com/LiquidGalaxy/liquid-galaxy/wiki/GoogleEarth_ViewSync
 
@@ -34,4 +34,20 @@ TEST_CASE("a ViewSync packet follows the Liquid Galaxy layout", "[viewsync]") {
           "4294967295,37.9838000,23.7275000,1012.30,45.00,0.00,-5.50,63925677296,63925677296,"
           "mars");
     CHECK(viewsync::kSecondsBeforeUnixEpoch == 62135596800);
+}
+
+TEST_CASE("the planet name cannot add a field or a line to a ViewSync packet", "[viewsync]") {
+    const auto state = nmeasim::test::fixture_state();
+    viewsync::ViewSyncOptions options;
+    // Commas, CR, LF, other control characters and bytes outside ASCII are removed; the
+    // packet keeps its ten fields and one line.
+    options.planet = "mars,1,2\r\n\tmoon\x7f\xe9";
+    const auto packet = viewsync::encode_packet(state, options, 1);
+    CHECK(packet ==
+          "1,37.9838000,23.7275000,512.30,45.00,60.00,0.00,63925677296,63925677296,"
+          "mars12moon");
+    CHECK(viewsync::sanitize_planet("moon") == "moon");
+    CHECK(viewsync::sanitize_planet("sky") == "sky");
+    CHECK(viewsync::sanitize_planet("").empty());
+    CHECK(viewsync::sanitize_planet(",,,").empty());
 }

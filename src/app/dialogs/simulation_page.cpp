@@ -19,7 +19,10 @@
 #include <QTimeZone>
 #include <QVBoxLayout>
 
+#include <cmath>
+#include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 
 namespace nmeasim::app {
@@ -63,6 +66,30 @@ QSpinBox* make_int(QWidget* parent, int minimum, int maximum, const QString& suf
     spin->setSuffix(suffix);
     spin->setKeyboardTracking(false);
     return spin;
+}
+
+/// Returns whether a spin box still shows a value, as rounded to its decimals.
+///
+/// @param spin The spin box.
+/// @param value Value that was loaded into the spin box.
+/// @return `true` when `value`, rounded to the decimals of `spin`, equals the spin box value,
+///     so that the operator did not change the field.
+bool shows(const QDoubleSpinBox& spin, double value) {
+    // Half a unit of the last decimal, with a little room for the binary representation.
+    const double half_step = 0.5 * std::pow(10.0, -spin.decimals()) * (1.0 + 1e-9);
+    return std::fabs(spin.value() - value) <= half_step;
+}
+
+/// Returns the stored value when a spin box still shows it, and the spin box value otherwise.
+///
+/// Keeps the decimals beyond those the spin box shows when the operator did not change the
+/// field.
+///
+/// @param stored Value that was loaded into the spin box.
+/// @param spin The spin box.
+/// @return `stored` when `shows` holds, else the value of `spin`.
+double unless_unchanged(double stored, const QDoubleSpinBox& spin) {
+    return shows(spin, stored) ? stored : spin.value();
 }
 
 }  // namespace
@@ -135,7 +162,8 @@ SimulationPage::SimulationPage(QWidget* parent) : QWidget(parent) {
     start_time_edit->setEnabled(false);
     connect(fixed_start_check, &QCheckBox::toggled, start_time_edit, &QWidget::setEnabled);
     general->addRow(fixed_start_check, start_time_edit);
-    random_seed_spin = make_int(general_box, 0, 1000000000);
+    random_seed_spin = make_double(
+        general_box, 0.0, static_cast<double>(std::numeric_limits<std::uint32_t>::max()), 1.0, 0);
     general->addRow(tr("Random seed"), random_seed_spin);
     left->addWidget(general_box);
 
@@ -310,7 +338,7 @@ void SimulationPage::load(const io::Profile& profile) {
     // stored start time would carry a fraction the operator never saw.
     start_time_edit->setDateTime(profile.start_time.value_or(
         QDateTime::currentDateTimeUtc().addMSecs(-QDateTime::currentDateTimeUtc().time().msec())));
-    random_seed_spin->setValue(static_cast<int>(profile.delta.random_seed));
+    random_seed_spin->setValue(static_cast<double>(profile.delta.random_seed));
 
     const auto& seed = profile.delta.seed;
     latitude_spin->setValue(seed.navigation.position.latitude_deg);
@@ -380,12 +408,14 @@ void SimulationPage::store(io::Profile& profile) const {
     } else {
         profile.start_time.reset();
     }
-    // The spin box minimum is 0, so the cast never sees a negative value.
-    profile.delta.random_seed = static_cast<unsigned int>(random_seed_spin->value());
+    // The spin box holds whole numbers in the range of the seed, so the conversion is exact.
+    profile.delta.random_seed = static_cast<unsigned int>(std::llround(random_seed_spin->value()));
 
     auto& seed = profile.delta.seed;
-    seed.navigation.position.latitude_deg = latitude_spin->value();
-    seed.navigation.position.longitude_deg = longitude_spin->value();
+    seed.navigation.position.latitude_deg =
+        unless_unchanged(seed.navigation.position.latitude_deg, *latitude_spin);
+    seed.navigation.position.longitude_deg =
+        unless_unchanged(seed.navigation.position.longitude_deg, *longitude_spin);
     seed.navigation.altitude_m = altitude_spin->value();
     seed.navigation.heading_true_deg = heading_spin->value();
     seed.navigation.speed_over_ground_kn = speed_spin->value();
@@ -424,13 +454,17 @@ void SimulationPage::store(io::Profile& profile) const {
         destination.name = name.isEmpty() ? std::string{"WPT"} : name.toStdString();
         destination.position = {destination_latitude_spin->value(),
                                 destination_longitude_spin->value()};
-        // A leg that already exists keeps its origin; a new one starts at the seed position,
-        // which this call has already written above. The comparison sees the coordinates
-        // after the spin boxes rounded them to six decimals.
+        // A leg that already exists keeps its origin and its exact coordinates; a new one
+        // starts at the seed position, which this call has already written above. The fields
+        // show the stored coordinates rounded to six decimals, so unchanged fields are
+        // recognised by that rounding, not by equality.
         const bool same_destination =
             seed.destination &&
-            seed.destination->position.latitude_deg == destination.position.latitude_deg &&
-            seed.destination->position.longitude_deg == destination.position.longitude_deg;
+            shows(*destination_latitude_spin, seed.destination->position.latitude_deg) &&
+            shows(*destination_longitude_spin, seed.destination->position.longitude_deg);
+        if (same_destination) {
+            destination.position = seed.destination->position;
+        }
         destination.origin = same_destination ? seed.destination->origin : seed.navigation.position;
         destination.arrival_radius_m = arrival_radius_spin->value();
         seed.destination = destination;

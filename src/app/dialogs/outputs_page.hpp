@@ -66,7 +66,7 @@ public:
     ///
     /// @param profile The profile whose `outputs` are copied; only that field is read.
     void load(const io::Profile& profile);
-    /// Writes the edited outputs into a profile, committing the editor first.
+    /// Writes the edited outputs into a profile, including the values in the editor.
     ///
     /// Nothing is validated here; `SettingsDialog::accept` calls `validate` first.
     ///
@@ -74,9 +74,10 @@ public:
     void store(io::Profile& profile) const;
     /// Checks that every output has the setting its transport cannot open without.
     ///
-    /// Commits the editor first. The checks, in list order: a serial output needs a port
-    /// name, a file or log output a path and a TCP client a host; values made of spaces count
-    /// as missing. Everything else is either limited by its widget or accepted as it is.
+    /// Reads the output being edited from the editor. The checks, in list order: a serial
+    /// output needs a port name and a baud rate (a cleared field reads as 0), a file or log
+    /// output a path and a TCP client a host; values made of spaces count as missing.
+    /// Everything else is either limited by its widget or accepted as it is.
     ///
     /// @return An empty string when every output is complete, otherwise a message about the
     ///     first incomplete one, numbered from 1, such as `Output 3: the serial port name is
@@ -110,8 +111,8 @@ public:
     [[nodiscard]] int current_index() const;
     /// Returns the list as edited so far, including the output being edited.
     ///
-    /// @note Although `const`, it commits the editor into the page's copy and refreshes the
-    ///     titles in `list`, so the widgets and the copy agree afterwards.
+    /// The output being edited is read from the editor widgets; the page's copy and `list`
+    /// are not changed.
     ///
     /// @return The outputs in list order.
     [[nodiscard]] QList<io::OutputConfig> outputs() const;
@@ -213,10 +214,7 @@ public:
     /// Edits `io::OutputConfig::port` of a TCP client; [0, 65535].
     QSpinBox* client_port_spin;
     /// Edits `io::OutputConfig::reconnect_ms`, the delay before a TCP client reconnects, in
-    /// milliseconds; [100, 600000].
-    ///
-    /// The profile does not limit the value, so a loaded value outside the range is clamped
-    /// by the widget and stored clamped.
+    /// milliseconds; [1, 3600000], the range the profile accepts, so a loaded value is kept.
     QSpinBox* reconnect_spin;
     /// Edits `io::UdpConfig::mode`: unicast, broadcast, multicast in `io::UdpConfig::Mode`
     /// order, so the index is the enumerator's value.
@@ -232,8 +230,8 @@ public:
     /// Edits `io::UdpConfig::interface_name`, trimmed when committed; empty lets the
     /// operating system choose.
     QLineEdit* udp_interface_edit;
-    /// Edits `io::UdpConfig::multicast_ttl` in router hops; [1, 255]. A loaded value outside
-    /// the range is clamped by the widget and stored clamped.
+    /// Edits `io::UdpConfig::multicast_ttl` in router hops; [1, 255], the range the profile
+    /// accepts, so a loaded value is kept.
     QSpinBox* udp_ttl_spin;
     /// Edits `io::SerialConfig::port_name`: an editable list of the serial ports found when
     /// the page was built, so any other device path can be typed.
@@ -241,10 +239,9 @@ public:
     /// Trimmed when committed; must not be empty, see `validate`.
     QComboBox* serial_port_combo;
     /// Edits `io::SerialConfig::baud_rate`: an editable list of the common rates from 1200 to
-    /// 115200 bit/s, accepting any whole number in [1, 10000000].
+    /// 115200 bit/s, accepting any positive whole number, as the profile does.
     ///
-    /// @warning A cleared field is stored as 0, which neither `validate` nor the profile
-    ///     loader rejects; only opening the port can fail on it.
+    /// A cleared field reads as 0, which `validate` rejects.
     QComboBox* baud_combo;
     /// Edits `io::SerialConfig::data_bits`: 5, 6, 7 or 8, the index plus 5.
     QComboBox* data_bits_combo;
@@ -280,10 +277,16 @@ private:
     void show_output(int index);
     /// Writes the editor widgets into the output being edited and refreshes the titles.
     ///
-    /// Only the fields of that output's type are written; the common fields and every
-    /// encoding group are written whatever the encoding. Does nothing when no output is being
-    /// edited.
+    /// Does nothing when no output is being edited.
     void commit_editor();
+    /// Returns an output with the values of the editor widgets written into it.
+    ///
+    /// Only the fields of the output's type are written; the common fields and every encoding
+    /// group are written whatever the encoding. Nothing of the page changes.
+    ///
+    /// @param output The output the editor shows, as last committed; taken by value.
+    /// @return `output` with the edited values.
+    [[nodiscard]] io::OutputConfig edited(io::OutputConfig output) const;
     /// Shows the option group of the encoding selected in `encoding_combo`, hides the other
     /// two, and enables `period_spin` and `filter_edit` for it.
     ///

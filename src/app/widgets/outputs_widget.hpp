@@ -26,9 +26,9 @@ namespace nmeasim::app {
 ///
 /// Each row is one `io::OutputChannel` of the observed runner, in profile order, with the
 /// columns *Output* (the transport description), *Status* (the state as `io::to_string`
-/// names it, with a light in `state_color`), *Clients*, *Sentences* (lines handed to the
-/// open transport), *Bytes* and *Last error*. The table is read-only and refreshes every
-/// 500 ms while a runner is attached, when the runner starts or stops or reports an output
+/// names it, with a light in `state_color`), *Clients*, *Lines* (sentences or state messages
+/// handed to the open transport), *Bytes* and *Last error*. The table is read-only and refreshes
+/// every 500 ms while a runner is attached, when the runner starts or stops or reports an output
 /// error, and when the theme changes.
 class OutputsWidget : public QWidget {
     Q_OBJECT
