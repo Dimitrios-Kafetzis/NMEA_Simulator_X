@@ -7,12 +7,15 @@ name: Publish documentation
 on:
   push:
     branches: [main]
+    # The C++ reference is generated from every source and test file, so a change to any of
+    # them, or to the tools that generate the site, republishes it.
     paths:
       - "docs/**"
       - "mkdocs.yml"
-      - "src/core/include/**"
-      - "src/io/include/**"
-      - "tools/doxygen/**"
+      - "src/**"
+      - "tests/**"
+      - "tools/**"
+      - "CMakeLists.txt"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -58,7 +61,7 @@ jobs:
       - name: Install MkDocs
         run: pip install -r docs/requirements.txt
 
-      - name: Build site and API reference
+      - name: Build site and C++ reference
         env:
           NMEASIM_REQUIRE_DOXYGEN: "1"
         run: mkdocs build --strict

@@ -1,0 +1,13 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Site-wide style additions. */
+
+/* C++ reference (tools/doxygen/cppreference.py): keep member and type names in the first
+   column of summary tables on one line, so that names never break inside an identifier. */
+.cpp-reference td:first-child code {
+  white-space: nowrap;
+}
+
+/* Keep long signatures readable: wrap at the edge of the code block instead of scrolling. */
+.cpp-reference .highlight code {
+  white-space: pre-wrap;
+}

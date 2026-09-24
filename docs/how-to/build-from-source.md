@@ -162,6 +162,7 @@ mkdocs build --strict # what CI checks
 ```
 
 With [Doxygen](https://www.doxygen.nl/) 1.18 or later in `PATH`, the build also generates
-the [C++ API reference](../reference/api.md) under `api/`; without it the site gets a
-placeholder page. CI sets `NMEASIM_REQUIRE_DOXYGEN=1`, which turns a missing Doxygen or any
-Doxygen warning into a failed build.
+the [C++ reference](../reference/api.md) from the comments in `src/` and `tests/`; without it
+the reference is replaced by placeholder pages. CI sets `NMEASIM_REQUIRE_DOXYGEN=1`, which
+turns a missing Doxygen into a failed build, and the build fails on any Doxygen warning in a
+directory whose documentation is complete.
