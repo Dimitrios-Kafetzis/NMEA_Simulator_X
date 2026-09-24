@@ -5,8 +5,9 @@
 ///
 /// Covers applying a profile, starting, pausing, resuming, stepping, seeking and stopping in
 /// the delta, track and replay modes; output filters and disabled outputs; a failing output
-/// that does not stop the run; the profile start time; recording to a log; and the Signal K,
-/// ViewSync and TAG block encodings together with custom sentences.
+/// that does not stop the run; the profile start time; the relative paths of a loaded
+/// profile; recording to a log; and the Signal K, ViewSync and TAG block encodings together
+/// with custom sentences.
 ///
 /// Fixtures read from `tests/fixtures/`: `tracks/timestamped.gpx` (five timed points over
 /// 12 min 0.5 s), `tracks/malformed.gpx`, `logs/plain.nmea` (four rounds of eight sentences,
@@ -25,7 +26,9 @@
 #include <nmeasim/io/transports/tcp_server_transport.hpp>
 #include <nmeasim/io/transports/websocket_server_transport.hpp>
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -346,6 +349,39 @@ TEST_CASE("a TAG block goes in front of each sentence byte for byte", "[io][runn
     // computed in Python.
     CHECK(client.readAll() ==
           QByteArray("\\s:GP0001,c:1790080496020*14\\") + rmc.toLatin1() + QByteArray("\r\n"));
+}
+
+TEST_CASE("a loaded profile finds its track and writes its files next to the profile file",
+          "[io][runner][track]") {
+    QTemporaryDir directory;
+    REQUIRE(directory.isValid());
+    Profile profile = fast_profile();
+    profile.mode = SimulationMode::Track;
+    // Relative to the directory of the profile file, not to the working directory.
+    profile.track.path = QDir(directory.path()).relativeFilePath(fixture("tracks/timestamped.gpx"));
+    OutputConfig file;
+    file.type = OutputConfig::Type::File;
+    file.path = QStringLiteral("sentences.nmea");
+    profile.outputs.append(file);
+    OutputConfig log = file;
+    log.type = OutputConfig::Type::Log;
+    log.path = QStringLiteral("record.log");
+    profile.outputs.append(log);
+    const QString path = directory.filePath(QStringLiteral("profile.json"));
+    QString error;
+    REQUIRE(profile.save(path, &error));
+    const auto loaded = Profile::load(path, &error);
+    REQUIRE(loaded.has_value());
+
+    SimulationRunner runner;
+    REQUIRE(runner.apply_profile(*loaded, &error));
+    CHECK(runner.duration() == 12min + 500ms);
+    runner.step();
+    runner.stop();
+    CHECK(QFileInfo(directory.filePath(QStringLiteral("sentences.nmea"))).size() > 0);
+    CHECK(QFileInfo(directory.filePath(QStringLiteral("record.log"))).size() > 0);
+    CHECK(runner.outputs()[0].transport->description() ==
+          QStringLiteral("File %1").arg(directory.filePath(QStringLiteral("sentences.nmea"))));
 }
 
 TEST_CASE("a track profile drives a track source and ends the run at the last point",
