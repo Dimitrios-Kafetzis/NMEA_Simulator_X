@@ -2,7 +2,7 @@
 # a commit uses the same tools (ADR 0017). The first two lines are the direct dependencies;
 # the rest is what they resolve to. Dependabot proposes updates monthly.
 mkdocs==1.6.1
-mkdocs-material==9.7.7
+mkdocs-material==9.8.0
 babel==2.18.0
 backrefs==8.0
 certifi==2026.7.22
